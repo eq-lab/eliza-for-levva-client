@@ -50,7 +50,7 @@ case "$1" in
         )
 
         # Start building the docker run command
-        CMD="docker run --platform linux/amd64 -p 3000:3000 -d"
+        CMD="docker run --platform linux/amd64 -p 3123:3000 -d"
 
         # Add base mounts
         for mount in "${BASE_MOUNTS[@]}"; do
