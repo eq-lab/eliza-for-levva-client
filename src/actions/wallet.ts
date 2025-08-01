@@ -18,6 +18,7 @@ export const action: Action = {
   },
 
   handler: async (runtime, message, state, options, callback) => {
+    // todo refactor action that it can be chained properly: [REPLY, ANALYZE_WALLET], not just [ANALYZE_WALLET]
     try {
       const service = runtime.getService<LevvaService>(
         LEVVA_SERVICE.LEVVA_COMMON
@@ -94,7 +95,7 @@ Your response should include the valid JSON block and nothing else.
         source: message.content.source,
       });
 
-      return true;
+      return;
     } catch (error) {
       logger.error("Error in SWAP_TOKENS action:", error);
       // @ts-expect-error fix typing
@@ -114,7 +115,7 @@ Your response should include the valid JSON block and nothing else.
       });
 
       await callback?.(responseContent);
-      return false;
+      return;
     }
   },
 

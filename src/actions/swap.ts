@@ -36,6 +36,8 @@ export const action: Action = {
   },
 
   handler: async (runtime, message, state, options, callback) => {
+    // todo refactor action that it can be chained properly: [REPLY, SWAP_TOKENS], not just [SWAP_TOKENS]
+
     try {
       logger.info("SWAP_TOKENS action called");
       const service = runtime.getService<LevvaService>(
@@ -69,6 +71,7 @@ export const action: Action = {
         throw new Error("User not found");
       }
 
+      // todo make a dynamic provider for tx param extraction
       const gen = await runtime.useModel(
         // fixme use ModelType.OBJECT_SMALL with grok
         ModelType.OBJECT_LARGE,
@@ -97,9 +100,11 @@ export const action: Action = {
           source: message.content.source,
         };
 
-        return await callback(
+        await callback(
           await rephrase({ runtime, content: responseContent, state })
         );
+
+        return;
       } else if (!toToken) {
         logger.info("Could not find to token, need to ask user");
 
@@ -111,9 +116,11 @@ export const action: Action = {
           source: message.content.source,
         };
 
-        return await callback(
+        await callback(
           await rephrase({ runtime, content: responseContent, state })
         );
+
+        return;
       } else if (!amount) {
         logger.info("Could not find amount, need to ask user");
 
@@ -124,9 +131,11 @@ export const action: Action = {
           source: message.content.source,
         };
 
-        return await callback(
+        await callback(
           await rephrase({ runtime, content: responseContent, state })
         );
+
+        return;
       }
 
       const tokenIn = await service.getTokenDataWithInfo({
@@ -147,9 +156,11 @@ export const action: Action = {
           source: message.content.source,
         };
 
-        return await callback(
+        await callback(
           await rephrase({ runtime, content: responseContent, state })
         );
+
+        return;
       }
 
       const tokenOut = await service.getTokenDataWithInfo({
@@ -170,9 +181,11 @@ export const action: Action = {
           source: message.content.source,
         };
 
-        return await callback(
+        await callback(
           await rephrase({ runtime, content: responseContent, state })
         );
+
+        return;
       }
 
       const client = getClient(chain);
@@ -199,9 +212,11 @@ export const action: Action = {
           source: message.content.source,
         };
 
-        return await callback(
+        await callback(
           await rephrase({ runtime, content: responseContent, state })
         );
+
+        return;
       }
 
       const swap = selectSwapRouter(tokenIn, tokenOut);
@@ -234,7 +249,7 @@ Please approve transactions in your wallet.`,
         await rephrase({ runtime, content: responseContent, state })
       );
 
-      return true;
+      return;
     } catch (error) {
       logger.error("Error in SWAP_TOKENS action:", error);
       // @ts-expect-error fix typing
@@ -254,7 +269,7 @@ Please approve transactions in your wallet.`,
       });
 
       await callback?.(responseContent);
-      return false;
+      return;
     }
   },
   examples: [

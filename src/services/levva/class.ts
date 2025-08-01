@@ -9,6 +9,8 @@ import {
   toHex,
 } from "viem";
 import {
+  Content,
+  Entity,
   type IAgentRuntime,
   logger,
   Service,
@@ -70,7 +72,9 @@ import { getPendleSwap } from "src/api/swap/pendle";
 import { bundlerEnter } from "./tx";
 import poolAbi from "./abi/pool.abi";
 import vaultAbi from "./abi/vault.abi";
+import { getMessages } from "./messages";
 import { getStrategies as getStrategiesApi } from "../../api/levva";
+import { checkSecret } from "./secrets";
 
 const REQUIRED_PLUGINS = ["levva"];
 
@@ -210,6 +214,10 @@ export class LevvaService
       this.handlerInterval = null;
     }
   }
+
+  // do we need it? or better to use runtime.getMemoryById?
+  getMessages = getMessages.bind(null, this.runtime);
+  checkSecret = checkSecret.bind(null, this.runtime);
 
   /** @deprecated fix typing, maybe consider making private */
   getToken = getTokenImpl.bind(null, this.runtime) as (
@@ -942,5 +950,43 @@ export class LevvaService
     });
 
     return calls;
+  }
+
+  async checkEligibility(entity?: Entity | null): Promise<{ result: boolean; reason?: Content }> {
+    if (!entity) {
+      const content: Content = {
+        type: "text",
+        text: "No entity found",
+      };
+
+      return { result: false, reason: content };
+    }
+
+    const address = (
+      entity.metadata?.eth as { address: `0x${string}` } | undefined
+    )?.address;
+
+    if (!address) {
+      const content: Content = {
+        type: "text",
+        text: "No address found",
+      };
+
+      return { result: false, reason: content };
+    }
+
+    // fixme use cache+invalidate?
+    const balance = await this.getBalanceOf(address, 1, ETH_NULL_ADDR);
+
+    if ((balance?.amount ?? 0n) > 0n) {
+      return { result: true };
+    }
+
+    const content: Content = {
+      type: "text",
+      text: "No balance found",
+    };
+
+    return { result: false, reason: content };
   }
 }

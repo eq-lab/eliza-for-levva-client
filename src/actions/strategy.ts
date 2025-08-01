@@ -85,6 +85,7 @@ export const action: Action = {
         )
         .join("\n");
 
+      // todo make a dynamic provider for tx param extraction
       const data: ExtractedDataForStrategy = await runtime.useModel(
         ModelType.OBJECT_SMALL,
         {
@@ -114,7 +115,7 @@ Please select your risk profile`,
         });
 
         await callback(result);
-        return true;
+        return;
       }
 
       const strategiesByRiskProfile = strategies.filter(
@@ -151,7 +152,7 @@ Please select your strategy`,
           });
 
           await callback(result);
-          return true;
+          return;
         }
 
         strategy = strategiesByRiskProfile.find(
@@ -189,7 +190,7 @@ Please select your strategy`,
           });
 
           await callback(result);
-          return true;
+          return;
         }
 
         token = data.token;
@@ -215,7 +216,7 @@ Please select your strategy`,
         });
 
         await callback(result);
-        return true;
+        return;
       }
 
       if (strategy.type === "pool") {
@@ -250,7 +251,7 @@ ${detailedSteps}`,
           await rephrase({ runtime, content: responseContent, state })
         );
 
-        return true;
+        return;
       } else if (strategy.type === "vault") {
         const calldata = await service.handleVaultStrategy(
           strategy,
@@ -284,7 +285,7 @@ ${detailedSteps}`,
           await rephrase({ runtime, content: responseContent, state })
         );
 
-        return true;
+        return;
       }
 
       throw new Error(
@@ -309,7 +310,7 @@ ${detailedSteps}`,
       });
 
       await callback?.(responseContent);
-      return false;
+      return;
     }
   },
   examples: [
