@@ -1,29 +1,26 @@
-import { isHex } from "viem";
-import { Action, Content, logger, ModelType } from "@elizaos/core";
+import { Action, Content, logger } from "@elizaos/core";
+import { ETH_NULL_ADDR } from "../constants/eth";
+
 import { LEVVA_ACTIONS, LEVVA_SERVICE } from "../constants/enum";
-import { IGNORE_REPLY_MODIFIER } from "../constants/prompt";
 import {
-  ExtractedDataForStrategy,
-  selectStrategyDataFromMessagesPrompt,
   suggestStrategyAmountPrompt,
   suggestStrategyAssetPrompt,
   suggestStrategyContractPrompt,
   suggestStrategyRiskProfilePrompt,
 } from "../prompts/strategy";
 import { LEVVA_PROVIDER_NAME, LevvaProviderState } from "../providers";
+import {
+  STRATEGY_PARAMS_PROVIDER_NAME,
+  StrategyParamsProviderData,
+} from "../providers/strategy-params";
 import { selectProviderState } from "../providers/util";
 import { LevvaService } from "../services/levva/class";
-import { StrategyEntry } from "../services/levva/pool";
 import { Suggestion } from "./types";
-import { getChain } from "../util/eth/client";
+import { CalldataWithDescription } from "../types/tx";
 import { rephrase } from "../util/generate";
 
-const description = [
-  "Select optimal earning strategy for user",
-  "Initiate deposit for leveraged farming pool for user",
-  "Ask user for pool, input token, amount and leverage if not provided",
-  IGNORE_REPLY_MODIFIER,
-].join(". ");
+const description =
+  "Select and manage earning strategy for user and ask for lacking parameters to build a transaction.";
 
 export const action: Action = {
   name: LEVVA_ACTIONS.SELECT_STRATEGY,
@@ -33,6 +30,9 @@ export const action: Action = {
     "select strategy",
     "SUGGEST_STRATEGY",
     "suggest strategy",
+    "strategy",
+    "earning strategy",
+    "farming strategy"
   ],
 
   validate: async () => {
@@ -58,8 +58,6 @@ export const action: Action = {
         throw new Error("Failed to get lvva provider, disable action");
       }
 
-      const chain = getChain(lvva.chainId);
-
       if (!lvva.user) {
         throw new Error("Failed to get current user, please connect wallet");
       }
@@ -74,233 +72,222 @@ export const action: Action = {
         throw new Error("Failed to get levva service, disable action");
       }
 
-      const [strategies, portfolio] = await Promise.all([
-        service.getStrategies(chain.id),
-        service.getWalletAssets({
-          address,
-          chainId: chain.id,
-        }),
-      ]);
-
-      let strategiesFormatted = strategies
-        .map(
-          (v) =>
-            `${v.strategy} - Contract address ${v.contractAddress}. ${v.description}. Type: ${v.type}`
-        )
-        .join("\n");
-
-      // todo make a dynamic provider for tx param extraction
-      const data: ExtractedDataForStrategy = await runtime.useModel(
-        ModelType.OBJECT_SMALL,
-        {
-          prompt: selectStrategyDataFromMessagesPrompt({
-            recentMessages: state.values.recentMessages,
-            pools: strategiesFormatted,
-            knownTokens: state.values.tokens,
-            portfolio: service.formatWalletAssets(portfolio),
-          }),
-        }
+      // should we use runtime.composeState?
+      const params = selectProviderState<StrategyParamsProviderData>(
+        STRATEGY_PARAMS_PROVIDER_NAME,
+        state
       );
 
-      logger.debug(`Strategy selection, known data: ${JSON.stringify(data)}`);
-
-      if (!data.strategy) {
-        const result = await rephrase({
-          runtime,
-          state,
-          content: {
-            text: `Known strategies:
-${strategiesFormatted}
-Please select your risk profile`,
-            thought:
-              "Since user didn't choose risk profile, give him summary and display options.",
-            actions: ["SELECT_STRATEGY"],
-          },
-        });
-
-        await callback(result);
-        return;
-      }
-
-      const strategiesByRiskProfile = strategies.filter(
-        (s) => s.strategy.toLowerCase() === data.strategy!.toLowerCase()
-      );
-
-      if (!strategiesByRiskProfile.length) {
+      if (!params) {
         throw new Error(
-          `No strategies for risk profile(${data.strategy}) found`
+          `Failed to get provider(${STRATEGY_PARAMS_PROVIDER_NAME}) results`
         );
       }
 
-      let strategy: StrategyEntry | undefined;
+      logger.debug(`Strategy selection, known data: ${JSON.stringify(params)}`);
 
-      if (strategiesByRiskProfile.length === 1) {
-        strategy = strategiesByRiskProfile[0];
-      }
-
-      if (!strategy) {
-        strategiesFormatted = strategies.map(service.formatStrategy).join("\n");
-
-        if (!data.contract) {
-          const result = await rephrase({
-            runtime,
-            state,
-            content: {
-              text: `Strategies by risk profile(${data.strategy}):
-${strategiesFormatted}
-Please select your strategy`,
-              thought:
-                "Since user didn't choose strategy, give him summary and display options.",
-              actions: ["SELECT_STRATEGY"],
-            },
-          });
-
-          await callback(result);
-          return;
-        }
-
-        strategy = strategiesByRiskProfile.find(
-          (s) =>
-            s.contractAddress.toLowerCase() === data.contract!.toLowerCase()
-        );
-      }
-
-      if (!strategy) {
-        throw new Error(
-          `${data.strategy} strategy contract ${data.contract} incorrect`
-        );
-      }
-
-      const strategyData = await service.getStrategyData(strategy);
-
-      let token: string | undefined =
-        strategyData.type === "vault"
-          ? strategyData.data.asset
-          : strategy.bundler
-            ? undefined
-            : strategyData.data.baseToken;
-
-      if (!token) {
-        if (!data.token) {
-          const result = await rephrase({
-            runtime,
-            state,
-            content: {
-              text: `Thank you! Contract address ${strategy.contractAddress}. ${strategy.description}. Leverage is x${data.leverage}. I don't know which token to deposit, please help me.`,
-              thought:
-                "Need to ask user for input token and display strategy info",
-              actions: ["SELECT_STRATEGY"],
-            },
-          });
-
-          await callback(result);
-          return;
-        }
-
-        token = data.token;
-      }
-
-      const displayToken = isHex(token)
-        ? (lvva.byAddress?.[token]?.symbol ?? token)
-        : token;
-
-      if (!data.amount) {
-        const leverage =
-          strategy.type === "pool" ? `Leverage is x${data.leverage}. ` : "";
+      if (!params.strategy) {
+        const content = {
+          text: `###Known strategies\n${state.values.strategies}\n\nPlease select desired strategy`,
+          thought:
+            "Since user didn't choose risk profile, give him summary and display options.",
+          actions: ["SELECT_STRATEGY"],
+        };
 
         const result = await rephrase({
           runtime,
           state,
-          content: {
-            text: `Contract address ${strategy.contractAddress}. ${strategy.description}. Deposit ${displayToken}. ${leverage}I don't know how much to deposit, please specify the amount.`,
-            thought:
-              "Need to ask user for input amount and display strategy info",
-            actions: ["SELECT_STRATEGY"],
-          },
+          content,
         });
 
         await callback(result);
-        return;
+
+        return {
+          text: `Generated text: ${result?.text}`,
+          values: {
+            success: true,
+            responded: true,
+            lastReply: result.text,
+            lastReplyTime: Date.now(),
+            thoughtProcess: result?.thought,
+          },
+          data: {
+            actionName: LEVVA_ACTIONS.SELECT_STRATEGY,
+            response: result,
+            thought: result?.thought,
+            initialReply: content.text,
+            initialThought: content.thought,
+            messageGenerated: true,
+          },
+          success: true,
+        };
       }
+
+      const strategy = params.strategy;
+
+      if (!params.tokenIn) {
+        const content = {
+          text: `### Strategy: ${state.values.strategy}\n### Portfolio\n${state.values.portfolio}\n\n${state.values.tokenIn}`,
+          thought:
+            "Since user didn't choose token, give him summary and display options.",
+          actions: ["SELECT_STRATEGY"],
+        };
+
+        const result = await rephrase({
+          runtime,
+          state,
+          content,
+        });
+
+        await callback(result);
+
+        return {
+          text: `Generated text: ${result?.text}`,
+          values: {
+            success: true,
+            responded: true,
+            lastReply: result.text,
+            lastReplyTime: Date.now(),
+            thoughtProcess: result?.thought,
+          },
+          data: {
+            actionName: LEVVA_ACTIONS.SELECT_STRATEGY,
+            response: result,
+            thought: result?.thought,
+            initialReply: content.text,
+            initialThought: content.thought,
+            messageGenerated: true,
+          },
+          success: true,
+        };
+      }
+
+      const tokenIn = params.tokenIn;
+
+      if (!params.amount) {
+        const content = {
+          text: `Strategy: ${state.values.strategy}\n\nSelected token: ${state.values.tokenIn}\n\nPortfolio: ${state.values.portfolio}\n\n${state.values.amountIn}`,
+          thought:
+            "Since user didn't choose amount, give him summary and display options.",
+          actions: ["SELECT_STRATEGY"],
+        };
+
+        const result = await rephrase({
+          runtime,
+          state,
+          content,
+        });
+
+        await callback(result);
+
+        return {
+          text: `Generated text: ${result?.text}`,
+          values: {
+            success: true,
+            responded: true,
+            lastReply: result.text,
+            lastReplyTime: Date.now(),
+            thoughtProcess: result?.thought,
+          },
+          data: {
+            actionName: LEVVA_ACTIONS.SELECT_STRATEGY,
+            response: result,
+            thought: result?.thought,
+            initialReply: content.text,
+            initialThought: content.thought,
+            messageGenerated: true,
+          },
+          success: true,
+        };
+      }
+
+      const amount = params.amount;
+      const leverage = params.leverage;
+      let calldata: CalldataWithDescription[] | undefined;
+      let thought: string | undefined;
+      let text: string | undefined;
 
       if (strategy.type === "pool") {
-        const calldata = await service.handlePoolStrategy(
+        calldata = await service.handlePoolStrategy(
           strategy,
           address,
-          token,
-          data.amount,
-          data.leverage
+          tokenIn.address ?? ETH_NULL_ADDR,
+          amount,
+          leverage
         );
+
+        thought = `Prepared transaction to deposit ${amount} ${tokenIn.symbol} to pool ${strategy.contractAddress} with x${leverage} leverage, need to display confirmation`;
+
         const detailedSteps = calldata
-          .map((c) => `${c.description}`)
+          .map((c, i) => `${i + 1}. ${c.description}`)
           .join("\n");
-        const hash = await service.createCalldata(calldata);
 
-        const json = {
-          id: "calls.json",
-          url: `/api/calldata?hash=${hash}`,
-        };
-
-        const responseContent: Content = {
-          thought: `Calldata for strategy is ready need to show summary`,
-          text: `${strategy.description}.
-I've prepared transactions to deposit ${data.amount} ${token} to pool ${strategy.contractAddress} with x${data.leverage} leverage.
-Confirm the following transaction steps:
-${detailedSteps}`,
-          actions: ["SELECT_STRATEGY"],
-          attachments: [json],
-        };
-
-        await callback(
-          await rephrase({ runtime, content: responseContent, state })
-        );
-
-        return;
+        text = `Strategy: ${service.formatStrategy(strategy)}\n\nToken: ${service.formatToken(tokenIn)}\n\nAmount: ${amount}\n\nLeverage: x${leverage}\n\n### Transaction steps:\n${detailedSteps}`;
       } else if (strategy.type === "vault") {
-        const calldata = await service.handleVaultStrategy(
+        calldata = await service.handleVaultStrategy(
           strategy,
           address,
-          data.amount
+          amount
           // todo decide when to wrap tokens
         );
 
+        thought = `Prepared transaction to deposit ${amount} ${tokenIn.symbol} to vault ${strategy.contractAddress}, need to display confirmation`;
+
         const detailedSteps = calldata
-          .map((c) => `${c.description}`)
+          .map((c, i) => `${i + 1}. ${c.description}`)
           .join("\n");
 
-        const hash = await service.createCalldata(calldata);
-
-        const json = {
-          id: "calls.json",
-          url: `/api/calldata?hash=${hash}`,
-        };
-
-        const responseContent: Content = {
-          thought: `Calldata for strategy is ready need to show summary`,
-          text: `${strategy.description}.
-I've prepared transactions to deposit ${data.amount} ${token} to vault ${strategy.contractAddress}.
-Confirm the following transaction steps:
-${detailedSteps}`,
-          actions: ["SELECT_STRATEGY"],
-          attachments: [json],
-        };
-
-        await callback(
-          await rephrase({ runtime, content: responseContent, state })
-        );
-
-        return;
+        text = `Strategy: ${service.formatStrategy(strategy)}\n\nToken: ${service.formatToken(tokenIn)}\n\nAmount: ${amount}\n\n### Transaction steps:\n${detailedSteps}`;
       }
 
-      throw new Error(
-        `Strategy ${strategy.type} ${strategy.description} not implemented yet`
-      );
-    } catch (e) {
-      logger.error("Error in SELECT_STRATEGY action:", e);
-      // @ts-expect-error fix typing
-      const thought = `Action failed with error: ${e.message ?? "unknown"}. I should tell the user about the error.`;
-      // @ts-expect-error fix typing
-      const text = `Failed to select strategy, reason: ${e.message ?? "unknown"}. Please try again.`;
+      if (!calldata || !thought || !text) {
+        throw new Error(
+          `Failed to prepare calldata for strategy(${service.formatStrategy(strategy)})`
+        );
+      }
+
+      const hash = await service.createCalldata(calldata);
+
+      const json = {
+        id: "calls.json",
+        url: `/api/calldata?hash=${hash}`,
+      };
+
+      const content: Content = {
+        thought,
+        text,
+        actions: ["SELECT_STRATEGY"],
+        source: message.content.source,
+        attachments: [json],
+      };
+
+      const responseContent = await rephrase({ runtime, content, state });
+      await callback(responseContent);
+
+      return {
+        text: `Generated calldata accessible at ${json.url}, generated text: ${responseContent?.text}`,
+        values: {
+          success: true,
+          responded: true,
+          lastReply: responseContent.text,
+          lastReplyTime: Date.now(),
+          thoughtProcess: responseContent?.thought,
+        },
+        data: {
+          actionName: LEVVA_ACTIONS.SELECT_STRATEGY,
+          response: responseContent,
+          thought: responseContent?.thought,
+          initialReply: content.text,
+          initialThought: content.thought,
+          messageGenerated: true,
+        },
+        success: true,
+      };
+    } catch (error) {
+      logger.error("Error in SELECT_STRATEGY action:", error);
+      const errorMessage = (error as Error).message ?? "unknown error";
+      const thought = `Action failed with error: ${errorMessage}. I should tell the user about the error.`;
+      const text = `Failed to select strategy, reason: ${errorMessage}. Please try again.`;
 
       const responseContent = await rephrase({
         runtime,
@@ -314,7 +301,24 @@ ${detailedSteps}`,
       });
 
       await callback?.(responseContent);
-      return;
+
+      return {
+        text: `Error selecting strategy: ${errorMessage}.`,
+        values: {
+          success: false,
+          responded: true,
+          error: true,
+          lastReply: responseContent.text,
+          lastReplyTime: Date.now(),
+          thoughtProcess: responseContent?.thought,
+        },
+        data: {
+          actionName: LEVVA_ACTIONS.SELECT_STRATEGY,
+          error: errorMessage,
+        },
+        success: false,
+        error: error as Error,
+      };
     }
   },
   examples: [
