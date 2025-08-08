@@ -87,7 +87,7 @@ export const swapParamsProvider: Provider = {
         ...EMPTY_RESULT,
         data,
         values: {
-          swap: "Unknown token to swap from",
+          swap: "Unknown 'from' token, ask user for it.",
         },
         text: "Failed to extract swap parameters: unknown token from",
       };
@@ -100,7 +100,7 @@ export const swapParamsProvider: Provider = {
         ...EMPTY_RESULT,
         data,
         values: {
-          swap: "Unknown token to swap to",
+          swap: "Unknown 'to' token, ask user for it.",
         },
         text: "Failed to extract swap parameters: unknown token to",
       };
@@ -130,7 +130,7 @@ export const swapParamsProvider: Provider = {
         ...EMPTY_RESULT,
         data,
         values: {
-          swap: `Unknown token ${fromToken}, ask user for token address.`,
+          swap: `Unknown 'from' token ${fromToken}, ask user for token address.`,
         },
         text: `Failed to prepare swap: unknown token ${fromToken}. Ask user for token address.`,
       };
@@ -148,7 +148,7 @@ export const swapParamsProvider: Provider = {
         ...EMPTY_RESULT,
         data,
         values: {
-          swap: `Unknown token ${toToken}, ask user for token address.`,
+          swap: `Unknown 'to' token ${toToken}, ask user for token address.`,
         },
         text: `Failed to prepare swap: unknown token ${toToken}. Ask user for token address.`,
       };
