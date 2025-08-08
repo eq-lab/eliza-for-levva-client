@@ -8,7 +8,6 @@ import {
 } from "../providers/swap-params";
 import { selectProviderState } from "../providers/util";
 import { LevvaService } from "../services/levva/class";
-import { estimationTemplate } from "../templates";
 import { CalldataWithDescription } from "../types/tx";
 import { getChain } from "../util";
 import { rephrase } from "../util/generate";
@@ -17,13 +16,24 @@ import { Suggestion } from "./types";
 import { unwrapEth, wrapEth } from "src/util/eth/weth";
 
 const description = [
-  "Initiate token swap for user if all parameters are provider or inquire user for swap parameters.",
+  "Initiate token swap for user if all parameters are provider and ask user if lacking exchange parameters.",
 ].join(" ");
 
 export const action: Action = {
   name: LEVVA_ACTIONS.SWAP_TOKENS,
   description,
-  similes: ["SWAP_TOKENS", "EXCHANGE_TOKENS", "swap tokens", "exchange tokens"],
+  similes: [
+    "SWAP_TOKENS",
+    "EXCHANGE_TOKENS",
+    "SWAP_ASSETS",
+    "EXCHANGE_ASSETS",
+    "swap tokens",
+    "exchange tokens",
+    "swap",
+    "exchange",
+    "exchange assets",
+    "swap assets"
+  ],
 
   validate: async () => {
     // fixme validations run in ACTIONS provider on 1st runtime.composeState call
@@ -80,7 +90,39 @@ export const action: Action = {
         !params.tokenOut ||
         !params.amount
       ) {
-        throw new Error(state.values.swap);
+        if (!state.values.swap) {
+          throw new Error("Failed to get swap parameters");
+        }
+
+        const content: Content = {
+          thought: "Need to ask user for missing parameters",
+          text: state.values.swap,
+          actions: ["SWAP_TOKENS"],
+          source: message.content.source,
+        };
+
+        const responseContent = await rephrase({ runtime, content, state });
+        await callback(responseContent);
+
+        return {
+          text: `Generated text: ${responseContent?.text}`,
+          values: {
+            success: true,
+            responded: true,
+            lastReply: responseContent.text,
+            lastReplyTime: Date.now(),
+            thoughtProcess: responseContent?.thought,
+          },
+          data: {
+            actionName: LEVVA_ACTIONS.SWAP_TOKENS,
+            response: responseContent,
+            thought: responseContent?.thought,
+            initialReply: content.text,
+            initialThought: content.thought,
+            messageGenerated: true,
+          },
+          success: true,
+        };
       }
 
       const { tokenIn, tokenOut, amount, type } = params;
@@ -103,13 +145,9 @@ export const action: Action = {
           });
 
           calldata = calls;
+          const description = calls.length > 1 ? `### Transaction steps\n${calls.map((c, i) => `${i + 1}. ${c.description}`).join("\n")}` : `${calls[0].description}\n\n${formatEstimation(estimation)}`;
           thought = `Prepared transaction to swap ${amount} ${tokenIn.symbol} to ${tokenOut.symbol}, display confirmation`;
-
-          text = `Swapping ${amount} ${tokenIn.symbol} to ${tokenOut.symbol}...
-${formatEstimation(estimation)}  
-Please approve transactions in your wallet.  
-`;
-
+          text = `${description}\n\nPlease approve transactions in your wallet.`;
           break;
         case "wrap":
           calldata = [
@@ -120,10 +158,7 @@ Please approve transactions in your wallet.
           ];
 
           thought = `Prepared transaction to wrap ${amount} ${tokenIn.symbol} to ${tokenOut.symbol}, display confirmation`;
-
-          text = `Wrapping ${amount} ${tokenIn.symbol} to ${tokenOut.symbol}...
-Please approve transactions in your wallet.
-`;
+          text = `Wrapping ${amount} ${tokenIn.symbol} to ${tokenOut.symbol}\n\nPlease approve transactions in your wallet.`;
           break;
         case "unwrap":
           calldata = [
@@ -134,10 +169,7 @@ Please approve transactions in your wallet.
           ];
 
           thought = `Prepared transaction to unwrap ${amount} ${tokenIn.symbol} to ${tokenOut.symbol}, display confirmation`;
-
-          text = `Unwrapping ${amount} ${tokenIn.symbol} to ${tokenOut.symbol}...
-Please approve transactions in your wallet.
-`;
+          text = `Unwrapping ${amount} ${tokenIn.symbol} to ${tokenOut.symbol}\n\nPlease approve transactions in your wallet.`;
           break;
         default:
           throw new Error(`Unknown swap type: ${params.type}`);
@@ -244,44 +276,8 @@ Please approve transactions in your wallet.
       {
         name: "{{name2}}",
         content: {
-          text: "Which token do you want to swap?",
+          text: "What tokens do you want to swap?",
           action: "SWAP_TOKENS",
-        },
-      },
-    ],
-    [
-      {
-        name: "{{name1}}",
-        content: {
-          text: "I want to swap {{token1}} to {{token2}}",
-        },
-      },
-      {
-        name: "{{name2}}",
-        content: {
-          text: "Excuse me, I couldn't find the token {{token1}}, if you know could you provide me with it's address?",
-          action: "SWAP_TOKENS",
-        },
-      },
-    ],
-    [
-      {
-        name: "{{name1}}",
-        content: {
-          text: "{{amount}} {{token1}} to {{token2}}",
-        },
-      },
-      {
-        name: "{{name2}}",
-        content: {
-          text: `Swapping {{amount}} {{token1}} to {{token2}}...\n${estimationTemplate(true)}\nPlease approve transactions in your wallet.`,
-          action: "SWAP_TOKENS",
-          attachments: [
-            {
-              id: "calls.json",
-              url: "data:application/json;base64,{{calls}}",
-            },
-          ],
         },
       },
     ],
@@ -296,22 +292,6 @@ Please approve transactions in your wallet.
         name: "{{name2}}",
         content: {
           text: "Swapping {{amount}} {{token1}} to {{token2}}...\nPlease approve transactions in your wallet.",
-          actions: ["SWAP_TOKENS"],
-        },
-      },
-    ],
-    [
-      // fixme maybe needs another action type for this
-      {
-        name: "{{name1}}",
-        content: {
-          text: "Cancel transaction",
-        },
-      },
-      {
-        name: "{{name2}}",
-        content: {
-          text: "Your transaction request has been cancelled.",
           actions: ["SWAP_TOKENS"],
         },
       },

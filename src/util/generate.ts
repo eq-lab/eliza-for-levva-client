@@ -30,6 +30,7 @@ Generate dialog for the character {{agentName}}
 <instructions>
 Rephrase message for the character {{agentName}} based on the initial text and thought, but in your own words.
 Do not include examples of data in your response.
+Do not repeat data if included in previous message.
 </instructions>
 <keys>
 - "thought" should be a short description of what the agent is thinking about and planning.

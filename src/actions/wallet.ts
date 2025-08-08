@@ -1,7 +1,6 @@
 import { isHex } from "viem";
 import { Action, logger, ModelType } from "@elizaos/core";
 import { LEVVA_ACTIONS, LEVVA_SERVICE } from "../constants/enum";
-import { IGNORE_REPLY_MODIFIER } from "../constants/prompt";
 import { LEVVA_PROVIDER_NAME, LevvaProviderState } from "../providers";
 import { selectProviderState } from "../providers/util";
 import type { LevvaService } from "../services/levva/class";
@@ -11,8 +10,15 @@ import { Suggestion } from "./types";
 
 export const action: Action = {
   name: LEVVA_ACTIONS.ANALYZE_WALLET,
-  description: `Replies with wallet stats. ${IGNORE_REPLY_MODIFIER}.`,
-  similes: ["ANALYZE_WALLET", "analyze wallet"],
+  description: `Replies with wallet stats when user asks about his portfolio.`,
+  similes: [
+    "ANALYZE_WALLET",
+    "ANALYZE_PORTFOLIO",
+    "analyze wallet",
+    "my assets",
+    "my portfolio",
+    "portfolio",
+  ],
 
   validate: async () => {
     return true;
@@ -99,13 +105,28 @@ Your response should include the valid JSON block and nothing else.
         source: message.content.source,
       });
 
-      return;
+      return {
+        text: `Generated text: ${result.text}`,
+        values: {
+          success: true,
+          responded: true,
+          lastReply: result.text,
+          lastReplyTime: Date.now(),
+          thoughtProcess: result.thought,
+        },
+        data: {
+          actionName: LEVVA_ACTIONS.ANALYZE_WALLET,
+          response: result,
+          thought: result.thought,
+          messageGenerated: true,
+        },
+        success: true,
+      };
     } catch (error) {
-      logger.error("Error in SWAP_TOKENS action:", error);
-      // @ts-expect-error fix typing
-      const thought = `Action failed with error: ${error.message ?? "unknown"}. I should tell the user about the error.`;
-      // @ts-expect-error fix typing
-      const text = `Failed to swap, reason: ${error.message ?? "unknown"}. Please try again.`;
+      logger.error("Error in ANALYZE_WALLET action:", error);
+      const errorMessage = (error as Error).message ?? "unknown error";
+      const thought = `Action failed with error: ${errorMessage}. I should tell the user about the error.`;
+      const text = `Failed to analyze wallet, reason: ${errorMessage}. Please try again.`;
 
       const responseContent = await rephrase({
         runtime,
@@ -119,7 +140,24 @@ Your response should include the valid JSON block and nothing else.
       });
 
       await callback?.(responseContent);
-      return;
+
+      return {
+        text: `Error analyzing wallet: ${errorMessage}.`,
+        values: {
+          success: false,
+          responded: true,
+          error: true,
+          lastReply: responseContent.text,
+          lastReplyTime: Date.now(),
+          thoughtProcess: responseContent?.thought,
+        },
+        data: {
+          actionName: LEVVA_ACTIONS.ANALYZE_WALLET,
+          error: errorMessage,
+        },
+        success: false,
+        error: error as Error,
+      };
     }
   },
 
