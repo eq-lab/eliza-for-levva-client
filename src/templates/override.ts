@@ -31,6 +31,7 @@ IMPORTANT PROVIDER SELECTION RULES:
 - If the message asks about facts or specific information, include "FACTS" in your providers list
 - If the message asks about the environment or world context, include "WORLD" in your providers list
 - If the message is part of SWAP transaction flow, include "SWAP_PARAMS" in your providers list
+- If the message is part of STRATEGY transaction flow, include "STRATEGY_PARAMS" in your providers list
 - If you need external knowledge, information, or context beyond the current conversation to provide a helpful response, include "KNOWLEDGE" in your providers list
 
 First, think about what you want to do next and plan your actions. Then, write the next message and include the actions you plan to take.

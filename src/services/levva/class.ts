@@ -635,7 +635,7 @@ export class LevvaService
       throw new Error("Failed to get strategies");
     }
 
-    return result.data.map((x) => {
+    return result.data.map<StrategyEntry>((x) => {
       const type: StrategyType = "vault";
       const strategy: Strategy =
         x.type === "UltraSafe"
@@ -663,7 +663,7 @@ export class LevvaService
   }, this.getStrategiesKey);
 
   formatStrategy(strategy: StrategyEntry) {
-    return `${strategy.strategy} - Contract: ${strategy.contractAddress}.Type: "${strategy.type}". ${strategy.description} `;
+    return `${strategy.strategy} - Contract: ${strategy.contractAddress}. Type: "${strategy.type}". ${strategy.description} `;
   }
 
   async getStrategyData(

@@ -15,9 +15,8 @@ import { formatEstimation, selectSwapRouter } from "../util/eth/swap";
 import { Suggestion } from "./types";
 import { unwrapEth, wrapEth } from "src/util/eth/weth";
 
-const description = [
-  "Initiate token swap for user if all parameters are provider and ask user if lacking exchange parameters.",
-].join(" ");
+const description =
+  "Initiate token swap for user if all parameters are provider and ask user if lacking exchange parameters.";
 
 export const action: Action = {
   name: LEVVA_ACTIONS.SWAP_TOKENS,
@@ -32,7 +31,7 @@ export const action: Action = {
     "swap",
     "exchange",
     "exchange assets",
-    "swap assets"
+    "swap assets",
   ],
 
   validate: async () => {
@@ -145,7 +144,10 @@ export const action: Action = {
           });
 
           calldata = calls;
-          const description = calls.length > 1 ? `### Transaction steps\n${calls.map((c, i) => `${i + 1}. ${c.description}`).join("\n")}` : `${calls[0].description}\n\n${formatEstimation(estimation)}`;
+          const description =
+            calls.length > 1
+              ? `### Transaction steps\n${calls.map((c, i) => `${i + 1}. ${c.description}`).join("\n")}`
+              : `${calls[0].description}\n\n${formatEstimation(estimation)}`;
           thought = `Prepared transaction to swap ${amount} ${tokenIn.symbol} to ${tokenOut.symbol}, display confirmation`;
           text = `${description}\n\nPlease approve transactions in your wallet.`;
           break;
