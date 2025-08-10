@@ -154,8 +154,8 @@ export const action: Action = {
         case "wrap":
           calldata = [
             wrapEth(amountUnits, {
-              address: tokenIn.address!,
-              decimals: tokenIn.decimals,
+              address: tokenOut.address!,
+              decimals: tokenOut.decimals,
             }),
           ];
 
