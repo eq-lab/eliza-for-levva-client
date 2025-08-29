@@ -54,6 +54,7 @@ Respond using XML format like this:
     <thought>Your thought here</thought>
     <actions>ACTION1,ACTION2</actions>
     <providers>PROVIDER1,PROVIDER2</providers>
+    <evaluators>SUGGESTIONS_GENERATOR</evaluators>
     <text>Your response text here</text>
 </response>
 
