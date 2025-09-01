@@ -7,7 +7,7 @@ import { levvaProvider } from "./providers";
 import { newsProvider } from "./providers/news";
 import { swapParamsProvider } from "./providers/swap-params";
 import { strategyParamsProvider } from "./providers/strategy-params";
-import { suggestionsEvaluator } from "./evaluators";
+import { suggestionsEvaluator } from "./evaluators/suggestions";
 import statusRoute from "./routes/status";
 import calldataRoute from "./routes/calldata";
 import levvaUserRoute from "./routes/levva-user";
