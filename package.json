@@ -48,7 +48,7 @@
   },
   "scripts": {
     "start": "elizaos start",
-    "dev": "LOG_LEVEL=debug elizaos dev",
+    "dev": " elizaos dev",
     "build": "tsup",
     "lint": "prettier --write ./src",
     "test:component": "vitest run",

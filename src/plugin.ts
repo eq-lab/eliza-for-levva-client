@@ -1,16 +1,18 @@
 import type { Plugin } from "@elizaos/core";
 import { EventType, logger } from "@elizaos/core";
-import { CancelRunSignal } from "@elizaos/plugin-bootstrap"
+import { CancelRunSignal } from "@elizaos/plugin-bootstrap";
 import { z } from "zod";
 import { modules } from "./actions/modules";
 import { levvaProvider } from "./providers";
 import { newsProvider } from "./providers/news";
 import { swapParamsProvider } from "./providers/swap-params";
 import { strategyParamsProvider } from "./providers/strategy-params";
+import { suggestionsEvaluator } from "./evaluators";
 import statusRoute from "./routes/status";
 import calldataRoute from "./routes/calldata";
 import levvaUserRoute from "./routes/levva-user";
 import suggestRoute from "./routes/suggest";
+import clearSuggestRoute from "./routes/clear-suggest";
 import { BrowserService } from "./services/browser";
 import { LevvaService } from "./services/levva/class";
 
@@ -60,7 +62,13 @@ const plugin: Plugin = {
       throw error;
     }
   },
-  routes: [calldataRoute, levvaUserRoute, suggestRoute, statusRoute],
+  routes: [
+    calldataRoute,
+    clearSuggestRoute,
+    levvaUserRoute,
+    suggestRoute,
+    statusRoute,
+  ],
   events: {
     [EventType.RUN_STARTED]: [
       async ({ runtime, runId, entityId, messageId }) => {
@@ -87,7 +95,13 @@ const plugin: Plugin = {
   },
   services: [BrowserService, LevvaService],
   actions: modules.map((m) => m.action),
-  providers: [levvaProvider, newsProvider, swapParamsProvider, strategyParamsProvider],
+  providers: [
+    levvaProvider,
+    newsProvider,
+    swapParamsProvider,
+    strategyParamsProvider,
+  ],
+  evaluators: [suggestionsEvaluator],
 };
 
 export default plugin;
