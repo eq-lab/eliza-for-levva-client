@@ -47,7 +47,7 @@ export const getToken = async (
     return await db
       .select()
       .from(erc20Table)
-      .where(and(eq(erc20Table.chainId, params.chainId)));
+      .where(eq(erc20Table.chainId, params.chainId));
   }
 };
 

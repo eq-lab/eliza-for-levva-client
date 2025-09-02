@@ -29,10 +29,10 @@ const groupTokens = (tokens: Token[]) => {
 
   for (const token of tokens) {
     const info = parseTokenInfo(token.info);
-    bySymbol[token.symbol] = token;
+    bySymbol[token.symbol] = { ...token };
 
     if (token.address) {
-      byAddress[token.address] = token;
+      byAddress[token.address] = { ...token };
     }
 
     if (info.swap?.type === "pendle") {
