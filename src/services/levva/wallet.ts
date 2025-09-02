@@ -29,9 +29,13 @@ export const getBalance = async (
       params.ttl
         ? and(
             gte(balancesTable.updatedAt, new Date(Date.now() - params.ttl)),
-            eq(balancesTable.address, getAddress(params.address))
+            eq(balancesTable.address, getAddress(params.address)),
+            eq(balancesTable.chainId, params.chainId)
           )
-        : eq(balancesTable.address, getAddress(params.address))
+        : and(
+            eq(balancesTable.address, getAddress(params.address)),
+            eq(balancesTable.chainId, params.chainId)
+          )
     );
 };
 
