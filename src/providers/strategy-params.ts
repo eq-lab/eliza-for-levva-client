@@ -73,22 +73,15 @@ export const strategyParamsProvider: Provider = {
     let strategiesText = strategies.map(service.formatStrategy).join("\n");
     const portfolioText = service.formatWalletAssets(portfolio);
     const data: StrategyParamsProviderData = { strategies };
-    // cache llm call
-    const cacheKey = `strategy-params-${message.id}`;
-    let params = await runtime.getCache<ExtractedStrategyParams>(cacheKey);
 
-    if (!params) {
-      params = await runtime.useModel(ModelType.OBJECT_SMALL, {
-        prompt: selectStrategyDataFromMessagesPrompt({
-          recentMessages: state.values.recentMessages,
-          pools: strategies.map(service.formatStrategy).join("\n"),
-          knownTokens: state.values.tokens,
-          portfolio: service.formatWalletAssets(portfolio),
-        }),
-      });
-
-      await runtime.setCache(cacheKey, params);
-    }
+    const params = await runtime.useModel(ModelType.OBJECT_SMALL, {
+      prompt: selectStrategyDataFromMessagesPrompt({
+        recentMessages: state.values.recentMessages,
+        pools: strategies.map(service.formatStrategy).join("\n"),
+        knownTokens: state.values.tokens,
+        portfolio: service.formatWalletAssets(portfolio),
+      }),
+    });
 
     runtime.logger.debug(
       `Strategy selection, known data: ${JSON.stringify(params)}`
@@ -223,7 +216,9 @@ export const strategyParamsProvider: Provider = {
       data.tokenIn.address ?? ETH_NULL_ADDR
     );
 
-    runtime.logger.debug(`Balance of ${data.tokenIn.symbol}: ${balance?.amount.toString()}, requested amount: ${amountUnits.toString()}`);
+    runtime.logger.debug(
+      `Balance of ${data.tokenIn.symbol}: ${balance?.amount.toString()}, requested amount: ${amountUnits.toString()}`
+    );
 
     if ((balance?.amount ?? 0n) < amountUnits) {
       return {
