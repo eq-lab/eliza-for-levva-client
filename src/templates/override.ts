@@ -41,7 +41,7 @@ First, think about what you want to do next and plan your actions. Then, write t
 "thought" should be a short description of what the agent is thinking about and planning.
 "actions" should be a comma-separated list of the actions {{agentName}} plans to take based on the thought, IN THE ORDER THEY SHOULD BE EXECUTED (if none, use IGNORE, if simply responding with text, use REPLY)
 "providers" should be a comma-separated list of the providers that {{agentName}} will use to have the right context for responding and acting (NEVER use "IGNORE" as a provider - use specific provider names like ATTACHMENTS, ENTITIES, FACTS, KNOWLEDGE, etc.)
-"evaluators" should be an optional comma-separated list of the evaluators that {{agentName}} will use to evaluate the conversation after responding
+"evaluators" should be an optional comma-separated list of the evaluators that {{agentName}} will use to evaluate the conversation after responding (available: SUGGESTIONS_GENERATOR, TRANSACTION_ACKNOWLEDGE)
 "text" should be the text of the next message for {{agentName}} which they will send to the conversation.
 </keys>
 
@@ -54,7 +54,7 @@ Respond using XML format like this:
     <thought>Your thought here</thought>
     <actions>ACTION1,ACTION2</actions>
     <providers>PROVIDER1,PROVIDER2</providers>
-    <evaluators>SUGGESTIONS_GENERATOR</evaluators>
+    <evaluators>SUGGESTIONS_GENERATOR,TRANSACTION_ACKNOWLEDGE</evaluators>
     <text>Your response text here</text>
 </response>
 

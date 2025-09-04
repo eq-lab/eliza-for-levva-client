@@ -57,7 +57,6 @@ import {
   getPoolConstants,
   getPoolVariables as getPoolVariablesImpl,
   getVaultConstants,
-  strategyVaultMapping,
 } from "./pool";
 import {
   PendleInterface,

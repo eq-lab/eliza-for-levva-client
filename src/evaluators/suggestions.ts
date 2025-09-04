@@ -14,6 +14,7 @@ import { LevvaService } from "../services/levva/class";
 import { suggestTypeTemplate } from "../templates/generate";
 import { getLevvaUser } from "../util/db";
 import { isHex } from "viem";
+import { hasRawMetadata } from "./utils";
 
 interface MessageEntry {
   authorId: string;
@@ -30,20 +31,6 @@ interface Suggestions {
   label: string;
   text: string;
 }
-
-interface RawMetadata {
-  raw?: {
-    channelId?: string;
-    metadata?: {
-      userAddressId?: string;
-      chainId?: number;
-    };
-  };
-}
-
-const hasRawMetadata = (metadata: any): metadata is RawMetadata => {
-  return metadata && typeof metadata === "object" && "raw" in metadata;
-};
 
 const getChainId = (message?: MessageEntry): number | undefined => {
   const value = message?.rawMessage.metadata?.chainId;
