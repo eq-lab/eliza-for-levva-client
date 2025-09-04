@@ -4,17 +4,11 @@ import { type IAgentRuntime, type Route, logger } from "@elizaos/core";
 import { getLevvaUser } from "../util/db";
 
 async function handler(req: Request, res: Response, runtime: IAgentRuntime) {
-  const { address, chainId: _chainId } = req.query;
+  const { address, chainId } = req.query;
 
   try {
     if (!isHex(address)) {
       throw new Error("Invalid address");
-    }
-
-    let chainId: number | undefined;
-
-    if (!_chainId) {
-      throw new Error("Chain ID is required");
     }
 
     if (!chainId) {
