@@ -1,0 +1,66 @@
+---
+description: Error handling patterns and security considerations
+globs: ["**/*.ts"]
+alwaysApply: false
+---
+
+# Error Handling & Security
+
+## Error Handling Patterns
+- Use try-catch blocks in action handlers
+- Log errors with ElizaOS logger
+- Return meaningful error messages to users
+- Handle blockchain errors gracefully
+- Validate inputs with Zod schemas
+
+## Action Error Pattern
+```typescript
+try {
+  // Action implementation
+  return {
+    text: "Success message",
+    values: { success: true },
+    success: true,
+  };
+} catch (error) {
+  logger.error("Error in ACTION_NAME:", error);
+  const errorMessage = (error as Error).message ?? "unknown error";
+  
+  const responseContent = await rephrase({
+    runtime,
+    content: {
+      text: `Failed to perform action: ${errorMessage}`,
+      thought: `Action failed with error: ${errorMessage}`,
+      actions: ["ACTION_NAME"],
+      source: message.content.source,
+    },
+    state: state!,
+  });
+
+  await callback?.(responseContent);
+  
+  return {
+    text: `Error: ${errorMessage}`,
+    values: { success: false, error: true },
+    success: false,
+    error: error as Error,
+  };
+}
+```
+
+## Security Considerations
+- Never store private keys
+- Validate all user inputs with Zod
+- Use proper access controls
+- Sanitize external data
+- Handle rate limits gracefully
+- Implement proper CORS policies
+- Validate blockchain addresses with `isHex`
+- Use environment variables for sensitive data
+
+## Input Validation
+- Always validate addresses, amounts, and chain IDs
+- Use Zod schemas for API responses
+- Check for required parameters
+- Validate token symbols and addresses
+- Ensure proper decimal handling

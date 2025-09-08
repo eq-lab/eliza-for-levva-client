@@ -74,7 +74,8 @@ import { bundlerEnter } from "./tx";
 import poolAbi from "./abi/pool.abi";
 import vaultAbi from "./abi/vault.abi";
 import { getMessages } from "./messages";
-import { getStrategies as getStrategiesApi } from "../../api/levva";
+import { getStrategies as getStrategiesApi, getUserPositions, getWithdrawalRequests } from "../../api/levva";
+import { createPositionSummary } from "./positions";
 import { checkSecret } from "./secrets";
 
 const REQUIRED_PLUGINS = ["levva"];
@@ -511,6 +512,51 @@ export class LevvaService
     return getLatestNews(this.runtime, limit);
   }
   // -- End of Crypto news --
+
+  // -- Position Management --
+  private getUserPositionsCacheKey = (address: `0x${string}`) => 
+    `user-positions:${address}`;
+
+  getUserPositions = this.timedCache(
+    300000, // 5 minutes TTL
+    async (address: `0x${string}`) => {
+      const result = await getUserPositions(address);
+      if (result.success) {
+        return result.data;
+      } else {
+        logger.warn("Failed to parse user positions response:", result.error);
+        return [];
+      }
+    },
+    this.getUserPositionsCacheKey
+  );
+
+  private getWithdrawalRequestsCacheKey = (address: `0x${string}`, vaultId: number) => 
+    `withdrawal-requests:${address}:${vaultId}`;
+
+  getWithdrawalRequests = this.timedCache(
+    300000, // 5 minutes TTL
+    async (address: `0x${string}`, vaultId: number = 1) => {
+      const result = await getWithdrawalRequests(address, vaultId);
+      if (result.success) {
+        return result.data;
+      } else {
+        logger.warn("Failed to parse withdrawal requests response:", result.error);
+        return [];
+      }
+    },
+    this.getWithdrawalRequestsCacheKey
+  );
+
+  async getPositionSummary(address: `0x${string}`) {
+    const [positions, withdrawals] = await Promise.all([
+      this.getUserPositions(address),
+      this.getWithdrawalRequests(address, 1),
+    ]);
+
+    return createPositionSummary(positions, withdrawals);
+  }
+  // -- End of Position Management --
   private getPendleMarketsCacheKey = (
     chainId: number,
     {

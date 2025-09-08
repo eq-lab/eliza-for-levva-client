@@ -1,0 +1,125 @@
+---
+description: ElizaOS framework patterns and conventions
+globs: ["**/actions/**/*.ts", "**/providers/**/*.ts", "**/services/**/*.ts"]
+alwaysApply: false
+---
+
+# ElizaOS Framework Patterns
+
+## Action Structure
+```typescript
+export const action: Action = {
+  name: "ACTION_NAME",
+  description: "Clear description of what this action does",
+  similes: ["alternative", "names", "for", "action"],
+  validate: async () => true,
+  handler: async (runtime, message, _state, options, callback) => {
+    // Compose state with required providers to ensure they're executed
+    const state = await runtime.composeState(message, ["required-provider-name"]);
+    
+    // Implementation using the composed state
+  },
+  examples: [/* conversation examples */]
+};
+```
+
+### State Composition Pattern
+When actions depend on specific providers, use `runtime.composeState()` to ensure providers are executed:
+
+```typescript
+handler: async (runtime, message, state, options, callback) => {
+  // Compose state with required providers BEFORE try block
+  // This ensures composed state is available in both try and catch blocks
+  const composedState = await runtime.composeState(message, [
+    "POSITION_PARAMS_PROVIDER_NAME",
+    "OTHER_REQUIRED_PROVIDER"
+  ]);
+  
+  try {
+    // Now safely access provider data from composed state
+    const providerData = selectProviderState("provider-name", composedState);
+  } catch (error) {
+    // 'composedState' is available here too for error handling
+    const errorResponse = await rephrase({ runtime, content, state: composedState });
+  }
+}
+```
+
+## Provider Structure
+```typescript
+export const provider: Provider = {
+  name: "provider-name",
+  description: "What data this provider supplies",
+  position: -100, // Lower numbers run first
+  async get(runtime, message, state) {
+    // Return data and text
+  }
+};
+```
+
+## Service Structure
+```typescript
+export class MyService extends Service {
+  static serviceType = "my-service";
+  
+  constructor(runtime: IAgentRuntime) {
+    super(runtime);
+  }
+  
+  static async start(runtime: IAgentRuntime) {
+    return new MyService(runtime);
+  }
+}
+```
+
+**Service Organization**: Follow the patterns in `service-organization.mdc` for splitting cached/stateful methods (in class) from pure helpers (in separate modules).
+
+## Common Patterns
+- Always use `runtime.getService<ServiceType>()` to access services
+- Use `selectProviderState<T>()` to access provider data
+- Use `runtime.logger` instead of importing `logger` directly
+- Implement proper error boundaries in actions
+- Use `rephrase()` for consistent response formatting
+- Cache expensive operations with TTL
+- Use background processing for non-critical operations
+
+## Previous Action Results Access
+ElizaOS stores action results in `runtime.stateCache` with key `${message.id}_action_results`. Use the typed utilities:
+
+```typescript
+import { getPreviousActionResults, getLastActionResult, getPreviousReplyContext } from "../util/action-results";
+
+// Get all previous action results
+const results = await getPreviousActionResults(runtime, message);
+
+// Get last action result of specific type
+const lastReply = await getLastActionResult(runtime, message, "REPLY");
+
+// Get formatted context from previous REPLY to avoid repetition
+const prevActions = await getPreviousReplyContext(runtime, message);
+
+// Pass to rephrase utility to intelligently avoid duplication
+const responseContent = await rephrase({ 
+  runtime, 
+  content, 
+  state, 
+  prevActions 
+});
+```
+
+### Benefits of Rephrase Integration
+- **Clean separation**: Logic for avoiding duplication is in the rephrase utility
+- **AI-powered deduplication**: LLM intelligently avoids repeating previous information
+- **Consistent behavior**: All actions using rephrase get this benefit automatically
+
+### Action Results Structure
+```typescript
+interface ActionResult {
+  text: string;
+  values: Record<string, any>;
+  data: Record<string, any>;
+  success: boolean;
+  error?: Error;
+  actionName?: string;
+}
+```

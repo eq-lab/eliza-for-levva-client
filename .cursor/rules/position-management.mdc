@@ -1,0 +1,86 @@
+---
+description: Position management patterns and API integration
+globs: ["**/actions/position.ts", "**/providers/position-params.ts", "**/api/levva/**/*.ts"]
+alwaysApply: false
+---
+
+# Position Management Guidelines
+
+## Module Structure
+Position management follows the general service organization pattern (see `service-organization.mdc`):
+- **`services/levva/class.ts`**: Cached API methods and stateful operations
+- **`services/levva/positions.ts`**: Pure helper functions and interfaces
+
+This maintains caching functionality while extracting reusable helpers.
+
+## API Integration
+- **User Positions**: `GET /api/v1/strategies/user-positions/{address}`
+- **Withdrawal Requests**: `GET /api/v2/vaults/{vaultId}/withdrawal-requests/{address}`
+- Use LevvaService timed cache methods with 5-minute TTL
+- Handle API failures gracefully with empty arrays as fallbacks
+
+## Data Flow Pattern
+```typescript
+// In LevvaService - use timed cache
+getUserPositions = this.timedCache(
+  300000, // 5 minutes TTL
+  async (address: `0x${string}`) => {
+    const result = await getUserPositions(address);
+    return result.success ? result.data : [];
+  },
+  this.getUserPositionsCacheKey
+);
+```
+
+## Provider Implementation
+- Use LevvaService methods instead of direct API calls
+- Provide formatted summaries for display
+- Include both raw data and formatted text
+- Handle missing data gracefully
+
+## Action Context Management
+- Access previous action results using `runtime.stateCache` with key `${message.id}_action_results`
+- Use typed utilities: `getPreviousReplyContext()`, `getLastActionResult()`, `getPreviousActionResults()`
+- Avoid repeating information from previous REPLY actions
+- Include previous context in response when relevant
+
+```typescript
+import { getPreviousReplyContext } from "../util/action-results";
+
+// In action handler
+const previousContext = await getPreviousReplyContext(runtime, message);
+// Use previousContext in response to avoid repetition
+```
+
+## Position Analysis
+- Calculate total portfolio value from position USD values
+- Show P&L with proper sign formatting (+/-)
+- Group positions by strategy and risk level
+- Suggest diversification based on current holdings
+
+## Withdrawal Status
+- Track pending, processing, completed, cancelled statuses
+- Show estimated completion dates when available
+- Format withdrawal amounts with proper token symbols
+- Group by vault ID for organization
+
+## Suggestion Patterns
+- Filter available strategies to exclude existing positions
+- Suggest different risk levels for diversification
+- Recommend withdrawal options for overexposure
+- Provide rebalancing suggestions based on performance
+
+## Error Handling
+- Log API failures but continue with cached/empty data
+- Provide meaningful error messages to users
+- Gracefully handle missing position data
+- **Always validate addresses with `isHex` before API calls**
+
+```typescript
+import { isHex } from "viem";
+
+// In position-params provider
+if (!isHex(user.address)) {
+  throw new Error(`Invalid Ethereum address format: ${user.address}`);
+}
+```

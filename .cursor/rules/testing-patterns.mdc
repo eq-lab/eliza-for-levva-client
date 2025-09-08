@@ -1,0 +1,82 @@
+---
+description: Testing patterns and best practices
+globs: ["**/__tests__/**/*.ts", "**/e2e/**/*.ts"]
+alwaysApply: false
+---
+
+# Testing Guidelines
+
+## Test Structure
+- **Unit Tests**: Fast, isolated tests with mocks (`.test.ts` files)
+- **Integration Tests**: Test real API interactions (`.integration.test.ts` files)
+- **Component Tests**: `__tests__/` directory using Vitest
+- **E2E Tests**: `e2e/` directory using ElizaOS test interface
+- **Test Utilities**: `__tests__/utils/` for helper functions
+
+### File Naming Convention
+- `*.test.ts` - Unit tests (mocked, fast)
+- `*.integration.test.ts` - Integration tests (real APIs, slow)
+- `*.spec.ts` - Alternative test file naming
+
+### CI/CD Considerations
+- **CI Pipeline**: Run only unit tests + E2E tests (`bun run test`)
+- **Local Development**: Run all tests including integration (`bun run test:all`)
+- **Integration tests** can be skipped in CI to avoid external API dependencies
+
+## Component Testing with Vitest
+```typescript
+// Unit test example
+describe('Configuration', () => {
+  it('should load configuration correctly', () => {
+    expect(config.debug).toBeDefined();
+  });
+});
+
+// Integration test example
+describe('Integration: Plugin with Character', () => {
+  it('should initialize character with plugins', async () => {
+    // Test interactions between components
+  });
+});
+```
+
+## E2E Testing with ElizaOS
+```typescript
+export class ProjectTestSuite implements TestSuite {
+  name = 'project_test_suite';
+  tests = [
+    {
+      name: 'project_initialization',
+      fn: async (runtime) => {
+        // Test project in a real runtime
+      },
+    },
+  ];
+}
+
+export default new ProjectTestSuite();
+```
+
+## Testing Best Practices
+- Mock external services appropriately
+- Test error conditions and edge cases
+- Use proper assertions and expectations
+- Test async operations with proper awaiting
+- Mock blockchain interactions for unit tests
+- Test with realistic data scenarios
+
+## Test Commands
+- `bun run test:unit` - Run unit tests only (fast, mocked, CI-friendly)
+- `bun run test:integration` - Run integration tests only (slow, real APIs)
+- `bun run test:component` - Run all component tests (unit + integration)
+- `bun run test:e2e` - Run E2E tests
+- `bun run test` - Run unit tests + E2E tests (recommended for CI)
+- `bun run test:all` - Run all tests (component + E2E)
+- `bun run test:coverage` - Run with coverage report
+- `bun run test:watch` - Run in watch mode
+
+## Package Management
+- **Always use Bun**: Use `bun` instead of `npm` for all package management and script execution
+- `bun install` - Install dependencies
+- `bun add <package>` - Add new dependencies
+- `bun run <script>` - Run package.json scripts

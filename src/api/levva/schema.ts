@@ -43,3 +43,30 @@ export const strategiesResponseSchema = z.array(
 );
 
 export type StrategiesResponse = z.infer<typeof strategiesResponseSchema>;
+
+// User positions schema - based on actual API response
+export const userPositionSchema = z.object({
+  strategyId: z.number(),
+  balance: z.number(),
+  balanceUsd: z.number(),
+  hasPendingWithdrawals: z.boolean(),
+});
+
+export const userPositionsResponseSchema = z.array(userPositionSchema);
+
+// Withdrawal request schema - based on actual API response
+export const withdrawalRequestSchema = z.object({
+  vaultAddress: z.string(),
+  withdrawalNftAddress: z.string(),
+  requestId: z.number(),
+  isFinalized: z.boolean(),
+  amount: z.number(),
+  strategyId: z.number(),
+});
+
+export const withdrawalRequestsResponseSchema = z.array(withdrawalRequestSchema);
+
+export type UserPosition = z.infer<typeof userPositionSchema>;
+export type UserPositionsResponse = z.infer<typeof userPositionsResponseSchema>;
+export type WithdrawalRequest = z.infer<typeof withdrawalRequestSchema>;
+export type WithdrawalRequestsResponse = z.infer<typeof withdrawalRequestsResponseSchema>;
