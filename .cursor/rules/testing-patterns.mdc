@@ -65,6 +65,60 @@ export default new ProjectTestSuite();
 - Mock blockchain interactions for unit tests
 - Test with realistic data scenarios
 
+## Action Testing Patterns
+
+### CRITICAL: Never Expect Undefined Returns
+Actions in ElizaOS return `ActionResult` objects, not undefined:
+
+```typescript
+// ✅ CORRECT: Test ActionResult structure
+const result = await action.handler(runtime, message, state, {}, callback);
+
+expect(result).toBeDefined();
+expect(result.success).toBe(true);
+expect(result.text).toContain("Generated");
+expect(result.data.actionName).toBe("ACTION_NAME");
+expect(result.values.responded).toBe(true);
+expect(callback).toHaveBeenCalled();
+
+// ❌ WRONG: Never expect undefined
+// expect(result).toBeUndefined(); // This breaks action chaining
+```
+
+### Provider Data Structure in Tests
+**📋 For complete provider patterns, see `action-patterns.mdc`**
+
+Mock provider data with correct nesting:
+```typescript
+mockRuntime.composeState.mockResolvedValue({
+  data: {
+    providers: {
+      PROVIDER_NAME: {
+        text: "Provider description", 
+        data: { /* actual provider data */ },
+      },
+    },
+  },
+});
+```
+
+### Essential Mocks for Action Tests
+**📋 For complete mock setup examples, see `action-patterns.mdc`**
+
+Key mocks required:
+- `mockRuntime.logger` - All log levels (debug, info, warn, error)
+- Service mocks - All methods including `createCalldata` for transactions
+- `mockRuntime.composeState` - Provider data structure
+- `mockRuntime.rephrase` - Content object handling
+
+### Test Error Cases Properly
+**📋 For complete error testing patterns, see `action-patterns.mdc`**
+
+Key principles:
+- Test that `result.success` reflects the actual outcome
+- Verify `callback` was called with user-friendly message
+- Check `result.data.actionName` and error details
+
 ## Test Commands
 - `bun run test:unit` - Run unit tests only (fast, mocked, CI-friendly)
 - `bun run test:integration` - Run integration tests only (slow, real APIs)

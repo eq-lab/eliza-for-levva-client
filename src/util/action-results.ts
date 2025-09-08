@@ -32,12 +32,14 @@ export async function getPreviousActionResults(
   try {
     const cacheKey = `${message.id}_action_results`;
     // @ts-expect-error - stateCache exists on runtime but not in interface
-    const cached = runtime.stateCache.get(cacheKey) as ActionResultsCache | undefined;
-    
+    const cached = runtime.stateCache.get(cacheKey) as
+      | ActionResultsCache
+      | undefined;
+
     if (cached?.values?.actionResults) {
       return cached.values.actionResults;
     }
-    
+
     return [];
   } catch (error) {
     console.warn("Failed to retrieve previous action results:", error);
@@ -58,13 +60,11 @@ export async function getLastActionResult(
   actionName?: string
 ): Promise<ActionResult | undefined> {
   const results = await getPreviousActionResults(runtime, message);
-  
+
   if (actionName) {
-    return results
-      .filter(result => result.actionName === actionName)
-      .pop(); // Get the last one
+    return results.filter((result) => result.actionName === actionName).pop(); // Get the last one
   }
-  
+
   return results.pop(); // Get the last result regardless of action
 }
 
@@ -81,7 +81,7 @@ export async function hasPreviousAction(
   actionName: string
 ): Promise<boolean> {
   const results = await getPreviousActionResults(runtime, message);
-  return results.some(result => result.actionName === actionName);
+  return results.some((result) => result.actionName === actionName);
 }
 
 /**
@@ -95,10 +95,10 @@ export async function getPreviousReplyContext(
   message: Memory
 ): Promise<string> {
   const lastReply = await getLastActionResult(runtime, message, "REPLY");
-  
+
   if (lastReply?.text && lastReply.success) {
     return `\n\nPrevious context: ${lastReply.text}`;
   }
-  
+
   return "";
 }

@@ -1,19 +1,23 @@
-import { describe, expect, it, vi, beforeAll, afterAll } from 'vitest';
-import plugin from '../src/plugin';
-import type { IAgentRuntime, Memory, State, Provider } from '@elizaos/core';
-import { logger } from '@elizaos/core';
-import { v4 as uuidv4 } from 'uuid';
-import dotenv from 'dotenv';
+import { describe, expect, it, vi, beforeAll, afterAll } from "vitest";
+import plugin from "../src/plugin";
+import {
+  type IAgentRuntime,
+  type Memory,
+  type State,
+  logger,
+} from "@elizaos/core";
+import { v4 as uuidv4 } from "uuid";
+import dotenv from "dotenv";
 
 // Setup environment variables
 dotenv.config();
 
 // Set up logging to capture issues
 beforeAll(() => {
-  vi.spyOn(logger, 'info');
-  vi.spyOn(logger, 'error');
-  vi.spyOn(logger, 'warn');
-  vi.spyOn(logger, 'debug');
+  vi.spyOn(logger, "info");
+  vi.spyOn(logger, "error");
+  vi.spyOn(logger, "warn");
+  vi.spyOn(logger, "debug");
 });
 
 afterAll(() => {
@@ -21,8 +25,11 @@ afterAll(() => {
 });
 
 // Helper function to document test results
-function documentTestResult(testName: string, result: any, error: Error | null = null) {
-  // Clean, useful test documentation for developers
+function documentTestResult(
+  testName: string,
+  result: any,
+  error: Error | null = null
+) {
   logger.info(`✓ Testing: ${testName}`);
 
   if (error) {
@@ -34,290 +41,246 @@ function documentTestResult(testName: string, result: any, error: Error | null =
   }
 
   if (result) {
-    if (typeof result === 'string') {
+    if (typeof result === "string") {
       if (result.trim() && result.length > 0) {
-        const preview = result.length > 60 ? `${result.substring(0, 60)}...` : result;
+        const preview =
+          result.length > 60 ? `${result.substring(0, 60)}...` : result;
         logger.info(`  → ${preview}`);
       }
-    } else if (typeof result === 'object') {
+    } else if (typeof result === "object") {
       try {
-        // Show key information in a clean format
         const keys = Object.keys(result);
-        if (keys.length > 0) {
-          const preview = keys.slice(0, 3).join(', ');
-          const more = keys.length > 3 ? ` +${keys.length - 3} more` : '';
-          logger.info(`  → {${preview}${more}}`);
-        }
+        logger.info(`  → {${keys.join(", ")}}`);
       } catch (e) {
-        logger.info(`  → [Complex object]`);
+        logger.info(`  → [object]`);
       }
+    } else {
+      logger.info(`  → ${result}`);
     }
   }
 }
 
-// Create a realistic runtime for testing
-function createRealRuntime(): IAgentRuntime {
+// Mock runtime for testing
+function createMockRuntime(): IAgentRuntime {
   return {
     character: {
-      name: 'Test Character',
-      system: 'You are a helpful assistant for testing.',
-      plugins: [],
-      settings: {},
+      name: "Test Character",
+      system: "You are a helpful assistant for testing.",
     },
-    getSetting: (key: string) => null,
-    models: plugin.models,
-    db: {
-      get: async (key: string) => {
-        return null;
-      },
-      set: async (key: string, value: any) => {
-        return true;
-      },
-      delete: async (key: string) => {
-        return true;
-      },
-      getKeys: async (pattern: string) => {
-        return [];
-      },
-    },
-    memory: {
-      add: async (memory: any) => {
-        // Memory operations for testing
-      },
-      get: async (id: string) => {
-        return null;
-      },
-      getByEntityId: async (entityId: string) => {
-        return [];
-      },
-      getLatest: async (entityId: string) => {
-        return null;
-      },
-      getRecentMessages: async (options: any) => {
-        return [];
-      },
-      search: async (query: string) => {
-        return [];
-      },
-    },
-    getService: (serviceType: string) => {
-      return null;
-    },
-  } as unknown as IAgentRuntime;
+    getService: vi.fn(),
+    registerService: vi.fn(),
+    useModel: vi.fn().mockResolvedValue("Test response"),
+    logger,
+  } as any;
 }
 
-// Create realistic memory object
-function createRealMemory(): Memory {
-  const entityId = uuidv4();
-  const roomId = uuidv4();
-
+// Mock message for testing
+function createMockMessage(text: string = "test message"): Memory {
   return {
     id: uuidv4(),
-    entityId,
-    roomId,
-    timestamp: Date.now(),
-    content: {
-      text: 'What can you provide?',
-      source: 'test',
-      actions: [],
-    },
-    metadata: {
-      type: 'custom',
-      sessionId: uuidv4(),
-      conversationId: uuidv4(),
-    },
+    content: { text },
+    userId: "test-user",
+    agentId: "test-agent",
+    roomId: "test-room",
+    createdAt: Date.now(),
   } as Memory;
 }
 
-describe('Provider Tests', () => {
-  // Find the HELLO_WORLD_PROVIDER from the providers array
-  const helloWorldProvider = plugin.providers?.find(
-    (provider) => provider.name === 'HELLO_WORLD_PROVIDER'
+// Mock state for testing
+function createMockState(): State {
+  return {
+    userId: "test-user",
+    agentId: "test-agent",
+    roomId: "test-room",
+    providers: {},
+    data: {},
+  } as State;
+}
+
+describe("Provider Tests", () => {
+  // Find specific Levva providers
+  const levvaProvider = plugin.providers?.find((p) => p.name === "levva");
+  const newsProvider = plugin.providers?.find((p) => p.name === "CRYPTO_NEWS");
+  const swapParamsProvider = plugin.providers?.find(
+    (p) => p.name === "SWAP_PARAMS"
+  );
+  const strategyParamsProvider = plugin.providers?.find(
+    (p) => p.name === "STRATEGY_PARAMS"
+  );
+  const positionParamsProvider = plugin.providers?.find(
+    (p) => p.name === "position-params"
+  );
+  const withdrawParamsProvider = plugin.providers?.find(
+    (p) => p.name === "WITHDRAW_PARAMS"
   );
 
-  describe('HELLO_WORLD_PROVIDER', () => {
-    it('should exist in the plugin', () => {
-      expect(plugin.providers).toBeDefined();
-      expect(Array.isArray(plugin.providers)).toBe(true);
+  describe("LEVVA_PROVIDER", () => {
+    it("should exist in the plugin", () => {
+      expect(levvaProvider).toBeDefined();
+      documentTestResult("Provider exists check", {
+        found: !!levvaProvider,
+        name: levvaProvider?.name,
+      });
+    });
 
-      if (plugin.providers) {
-        expect(plugin.providers.length).toBeGreaterThan(0);
-        const result = plugin.providers.find((p) => p.name === 'HELLO_WORLD_PROVIDER');
-        expect(result).toBeDefined();
-        documentTestResult('Provider exists check', {
-          found: !!result,
-          providers: plugin.providers.map((p) => p.name),
+    it("should have the correct structure", () => {
+      if (levvaProvider) {
+        expect(levvaProvider).toHaveProperty("name");
+        expect(levvaProvider).toHaveProperty("get");
+        expect(typeof levvaProvider.get).toBe("function");
+
+        documentTestResult("Provider structure check", {
+          hasName: !!levvaProvider.name,
+          hasGet: typeof levvaProvider.get === "function",
         });
       }
     });
 
-    it('should have the correct structure', () => {
-      if (helloWorldProvider) {
-        expect(helloWorldProvider).toHaveProperty('name', 'HELLO_WORLD_PROVIDER');
-        expect(helloWorldProvider).toHaveProperty('description');
-        expect(helloWorldProvider).toHaveProperty('get');
-        expect(typeof helloWorldProvider.get).toBe('function');
-
-        documentTestResult('Provider structure check', {
-          name: helloWorldProvider.name,
-          description: helloWorldProvider.description,
-          hasGetMethod: typeof helloWorldProvider.get === 'function',
-        });
-      }
-    });
-
-    it('should have a description explaining its purpose', () => {
-      if (helloWorldProvider && helloWorldProvider.description) {
-        expect(typeof helloWorldProvider.description).toBe('string');
-        expect(helloWorldProvider.description.length).toBeGreaterThan(0);
-
-        documentTestResult('Provider description check', {
-          description: helloWorldProvider.description,
-        });
-      }
-    });
-
-    it('should return provider data from the get method', async () => {
-      if (helloWorldProvider) {
-        const runtime = createRealRuntime();
-        const message = createRealMemory();
-        const state = {
-          values: { example: 'test value' },
-          data: { additionalContext: 'some context' },
-          text: 'Current state context',
-        } as State;
-
-        let result: any = null;
-        let error: Error | null = null;
+    it("should return provider data from the get method", async () => {
+      if (levvaProvider) {
+        const runtime = createMockRuntime();
+        const message = createMockMessage();
+        const state = createMockState();
 
         try {
-          logger.info('Calling provider.get with real implementation');
-          result = await helloWorldProvider.get(runtime, message, state);
-
-          expect(result).toBeDefined();
-          expect(result).toHaveProperty('text');
-          expect(result).toHaveProperty('values');
-          expect(result).toHaveProperty('data');
-
-          // Look for potential issues in the result
-          if (result && (!result.text || result.text.length === 0)) {
-            logger.warn('Provider returned empty text');
-          }
-
-          if (result && Object.keys(result.values).length === 0) {
-            logger.warn('Provider returned empty values object');
-          }
-
-          if (result && Object.keys(result.data).length === 0) {
-            logger.warn('Provider returned empty data object');
-          }
-        } catch (e) {
-          error = e as Error;
-          logger.error('Error in provider.get:', e);
-        }
-
-        documentTestResult('Provider get method', result, error);
-      }
-    });
-
-    it('should handle error conditions gracefully', async () => {
-      if (helloWorldProvider) {
-        const runtime = createRealRuntime();
-        // Create an invalid memory object to simulate an error scenario
-        const invalidMemory = {
-          // Missing properties that would be required
-          id: uuidv4(),
-        } as unknown as Memory;
-
-        const state = {
-          values: {},
-          data: {},
-          text: '',
-        } as State;
-
-        let result: any = null;
-        let error: Error | null = null;
-
-        try {
-          logger.info('Calling provider.get with invalid memory object');
-          result = await helloWorldProvider.get(runtime, invalidMemory, state);
-
-          // Even with invalid input, it should not throw errors
+          const result = await levvaProvider.get(runtime, message, state);
           expect(result).toBeDefined();
 
-          // Log what actual implementation does with invalid input
-          logger.info('Provider handled invalid input without throwing');
-        } catch (e) {
-          error = e as Error;
-          logger.error('Provider threw an error with invalid input:', e);
+          documentTestResult("Provider get method", {
+            resultType: typeof result,
+            hasData: !!result,
+          });
+        } catch (error) {
+          // Some providers might require specific setup, that's okay
+          documentTestResult(
+            "Provider get method",
+            { attempted: true },
+            error as Error
+          );
         }
-
-        documentTestResult('Provider error handling', result, error);
       }
     });
   });
 
-  describe('Provider Registration', () => {
-    it('should include providers in the plugin definition', () => {
-      expect(plugin).toHaveProperty('providers');
-      expect(Array.isArray(plugin.providers)).toBe(true);
+  describe("NEWS_PROVIDER", () => {
+    it("should exist in the plugin", () => {
+      expect(newsProvider).toBeDefined();
+    });
 
-      documentTestResult('Plugin providers check', {
+    it("should have the correct structure", () => {
+      if (newsProvider) {
+        expect(newsProvider).toHaveProperty("name", "CRYPTO_NEWS");
+        expect(newsProvider).toHaveProperty("get");
+        expect(typeof newsProvider.get).toBe("function");
+      }
+    });
+  });
+
+  describe("SWAP_PARAMS Provider", () => {
+    it("should exist in the plugin", () => {
+      expect(swapParamsProvider).toBeDefined();
+    });
+
+    it("should have the correct structure", () => {
+      if (swapParamsProvider) {
+        expect(swapParamsProvider).toHaveProperty("name", "SWAP_PARAMS");
+        expect(swapParamsProvider).toHaveProperty("get");
+        expect(typeof swapParamsProvider.get).toBe("function");
+      }
+    });
+  });
+
+  describe("STRATEGY_PARAMS Provider", () => {
+    it("should exist in the plugin", () => {
+      expect(strategyParamsProvider).toBeDefined();
+    });
+
+    it("should have the correct structure", () => {
+      if (strategyParamsProvider) {
+        expect(strategyParamsProvider).toHaveProperty(
+          "name",
+          "STRATEGY_PARAMS"
+        );
+        expect(strategyParamsProvider).toHaveProperty("get");
+        expect(typeof strategyParamsProvider.get).toBe("function");
+      }
+    });
+  });
+
+  describe("POSITION_PARAMS Provider", () => {
+    it("should exist in the plugin", () => {
+      expect(positionParamsProvider).toBeDefined();
+    });
+
+    it("should have the correct structure", () => {
+      if (positionParamsProvider) {
+        expect(positionParamsProvider).toHaveProperty(
+          "name",
+          "position-params"
+        );
+        expect(positionParamsProvider).toHaveProperty("get");
+        expect(typeof positionParamsProvider.get).toBe("function");
+      }
+    });
+  });
+
+  describe("WITHDRAW_PARAMS Provider", () => {
+    it("should exist in the plugin", () => {
+      expect(withdrawParamsProvider).toBeDefined();
+    });
+
+    it("should have the correct structure", () => {
+      if (withdrawParamsProvider) {
+        expect(withdrawParamsProvider).toHaveProperty(
+          "name",
+          "WITHDRAW_PARAMS"
+        );
+        expect(withdrawParamsProvider).toHaveProperty("get");
+        expect(typeof withdrawParamsProvider.get).toBe("function");
+      }
+    });
+  });
+
+  describe("Provider Registration", () => {
+    it("should include providers in the plugin definition", () => {
+      expect(plugin.providers).toBeDefined();
+      expect(Array.isArray(plugin.providers)).toBe(true);
+      expect(plugin.providers.length).toBeGreaterThan(0);
+
+      documentTestResult("Provider registration check", {
         hasProviders: !!plugin.providers,
-        providersCount: plugin.providers?.length || 0,
+        providerCount: plugin.providers?.length || 0,
+        allValid: plugin.providers?.every((p) => p.name && p.get) || false,
       });
     });
 
-    it('should correctly initialize providers array', () => {
-      // Providers should be an array with at least one provider
+    it("should correctly initialize providers array", () => {
       if (plugin.providers) {
-        expect(plugin.providers.length).toBeGreaterThan(0);
+        const invalidProviders = plugin.providers.filter(
+          (provider) => !provider.name || typeof provider.get !== "function"
+        );
 
-        let allValid = true;
-        const invalidProviders: string[] = [];
+        expect(invalidProviders.length).toBe(0);
 
-        // Each provider should have the required structure
-        plugin.providers.forEach((provider: Provider) => {
-          const isValid =
-            provider.name !== undefined &&
-            provider.description !== undefined &&
-            typeof provider.get === 'function';
-
-          if (!isValid) {
-            allValid = false;
-            invalidProviders.push(provider.name || 'unnamed');
-          }
-
-          expect(provider).toHaveProperty('name');
-          expect(provider).toHaveProperty('description');
-          expect(provider).toHaveProperty('get');
-          expect(typeof provider.get).toBe('function');
-        });
-
-        documentTestResult('Provider initialization check', {
+        documentTestResult("Provider initialization check", {
           providersCount: plugin.providers.length,
-          allValid,
-          invalidProviders,
+          allValid: invalidProviders.length === 0,
+          invalidProviders: invalidProviders.map((p) => p.name || "unnamed"),
         });
       }
     });
 
-    it('should have unique provider names', () => {
+    it("should have unique provider names", () => {
       if (plugin.providers) {
-        const providerNames = plugin.providers.map((provider) => provider.name);
-        const uniqueNames = new Set(providerNames);
+        const providerNames = plugin.providers.map((p) => p.name);
+        const uniqueProviders = [...new Set(providerNames)];
 
-        const duplicates = providerNames.filter(
-          (name, index) => providerNames.indexOf(name) !== index
-        );
+        expect(providerNames.length).toBe(uniqueProviders.length);
 
-        // There should be no duplicate provider names
-        expect(providerNames.length).toBe(uniqueNames.size);
-
-        documentTestResult('Provider uniqueness check', {
+        documentTestResult("Provider uniqueness check", {
           totalProviders: providerNames.length,
-          uniqueProviders: uniqueNames.size,
-          duplicates,
+          uniqueProviders: uniqueProviders.length,
+          duplicates: providerNames.length - uniqueProviders.length,
         });
       }
     });

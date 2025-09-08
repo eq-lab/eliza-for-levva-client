@@ -1,5 +1,9 @@
 import { describe, it, expect } from "vitest";
-import { getUserPositions, getWithdrawalRequests, getStrategies } from "../src/api/levva";
+import {
+  getUserPositions,
+  getWithdrawalRequests,
+  getStrategies,
+} from "../src/api/levva";
 
 describe("Levva API Integration Tests", () => {
   const testAddress = "0x40b88b09610487A26b18FB52DBe319D1268fCa22" as const;
@@ -10,20 +14,20 @@ describe("Levva API Integration Tests", () => {
 
   it("should fetch user positions from real API", async () => {
     const result = await getUserPositions(testAddress);
-    
+
     // Log the result for debugging
     if (!result.success) {
       console.log("User positions API error:", result.error);
     } else {
       console.log("User positions data:", result.data);
     }
-    
+
     // The API call should succeed (even if it returns empty array)
     expect(result.success).toBe(true);
-    
+
     if (result.success) {
       expect(Array.isArray(result.data)).toBe(true);
-      
+
       // If there are positions, validate their structure
       if (result.data.length > 0) {
         const position = result.data[0];
@@ -41,20 +45,20 @@ describe("Levva API Integration Tests", () => {
 
   it("should fetch withdrawal requests from real API", async () => {
     const result = await getWithdrawalRequests(testAddress, 1);
-    
+
     // Log the result for debugging
     if (!result.success) {
       console.log("Withdrawal requests API error:", result.error);
     } else {
       console.log("Withdrawal requests data:", result.data);
     }
-    
+
     // The API call should succeed (even if it returns empty array)
     expect(result.success).toBe(true);
-    
+
     if (result.success) {
       expect(Array.isArray(result.data)).toBe(true);
-      
+
       // If there are withdrawal requests, validate their structure
       if (result.data.length > 0) {
         const withdrawal = result.data[0];
@@ -76,14 +80,14 @@ describe("Levva API Integration Tests", () => {
 
   it("should fetch strategies from real API", async () => {
     const result = await getStrategies(testChainId);
-    
+
     // The API call should succeed
     expect(result.success).toBe(true);
-    
+
     if (result.success) {
       expect(Array.isArray(result.data)).toBe(true);
       expect(result.data.length).toBeGreaterThan(0); // Should have at least some strategies
-      
+
       const strategy = result.data[0];
       expect(strategy).toHaveProperty("id");
       expect(strategy).toHaveProperty("name");
@@ -97,7 +101,7 @@ describe("Levva API Integration Tests", () => {
   it("should handle different vault IDs for withdrawal requests", async () => {
     // Test with vault ID 2 - this might return an error or empty array
     const result = await getWithdrawalRequests(testAddress, 2);
-    
+
     // The API might return an error for non-existent vaults, which is acceptable
     if (result.success) {
       expect(Array.isArray(result.data)).toBe(true);
@@ -109,11 +113,12 @@ describe("Levva API Integration Tests", () => {
 
   it("should validate API response schemas with real data", async () => {
     // Test that real API responses pass our Zod validation
-    const [positionsResult, withdrawalsResult, strategiesResult] = await Promise.all([
-      getUserPositions(testAddress),
-      getWithdrawalRequests(testAddress, 1),
-      getStrategies(testChainId),
-    ]);
+    const [positionsResult, withdrawalsResult, strategiesResult] =
+      await Promise.all([
+        getUserPositions(testAddress),
+        getWithdrawalRequests(testAddress, 1),
+        getStrategies(testChainId),
+      ]);
 
     // All API calls should succeed and pass validation
     expect(positionsResult.success).toBe(true);
@@ -122,15 +127,24 @@ describe("Levva API Integration Tests", () => {
 
     // Log the actual data for debugging (if any)
     if (positionsResult.success && positionsResult.data.length > 0) {
-      console.log("Sample position data:", JSON.stringify(positionsResult.data[0], null, 2));
+      console.log(
+        "Sample position data:",
+        JSON.stringify(positionsResult.data[0], null, 2)
+      );
     }
-    
+
     if (withdrawalsResult.success && withdrawalsResult.data.length > 0) {
-      console.log("Sample withdrawal data:", JSON.stringify(withdrawalsResult.data[0], null, 2));
+      console.log(
+        "Sample withdrawal data:",
+        JSON.stringify(withdrawalsResult.data[0], null, 2)
+      );
     }
-    
+
     if (strategiesResult.success && strategiesResult.data.length > 0) {
-      console.log("Sample strategy data:", JSON.stringify(strategiesResult.data[0], null, 2));
+      console.log(
+        "Sample strategy data:",
+        JSON.stringify(strategiesResult.data[0], null, 2)
+      );
     }
   }, 15000); // Longer timeout for multiple API calls
 });

@@ -1,4 +1,4 @@
-import { Action, Content, logger } from "@elizaos/core";
+import { Action, Content } from "@elizaos/core";
 import { ETH_NULL_ADDR } from "../constants/eth";
 
 import { LEVVA_ACTIONS, LEVVA_SERVICE } from "../constants/enum";
@@ -18,6 +18,7 @@ import { LevvaService } from "../services/levva/class";
 import { Suggestion } from "./types";
 import { CalldataWithDescription } from "../types/tx";
 import { rephrase } from "../util/generate";
+import { getPreviousReplyContext } from "../util/action-results";
 
 const description =
   "Select and manage earning strategy for user and ask for lacking parameters to build a transaction.";
@@ -32,7 +33,7 @@ export const action: Action = {
     "suggest strategy",
     "strategy",
     "earning strategy",
-    "farming strategy"
+    "farming strategy",
   ],
 
   validate: async () => {
@@ -40,18 +41,23 @@ export const action: Action = {
   },
 
   handler: async (runtime, message, state, options, callback) => {
+    // Get previous action context BEFORE try block for error handling
+    const prevActions = await getPreviousReplyContext(runtime, message);
+
+    // Compose state with required providers
+    const composedState = await runtime.composeState(message, [
+      LEVVA_PROVIDER_NAME,
+      STRATEGY_PARAMS_PROVIDER_NAME,
+    ]);
+
     try {
       if (!callback) {
         throw new Error("Callback not found, disable action");
       }
 
-      if (!state) {
-        throw new Error("State not found, disable action");
-      }
-
       const lvva = selectProviderState<LevvaProviderState>(
         LEVVA_PROVIDER_NAME,
-        state
+        composedState
       );
 
       if (!lvva) {
@@ -72,10 +78,9 @@ export const action: Action = {
         throw new Error("Failed to get levva service, disable action");
       }
 
-      // should we use runtime.composeState?
       const params = selectProviderState<StrategyParamsProviderData>(
         STRATEGY_PARAMS_PROVIDER_NAME,
-        state
+        composedState
       );
 
       if (!params) {
@@ -84,20 +89,28 @@ export const action: Action = {
         );
       }
 
-      logger.debug(`Strategy selection, known data: ${JSON.stringify(params)}`);
+      runtime.logger.debug(
+        `Strategy selection, known data: ${JSON.stringify(params)}`
+      );
 
-      if (!params.strategy) {
+      // Helper function to handle missing parameters
+      const handleMissingParameter = async (
+        paramName: string,
+        text: string,
+        thought: string
+      ) => {
         const content = {
-          text: `###Known strategies\n${state.values.strategies}\n\nPlease select desired strategy`,
-          thought:
-            "Since user didn't choose risk profile, give him summary and display options.",
+          text,
+          thought,
           actions: ["SELECT_STRATEGY"],
+          source: message.content.source,
         };
 
         const result = await rephrase({
           runtime,
-          state,
+          state: composedState,
           content,
+          prevActions,
         });
 
         await callback(result);
@@ -121,84 +134,34 @@ export const action: Action = {
           },
           success: true,
         };
+      };
+
+      if (!params.strategy) {
+        return await handleMissingParameter(
+          "strategy",
+          `###Known strategies\n${composedState.values.strategies}\n\nPlease select desired strategy`,
+          "Since user didn't choose risk profile, give him summary and display options."
+        );
       }
 
       const strategy = params.strategy;
 
       if (!params.tokenIn) {
-        const content = {
-          text: `### Strategy: ${state.values.strategy}\n### Portfolio\n${state.values.portfolio}\n\n${state.values.tokenIn}`,
-          thought:
-            "Since user didn't choose token, give him summary and display options.",
-          actions: ["SELECT_STRATEGY"],
-        };
-
-        const result = await rephrase({
-          runtime,
-          state,
-          content,
-        });
-
-        await callback(result);
-
-        return {
-          text: `Generated text: ${result?.text}`,
-          values: {
-            success: true,
-            responded: true,
-            lastReply: result.text,
-            lastReplyTime: Date.now(),
-            thoughtProcess: result?.thought,
-          },
-          data: {
-            actionName: LEVVA_ACTIONS.SELECT_STRATEGY,
-            response: result,
-            thought: result?.thought,
-            initialReply: content.text,
-            initialThought: content.thought,
-            messageGenerated: true,
-          },
-          success: true,
-        };
+        return await handleMissingParameter(
+          "tokenIn",
+          `### Strategy: ${composedState.values.strategy}\n### Portfolio\n${composedState.values.portfolio}\n\n${composedState.values.tokenIn}`,
+          "Since user didn't choose token, give him summary and display options."
+        );
       }
 
       const tokenIn = params.tokenIn;
 
       if (!params.amount) {
-        const content = {
-          text: `Strategy: ${state.values.strategy}\n\nSelected token: ${state.values.tokenIn}\n\nPortfolio: ${state.values.portfolio}\n\n${state.values.amountIn}`,
-          thought:
-            "Since user didn't choose amount, give him summary and display options.",
-          actions: ["SELECT_STRATEGY"],
-        };
-
-        const result = await rephrase({
-          runtime,
-          state,
-          content,
-        });
-
-        await callback(result);
-
-        return {
-          text: `Generated text: ${result?.text}`,
-          values: {
-            success: true,
-            responded: true,
-            lastReply: result.text,
-            lastReplyTime: Date.now(),
-            thoughtProcess: result?.thought,
-          },
-          data: {
-            actionName: LEVVA_ACTIONS.SELECT_STRATEGY,
-            response: result,
-            thought: result?.thought,
-            initialReply: content.text,
-            initialThought: content.thought,
-            messageGenerated: true,
-          },
-          success: true,
-        };
+        return await handleMissingParameter(
+          "amount",
+          `Strategy: ${composedState.values.strategy}\n\nSelected token: ${composedState.values.tokenIn}\n\nPortfolio: ${composedState.values.portfolio}\n\n${composedState.values.amountIn}`,
+          "Since user didn't choose amount, give him summary and display options."
+        );
       }
 
       const amount = params.amount;
@@ -261,7 +224,12 @@ export const action: Action = {
         attachments: [json],
       };
 
-      const responseContent = await rephrase({ runtime, content, state });
+      const responseContent = await rephrase({
+        runtime,
+        content,
+        state: composedState,
+        prevActions,
+      });
       await callback(responseContent);
 
       return {
@@ -284,7 +252,7 @@ export const action: Action = {
         success: true,
       };
     } catch (error) {
-      logger.error("Error in SELECT_STRATEGY action:", error);
+      runtime.logger.error("Error in SELECT_STRATEGY action:", error);
       const errorMessage = (error as Error).message ?? "unknown error";
       const thought = `Action failed with error: ${errorMessage}. I should tell the user about the error.`;
       const text = `Failed to select strategy, reason: ${errorMessage}. Please try again.`;
@@ -297,7 +265,8 @@ export const action: Action = {
           actions: ["SELECT_STRATEGY"],
           source: message.content.source,
         },
-        state: state!,
+        state: composedState,
+        prevActions,
       });
 
       await callback?.(responseContent);

@@ -25,7 +25,9 @@ export const balancesTable = pgTable(
     amount: decimal("amount", { mode: "bigint" }).notNull(),
     value: decimal("value", { mode: "bigint" }).notNull(),
     type: assetType("type").notNull(),
-    updatedAt: timestamp("updated_at").notNull().default(sql`now()`),
+    updatedAt: timestamp("updated_at")
+      .notNull()
+      .default(sql`now()`),
   },
   (table) => [
     unique().on(table.address, table.chainId, table.token),

@@ -64,9 +64,13 @@ export const withdrawalRequestSchema = z.object({
   strategyId: z.number(),
 });
 
-export const withdrawalRequestsResponseSchema = z.array(withdrawalRequestSchema);
+export const withdrawalRequestsResponseSchema = z.array(
+  withdrawalRequestSchema
+);
 
 export type UserPosition = z.infer<typeof userPositionSchema>;
 export type UserPositionsResponse = z.infer<typeof userPositionsResponseSchema>;
 export type WithdrawalRequest = z.infer<typeof withdrawalRequestSchema>;
-export type WithdrawalRequestsResponse = z.infer<typeof withdrawalRequestsResponseSchema>;
+export type WithdrawalRequestsResponse = z.infer<
+  typeof withdrawalRequestsResponseSchema
+>;

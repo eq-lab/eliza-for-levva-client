@@ -1,43 +1,55 @@
 import { Action, Content, logger } from "@elizaos/core";
 import { LEVVA_ACTIONS, LEVVA_SERVICE } from "../constants/enum";
 import { LEVVA_PROVIDER_NAME, LevvaProviderState } from "../providers";
-import { POSITION_PARAMS_PROVIDER_NAME, PositionParamsProviderData } from "../providers/position-params";
+import {
+  POSITION_PARAMS_PROVIDER_NAME,
+  PositionParamsProviderData,
+} from "../providers/position-params";
 import { selectProviderState } from "../providers/util";
 import { LevvaService } from "../services/levva/class";
 import { rephrase } from "../util/generate";
 import { getPreviousReplyContext } from "../util/action-results";
+import { positionManagementPrompt } from "../prompts/suggest/position-management";
+import { positionDiversificationPrompt } from "../prompts/suggest/position-diversification";
 import { Suggestion } from "./types";
 
 const description =
-  "Analyze user's current positions, show withdrawal status, and suggest position management actions.";
+  "Analyze and display user's current DeFi positions with detailed portfolio summary, withdrawal status, and position management options. Specifically for viewing existing positions and managing active investments.";
 
 export const action: Action = {
   name: LEVVA_ACTIONS.MANAGE_POSITIONS,
   description,
   similes: [
     "MANAGE_POSITIONS",
-    "VIEW_POSITIONS", 
+    "VIEW_POSITIONS",
     "CHECK_POSITIONS",
     "POSITION_STATUS",
     "manage positions",
     "view positions",
     "check my positions",
     "position status",
-    "my portfolio",
+    "show me my positions",
+    "what positions do I have",
+    "current positions",
+    "position overview",
     "withdrawal status",
+    "manage my portfolio",
+    "position management",
   ],
 
   validate: async () => {
     return true;
   },
 
-  handler: async (runtime, message, state, options, callback) => {
+  handler: async (runtime, message, _, __, callback) => {
     // Get previous action results from runtime to avoid repetition (outside try block for error handler access)
     const prevActions = await getPreviousReplyContext(runtime, message);
-    
+
     // Compose state with position params provider to ensure it's executed
-    const composedState = await runtime.composeState(message, [POSITION_PARAMS_PROVIDER_NAME]);
-    
+    const composedState = await runtime.composeState(message, [
+      POSITION_PARAMS_PROVIDER_NAME,
+    ]);
+
     try {
       if (!callback) {
         throw new Error("Callback not found, disable action");
@@ -92,7 +104,8 @@ export const action: Action = {
 
       if (!positionData.hasPositions && !positionData.hasPendingWithdrawals) {
         // No positions case
-        thought = "User has no active positions or pending withdrawals. Should suggest available strategies.";
+        thought =
+          "User has no active positions or pending withdrawals. Should suggest available strategies.";
         text = `You currently have no active positions in Levva strategies.
 
 ## Available Strategies
@@ -101,19 +114,31 @@ ${availableStrategies.map(service.formatStrategy).join("\n\n")}
 Would you like to explore any of these investment opportunities?`;
       } else {
         // Has positions case
-        thought = "User has active positions. Should show current status and suggest management actions.";
-        
+        thought =
+          "User has active positions. Should show current status and suggest management actions.";
+
         const managementSuggestions: string[] = [];
-        
+
         if (positionData.hasPositions) {
-          managementSuggestions.push("- **Withdraw**: Exit current positions");
+          managementSuggestions.push(
+            "- **Withdraw**: Exit current positions (partial or full)"
+          );
+
           if (availableStrategies.length > 0) {
-            managementSuggestions.push("- **Diversify**: Add positions in other strategies");
+            managementSuggestions.push(
+              "- **Diversify**: Add positions in other strategies"
+            );
           }
         }
-        
+
         if (positionData.hasPendingWithdrawals) {
-          managementSuggestions.push("- **Track**: Monitor withdrawal progress");
+          managementSuggestions.push(
+            "- **Check Status**: Monitor withdrawal progress and claim ready funds"
+          );
+        } else if (positionData.hasPositions) {
+          managementSuggestions.push(
+            "- **Quick Withdraw**: Start withdrawal process for any position"
+          );
         }
 
         text = `## Your Position Summary
@@ -127,8 +152,12 @@ ${positionData.withdrawalsSummary}
 ## Management Options
 ${managementSuggestions.join("\n")}
 
-${availableStrategies.length > 0 ? `## Other Available Strategies
-${availableStrategies.map(service.formatStrategy).join("\n\n")}` : ""}`;
+${
+  availableStrategies.length > 0
+    ? `## Other Available Strategies
+${availableStrategies.map(service.formatStrategy).join("\n\n")}`
+    : ""
+}`;
       }
 
       const content: Content = {
@@ -138,7 +167,12 @@ ${availableStrategies.map(service.formatStrategy).join("\n\n")}` : ""}`;
         source: message.content.source,
       };
 
-      const responseContent = await rephrase({ runtime, content, state: composedState, prevActions });
+      const responseContent = await rephrase({
+        runtime,
+        content,
+        state: composedState,
+        prevActions,
+      });
       await callback(responseContent);
 
       return {
@@ -212,7 +246,7 @@ ${availableStrategies.map(service.formatStrategy).join("\n\n")}` : ""}`;
       {
         name: "{{name2}}",
         content: {
-          text: "Here's your current position summary:\n\n{{positionsSummary}}\n\nTotal value: {{totalValue}}",
+          text: "Here's your current position summary:\n\n{{positionsSummary}}\n\nTotal Portfolio Value: {{totalValue}}\n\nLet me know if you want to manage these positions or need help with anything else!",
           actions: ["MANAGE_POSITIONS"],
         },
       },
@@ -252,65 +286,35 @@ ${availableStrategies.map(service.formatStrategy).join("\n\n")}` : ""}`;
 
 export const suggest: Suggestion[] = [
   {
-    name: "position-diversification",
-    description: "Suggest diversification options when user has positions in limited strategies",
-    getPrompt: async (runtime, { address, chainId, conversation, decision }) => {
-      const service = runtime.getService<LevvaService>(
-        LEVVA_SERVICE.LEVVA_COMMON
-      );
-
-      if (!service) {
-        throw new Error("Failed to get levva service");
-      }
-
-      const [summary, strategies] = await Promise.all([
-        service.getPositionSummary(address),
-        service.getStrategies(chainId),
-      ]);
-
-      const availableStrategies = strategies.filter((strategy) => {
-        const hasPosition = summary.positions.some(
-          (pos: any) => pos.strategyId === strategy.contractAddress
-        );
-        return !hasPosition;
+    name: "position-management",
+    description:
+      "Suggest position management options when user has active positions",
+    getPrompt: async (
+      runtime,
+      { address, chainId, conversation, decision }
+    ) => {
+      return positionManagementPrompt(runtime, {
+        address,
+        chainId,
+        conversation,
+        decision,
       });
-
-      return `<task>Generate suggestions for portfolio diversification based on current positions and available strategies</task>
-<decision>
-${JSON.stringify(decision)}
-</decision>
-<currentPositions>
-${summary.positionsSummary}
-</currentPositions>
-<availableStrategies>
-${availableStrategies.map((s) => service.formatStrategy(s)).join("\n")}
-</availableStrategies>
-<conversation>
-${conversation}
-</conversation>
-<instructions>
-Generate 4 suggestions for diversifying the portfolio:
-1. Suggest different risk levels if user is concentrated in one risk category
-2. Suggest different strategy types (vault vs pool) for balance
-3. Consider withdrawal options if overexposed
-4. Suggest rebalancing based on performance
-
-Each suggestion should be actionable and specific.
-</instructions>
-<output>
-{
-  "suggestions": [
-    {
-      "label": "Add Safe Strategy",
-      "text": "I want to diversify with a safe strategy"
     },
-    {
-      "label": "Withdraw 25%", 
-      "text": "I want to withdraw 25% of my positions"
-    }
-  ]
-}
-</output>`;
+  },
+  {
+    name: "position-diversification",
+    description:
+      "Suggest diversification options when user has positions in limited strategies",
+    getPrompt: async (
+      runtime,
+      { address, chainId, conversation, decision }
+    ) => {
+      return positionDiversificationPrompt(runtime, {
+        address,
+        chainId,
+        conversation,
+        decision,
+      });
     },
   },
 ];

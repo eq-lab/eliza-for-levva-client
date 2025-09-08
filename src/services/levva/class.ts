@@ -51,7 +51,6 @@ import {
   PoolConstants,
   Strategy,
   StrategyEntry,
-  StrategyMapping,
   StrategyType,
   VaultConstants,
   getPoolConstants,
@@ -73,8 +72,13 @@ import { getPendleSwap } from "src/api/swap/pendle";
 import { bundlerEnter } from "./tx";
 import poolAbi from "./abi/pool.abi";
 import vaultAbi from "./abi/vault.abi";
+import withdrawalNftAbi from "./abi/vault.withdrawal-nft.abi";
 import { getMessages } from "./messages";
-import { getStrategies as getStrategiesApi, getUserPositions, getWithdrawalRequests } from "../../api/levva";
+import {
+  getStrategies as getStrategiesApi,
+  getUserPositions,
+  getWithdrawalRequests,
+} from "../../api/levva";
 import { createPositionSummary } from "./positions";
 import { checkSecret } from "./secrets";
 
@@ -84,8 +88,6 @@ function checkPlugins(runtime: IAgentRuntime) {
   const set = new Set(runtime.plugins.map((plugin) => plugin.name));
   return REQUIRED_PLUGINS.every((plugin) => set.has(plugin));
 }
-
-async function series<T>(promises: Promise<T>[]) {}
 
 // todo config
 const MAX_WAIT_TIME = 15000; // time after which put promise in background
@@ -489,7 +491,7 @@ export class LevvaService
       const items = await getFeed(this.runtime, url);
 
       await Promise.all(
-        items.map((item, i) => {
+        items.map((item) => {
           const id = getFeedItemId(item.link);
 
           return this.inBackground(
@@ -514,7 +516,7 @@ export class LevvaService
   // -- End of Crypto news --
 
   // -- Position Management --
-  private getUserPositionsCacheKey = (address: `0x${string}`) => 
+  private getUserPositionsCacheKey = (address: `0x${string}`) =>
     `user-positions:${address}`;
 
   getUserPositions = this.timedCache(
@@ -531,8 +533,10 @@ export class LevvaService
     this.getUserPositionsCacheKey
   );
 
-  private getWithdrawalRequestsCacheKey = (address: `0x${string}`, vaultId: number) => 
-    `withdrawal-requests:${address}:${vaultId}`;
+  private getWithdrawalRequestsCacheKey = (
+    address: `0x${string}`,
+    vaultId: number
+  ) => `withdrawal-requests:${address}:${vaultId}`;
 
   getWithdrawalRequests = this.timedCache(
     300000, // 5 minutes TTL
@@ -541,20 +545,25 @@ export class LevvaService
       if (result.success) {
         return result.data;
       } else {
-        logger.warn("Failed to parse withdrawal requests response:", result.error);
+        logger.warn(
+          "Failed to parse withdrawal requests response:",
+          result.error
+        );
         return [];
       }
     },
     this.getWithdrawalRequestsCacheKey
   );
 
-  async getPositionSummary(address: `0x${string}`) {
-    const [positions, withdrawals] = await Promise.all([
+  async getPositionSummary(address: `0x${string}`, chainId: number = 1) {
+    const [positions, withdrawals, strategiesResult] = await Promise.all([
       this.getUserPositions(address),
       this.getWithdrawalRequests(address, 1),
+      getStrategiesApi(chainId), // Use the provided chainId
     ]);
 
-    return createPositionSummary(positions, withdrawals);
+    const strategies = strategiesResult.success ? strategiesResult.data : [];
+    return createPositionSummary(positions, withdrawals, strategies);
   }
   // -- End of Position Management --
   private getPendleMarketsCacheKey = (
@@ -659,20 +668,6 @@ export class LevvaService
   private getStrategiesKey = (chainId: number = 1) => `strategies:${chainId}`;
 
   getStrategies = this.permanentCache(async (chainId: number = 1) => {
-    /*const result = (
-      Object.entries(strategyVaultMapping) as [Strategy, StrategyMapping[]][]
-    ).reduce((acc, [strategy, mappings]) => {
-      const filtered = mappings
-        .filter(({ vaultChainId }) => vaultChainId === chainId)
-        .map((mapping) => ({
-          ...mapping,
-          strategy,
-        }));
-
-      return [...acc, ...filtered];
-    }, [] as StrategyEntry[]);
-    */
-
     const result = await getStrategiesApi(chainId);
 
     if (!result.success) {
@@ -1005,7 +1000,7 @@ export class LevvaService
       to: address,
       data: calldata,
       title: `Deposit ${amount} ${tokenIn.symbol}`,
-      description: `Depositing ${amountIn.toString()} ${tokenIn.symbol} to vault ${address}`,
+      description: `Depositing ${amount} ${tokenIn.symbol} to vault ${address}`,
     });
 
     return calls;
@@ -1049,5 +1044,30 @@ export class LevvaService
     };
 
     return { result: false, reason: content };
+  }
+
+  /**
+   * Encode requestRedeem transaction data for vault withdrawals
+   */
+  encodeRequestRedeem(shares: bigint): `0x${string}` {
+    return encodeFunctionData({
+      abi: vaultAbi,
+      functionName: "requestRedeem",
+      args: [shares],
+    });
+  }
+
+  /**
+   * Encode claimWithdrawal transaction data for withdrawal NFT
+   */
+  encodeClaimWithdrawal(
+    requestId: number,
+    receiver: `0x${string}`
+  ): `0x${string}` {
+    return encodeFunctionData({
+      abi: withdrawalNftAbi,
+      functionName: "claimWithdrawal",
+      args: [BigInt(requestId), receiver],
+    });
   }
 }

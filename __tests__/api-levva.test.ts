@@ -1,6 +1,13 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { getUserPositions, getWithdrawalRequests, getStrategies } from "../src/api/levva";
-import { userPositionsResponseSchema, withdrawalRequestsResponseSchema } from "../src/api/levva/schema";
+import {
+  getUserPositions,
+  getWithdrawalRequests,
+  getStrategies,
+} from "../src/api/levva";
+import {
+  userPositionsResponseSchema,
+  withdrawalRequestsResponseSchema,
+} from "../src/api/levva/schema";
 
 describe("Levva API", () => {
   const testAddress = "0x40b88b09610487A26b18FB52DBe319D1268fCa22" as const;
@@ -9,7 +16,7 @@ describe("Levva API", () => {
   describe("Unit Tests", () => {
     // Mock fetch for unit tests
     const mockFetch = vi.fn();
-    
+
     beforeEach(() => {
       vi.clearAllMocks();
       global.fetch = mockFetch;
@@ -61,7 +68,9 @@ describe("Levva API", () => {
 
       it("should handle network errors", async () => {
         mockFetch.mockRejectedValueOnce(new Error("Network error"));
-        await expect(getUserPositions(testAddress)).rejects.toThrow("Network error");
+        await expect(getUserPositions(testAddress)).rejects.toThrow(
+          "Network error"
+        );
       });
     });
 
@@ -131,7 +140,9 @@ describe("Levva API", () => {
         strategyId: 9,
       };
 
-      const result = withdrawalRequestsResponseSchema.safeParse([validWithdrawal]);
+      const result = withdrawalRequestsResponseSchema.safeParse([
+        validWithdrawal,
+      ]);
       expect(result.success).toBe(true);
     });
 
@@ -157,9 +168,10 @@ describe("Levva API", () => {
         strategyId: "invalid", // should be number
       };
 
-      const result = withdrawalRequestsResponseSchema.safeParse([invalidWithdrawal]);
+      const result = withdrawalRequestsResponseSchema.safeParse([
+        invalidWithdrawal,
+      ]);
       expect(result.success).toBe(false);
     });
   });
-
 });

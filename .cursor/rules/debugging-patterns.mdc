@@ -1,0 +1,191 @@
+---
+description: Debugging patterns and troubleshooting guidelines
+globs: ["**/*.ts", "**/*.test.ts"]
+alwaysApply: false
+---
+
+# Debugging Patterns and Troubleshooting
+
+## Action Return Value Issues
+
+### Problem: "undefined is returned from action"
+**Symptoms**: Action chaining breaks, tests fail expecting ActionResult objects
+
+**Root Cause**: Action handlers returning undefined instead of ActionResult objects
+
+**Solution**: **📋 See `action-patterns.mdc` for complete ActionResult structure and examples**
+
+Key points:
+- Always return `ActionResult` objects with proper structure
+- Both success and error cases must return `ActionResult`
+- Never return `undefined`, `void`, or missing return statements
+
+### Debugging Steps:
+1. **Check return statements**: Ensure all code paths return ActionResult
+2. **Verify error handling**: Error cases must also return ActionResult
+3. **Test with proper expectations**: Tests should expect ActionResult, not undefined
+
+## Provider Data Access Issues
+
+### Problem: "Cannot read properties of undefined"
+**Symptoms**: Actions crash when accessing provider data
+
+**Root Cause**: Incorrect provider data structure or access pattern
+
+**Solution**: **📋 See `action-patterns.mdc` for complete provider data patterns**
+
+Key points:
+- Access provider data via `composedState.data?.providers?.[PROVIDER_NAME]?.data`
+- Always check for undefined before destructuring
+- Use exported provider name constants, not string literals
+
+### Debugging Steps:
+1. **Log composed state**: `console.log(JSON.stringify(composedState, null, 2))`
+2. **Check provider structure**: Ensure providers return `{ text, data }` format
+3. **Verify provider names**: Use exported constants, not string literals
+4. **Test provider data**: Mock with correct nested structure in tests
+
+## Test Failures: Expected vs Actual
+
+### Problem: Tests expecting undefined but getting ActionResult
+**Symptoms**: `AssertionError: expected { ... } to be undefined`
+
+**Root Cause**: Tests written for old ElizaOS patterns expecting undefined returns
+
+**Solution**: **📋 See `testing-patterns.mdc` for complete test patterns**
+
+Key points:
+- Always expect `ActionResult` objects, never `undefined`
+- Test `result.success`, `result.text`, `result.data.actionName`
+- Update test expectations from old patterns
+
+### Debugging Steps:
+1. **Update test expectations**: Change from `toBeUndefined()` to proper ActionResult checks
+2. **Fix provider mocks**: Use nested data structure in test mocks
+3. **Add missing mocks**: Ensure all service methods are mocked (especially `createCalldata`)
+4. **Check error expectations**: Error cases should still return ActionResult with `success: false`
+
+## Service Method Issues
+
+### Problem: "TypeError: service.method is not a function"
+**Symptoms**: Actions crash when calling service methods
+
+**Root Cause**: Missing service mocks in tests or incorrect service interface
+
+**Solution**:
+```typescript
+// ✅ CORRECT: Complete service mock
+mockService = {
+  getUserPositions: vi.fn().mockResolvedValue([]),
+  getWithdrawalRequests: vi.fn().mockResolvedValue([]),
+  encodeRequestRedeem: vi.fn().mockReturnValue("0xdata"),
+  encodeClaimWithdrawal: vi.fn().mockReturnValue("0xdata"),
+  createCalldata: vi.fn().mockResolvedValue("hash"), // Often forgotten!
+};
+
+// ❌ WRONG: Incomplete mocks
+// mockService = { getUserPositions: vi.fn() }; // Missing other methods
+```
+
+### Debugging Steps:
+1. **Check service interface**: Ensure all used methods are mocked
+2. **Add createCalldata mock**: Essential for transaction-generating actions
+3. **Mock return values**: Use realistic return values, not just `vi.fn()`
+4. **Verify service injection**: Ensure `runtime.getService()` returns the mock
+
+## Cache Access Issues
+
+### Problem: "runtime.getCache is not a function"
+**Symptoms**: Actions crash when accessing cache
+
+**Root Cause**: Using incorrect cache API or missing cache mocks
+
+**Solution**:
+```typescript
+// ✅ CORRECT: Proper cache usage
+const cached = await runtime.getCache<T>(cacheKey);
+if (!cached) {
+  const newData = await computeData();
+  await runtime.setCache(cacheKey, newData);
+}
+
+// ✅ CORRECT: Test cache mocks
+mockRuntime.getCache = vi.fn().mockResolvedValue(undefined);
+mockRuntime.setCache = vi.fn().mockResolvedValue(true);
+
+// ❌ WRONG: Direct cacheManager access
+// const cached = (runtime as any).cacheManager?.get(key) as T;
+```
+
+### Debugging Steps:
+1. **Use runtime cache API**: Always use `runtime.getCache/setCache`
+2. **Mock cache methods**: Add cache mocks to test runtime
+3. **Handle cache misses**: Check for undefined cache results
+4. **Await cache operations**: Cache methods are async
+
+## Response Content Issues
+
+### Problem: "Cannot read properties of undefined (reading 'text')"
+**Symptoms**: Actions crash when processing rephrase results
+
+**Root Cause**: Incorrect handling of rephrase response or missing optional chaining
+
+**Solution**:
+```typescript
+// ✅ CORRECT: Safe response handling
+const responseContent = await rephrase({ runtime, content, state, prevActions });
+await callback(responseContent);
+
+return {
+  text: `Generated action: ${responseContent?.text || 'response'}`,
+  values: {
+    lastReply: responseContent?.text || '',
+    thoughtProcess: responseContent?.thought,
+  },
+  // ...
+};
+
+// ❌ WRONG: Unsafe property access
+// text: `Generated: ${responseContent.text}`, // Crashes if responseContent is undefined
+```
+
+### Debugging Steps:
+1. **Use optional chaining**: Always use `?.` when accessing response properties
+2. **Provide fallbacks**: Use `|| 'fallback'` for critical properties
+3. **Mock rephrase properly**: Ensure rephrase mock returns expected structure
+4. **Log response content**: Debug what rephrase actually returns
+
+## General Debugging Workflow
+
+### 1. Identify the Error Type
+- **Runtime errors**: Check service mocks, cache access, property access
+- **Test failures**: Check expectations, mock structure, return values
+- **Type errors**: Check interfaces, provider data structure, ActionResult format
+
+### 2. Common Investigation Steps
+```typescript
+// Add debug logging
+console.log('Composed state:', JSON.stringify(composedState, null, 2));
+console.log('Provider data:', providerData);
+console.log('Response content:', responseContent);
+
+// Check service availability
+console.log('Service available:', !!runtime.getService(SERVICE_NAME));
+
+// Verify mock calls
+console.log('Mock calls:', mockService.method.mock.calls);
+```
+
+### 3. Systematic Fix Approach
+1. **Fix the root cause** (action return values, provider structure, etc.)
+2. **Update tests** to match new patterns
+3. **Add missing mocks** for all dependencies
+4. **Verify error handling** returns proper ActionResult objects
+5. **Test both success and error paths**
+
+### 4. Prevention Strategies
+- **Use TypeScript strictly**: Enable strict mode and fix all type errors
+- **Follow established patterns**: Use existing actions as templates
+- **Test thoroughly**: Include both success and error cases
+- **Mock completely**: Mock all service methods and runtime features
+- **Document assumptions**: Comment expected data structures and flows

@@ -1,12 +1,6 @@
 import type { Request, Response } from "express";
 import { isHex } from "viem";
-import {
-  createUniqueUuid,
-  IAgentRuntime,
-  logger,
-  Route,
-  UUID,
-} from "@elizaos/core";
+import { createUniqueUuid, IAgentRuntime, logger, Route } from "@elizaos/core";
 import { LEVVA_SERVICE } from "../constants/enum";
 import { LevvaService } from "../services/levva/class";
 
@@ -71,7 +65,7 @@ async function handler(req: Request, res: Response, runtime: IAgentRuntime) {
         success: true,
         data: {
           ready,
-          actionState
+          actionState,
         },
       });
 

@@ -22,7 +22,7 @@ const KyberGetSwapRouteV1ResponseSchema = z.object({
         route: z.any(),
         routeID: z.string().optional(),
         checksum: z.string(),
-        timestamp: z.number()
+        timestamp: z.number(),
       }),
       routerAddress: z.string(),
     })

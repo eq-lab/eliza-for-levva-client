@@ -166,16 +166,17 @@ export function selectSwapRouter(
         calls.push(weth.getCall(amountIn));
       }
 
-      const { data: swap, tx } = await getPendleSwap({
-        chainId: chain.id.toString() as `${number}`,
-        market,
-        receiver: address,
-        slippage: slippage?.toString() as `${number}`,
-        enableAggregator: "true",
-        amountIn: amountIn.toString() as `${number}`,
-        tokenIn: (tokenIn.address ?? weth?.address)!,
-        tokenOut: (tokenOut.address ?? weth?.address)!,
-      }) ?? {};
+      const { data: swap, tx } =
+        (await getPendleSwap({
+          chainId: chain.id.toString() as `${number}`,
+          market,
+          receiver: address,
+          slippage: slippage?.toString() as `${number}`,
+          enableAggregator: "true",
+          amountIn: amountIn.toString() as `${number}`,
+          tokenIn: (tokenIn.address ?? weth?.address)!,
+          tokenOut: (tokenOut.address ?? weth?.address)!,
+        })) ?? {};
 
       if (!swap || !tx) {
         throw new Error("Failed to get pendle swap data");

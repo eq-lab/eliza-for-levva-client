@@ -80,8 +80,27 @@ export class MyService extends Service {
 - Use `runtime.logger` instead of importing `logger` directly
 - Implement proper error boundaries in actions
 - Use `rephrase()` for consistent response formatting
-- Cache expensive operations with TTL
 - Use background processing for non-critical operations
+
+## Caching Patterns
+```typescript
+// ✅ Correct cache usage
+const cached = await runtime.getCache<T>(cacheKey);
+if (!cached) {
+  const newData = await computeExpensiveOperation();
+  await runtime.setCache(cacheKey, newData);
+}
+
+// ❌ Incorrect - don't access cacheManager directly
+// const cached = (runtime as any).cacheManager?.get(key) as T;
+// (runtime as any).cacheManager?.set(key, value, ttl);
+```
+
+**Cache Guidelines**:
+- Always use `runtime.getCache<T>()` and `runtime.setCache()`
+- Specify generic types for type safety
+- Cache operations are async - always await them
+- Framework handles TTL automatically
 
 ## Previous Action Results Access
 ElizaOS stores action results in `runtime.stateCache` with key `${message.id}_action_results`. Use the typed utilities:
@@ -123,3 +142,34 @@ interface ActionResult {
   actionName?: string;
 }
 ```
+
+## CRITICAL: Action Handler Return Values
+
+### Actions Must Return ActionResult Objects
+**NEVER return undefined or void from action handlers** - this breaks action chaining.
+
+**📋 For complete ActionResult patterns and examples, see `action-patterns.mdc`**
+
+Key principles:
+- Always return `ActionResult` objects with `text`, `values`, `data`, `success` properties
+- Call `callback()` AND return `ActionResult` for proper action chaining
+- Error cases must also return `ActionResult` with `success: false`
+
+### Provider Result Structure
+**📋 For complete provider patterns, see `action-patterns.mdc`**
+
+Providers must return `ProviderResult` objects:
+```typescript
+return {
+  text: "Description of extracted data",
+  data: { /* actual data here */ },
+};
+```
+
+### Accessing Provider Data in Actions
+```typescript
+const providerResult = composedState.data?.providers?.[PROVIDER_NAME];
+const actualData = providerResult?.data;
+```
+
+**📋 For troubleshooting provider data issues, see `debugging-patterns.mdc`**

@@ -1,0 +1,155 @@
+# LLM Prompt Debugging Patterns
+
+## Overview
+
+When LLM responses have quality issues (duplication, inconsistency, hallucination), use systematic prompt engineering to fix them.
+
+> **📚 Comprehensive Guide**: See `dev-docs/debugging/llm-prompt-debugging.md` for detailed methodology and examples.
+
+## Quick Reference Patterns
+
+### Context Injection Pattern
+For issues where LLM lacks awareness of previous responses:
+
+```typescript
+const template = `
+{{#if prevActions}}
+<previousContext>{{prevActions}}</previousContext>
+<contextRules>
+CRITICAL: Above context shows information already provided.
+- DO NOT repeat specific data from previousContext
+- Provide NEW value: next steps, questions, additional context
+</contextRules>
+{{/if}}
+
+<task>{{taskDescription}}</task>
+`;
+```
+
+### Constraint Pattern
+For hallucination or off-topic responses:
+
+```typescript
+const template = `
+<constraints>
+- ONLY use data from {{dataSource}}
+- DO NOT generate fictional information
+- MUST stay within topic: {{topicScope}}
+- Format: {{requiredFormat}}
+</constraints>
+
+<data>{{contextData}}</data>
+<instructions>{{specificInstructions}}</instructions>
+`;
+```
+
+### Format Enforcement Pattern
+For inconsistent formatting:
+
+```typescript
+const template = `
+<responseFormat>
+Use this EXACT format:
+
+**{{title}}**
+{{#each items}}
+- **{{name}}**: ${{value}} ({{details}})
+{{/each}}
+Total: ${{total}}
+</responseFormat>
+
+<example>
+**Your Positions**
+- **Strategy 1**: $100.00 (0.1 ETH)
+Total: $100.00
+</example>
+`;
+```
+
+## Testing Strategy
+
+### Quality Metrics
+```typescript
+// Test response quality quantitatively
+it("should meet quality standards", async () => {
+  const response = await generateResponse(input);
+  
+  expect(response.text.length).toBeGreaterThan(100);
+  expect(calculateSimilarity(response, previousResponse)).toBeLessThan(0.3);
+  expect(response.text).toMatch(/expected-pattern/);
+});
+```
+
+### A/B Testing
+```typescript
+// Compare old vs new prompts
+describe("Prompt Enhancement", () => {
+  const testCases = [
+    { input: "test input", expectedKeywords: ["keyword1", "keyword2"] }
+  ];
+  
+  testCases.forEach(testCase => {
+    it(`should handle "${testCase.input}"`, async () => {
+      const response = await generateWithNewPrompt(testCase.input);
+      testCase.expectedKeywords.forEach(keyword => {
+        expect(response.toLowerCase()).toContain(keyword);
+      });
+    });
+  });
+});
+```
+
+## Implementation Checklist
+
+When fixing LLM response issues:
+
+- [ ] **Identify Pattern**: What type of issue? (duplication, format, hallucination, etc.)
+- [ ] **Analyze Current Prompt**: What's missing or unclear?
+- [ ] **Apply Appropriate Pattern**: Use context injection, constraints, or format enforcement
+- [ ] **Add Explicit Rules**: Include CRITICAL instructions for the LLM
+- [ ] **Create Tests**: Write tests that fail with old prompt, pass with new
+- [ ] **Measure Quality**: Use quantitative metrics (similarity, length, pattern matching)
+- [ ] **Monitor Results**: Track response quality over time
+- [ ] **Document Solution**: Add to debugging guides for future reference
+
+## Common Fixes
+
+### Duplication → Context Injection
+```typescript
+// Pass previous action context to rephrase
+const prevActions = await getPreviousReplyContext(runtime, message);
+const response = await rephrase({ runtime, content, state, prevActions });
+```
+
+### Inconsistent Format → Template Enforcement
+```typescript
+// Use strict formatting templates with examples
+const template = `<strictFormat>MUST use exact format: {{example}}</strictFormat>`;
+```
+
+### Hallucination → Data Constraints
+```typescript
+// Limit LLM to provided data only
+const template = `<data>{{realData}}</data><rules>ONLY use data above</rules>`;
+```
+
+### Off-topic → Task Boundaries
+```typescript
+// Define clear task scope and constraints
+const template = `<task>{{specificTask}}</task><scope>{{allowedTopics}}</scope>`;
+```
+
+## Related Patterns
+
+- **ElizaOS State Composition**: Use `runtime.composeState()` for provider data
+- **Service Organization**: Keep prompt logic in service helpers when possible
+- **Testing Patterns**: Always test prompt changes with integration tests
+- **Error Handling**: Include error scenarios in prompt testing
+
+## Success Metrics
+
+- **Duplication**: < 30% text similarity between sequential responses
+- **Consistency**: > 90% of responses match expected format
+- **Relevance**: > 95% of responses stay on topic
+- **Accuracy**: 0% hallucinated data when real data is available
+- **User Satisfaction**: Positive feedback on response quality

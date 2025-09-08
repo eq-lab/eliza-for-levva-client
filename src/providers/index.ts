@@ -62,11 +62,16 @@ const failure = [
   "- Suppress agent functionality.",
 ].join("\n");
 
+export {
+  withdrawParamsProvider,
+  WITHDRAW_PARAMS_PROVIDER_NAME,
+} from "./withdraw-params";
+
 export const levvaProvider: Provider = {
   name: LEVVA_PROVIDER_NAME,
   description: "Supplies with core information about the user and tokens",
   position: -100,
-  async get(runtime, message, state) {
+  async get(runtime, message) {
     try {
       const raw: RawMessage = (
         message.metadata as unknown as { raw: RawMessage }

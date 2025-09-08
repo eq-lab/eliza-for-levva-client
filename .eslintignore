@@ -1,0 +1,28 @@
+# Dependencies
+node_modules/
+bun.lockb
+
+# Build outputs
+dist/
+build/
+*.tsbuildinfo
+
+# Generated files
+data/generated/
+
+# Patches
+patches/
+
+# Config files that might have different formatting
+*.config.js
+*.config.ts
+tsup.config.bundled_*.mjs
+
+# Database migrations
+drizzle/migrations/
+
+# Uploads
+data/uploads/
+
+# Firecrawl
+firecrawl/

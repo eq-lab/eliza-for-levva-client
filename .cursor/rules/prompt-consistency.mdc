@@ -1,0 +1,368 @@
+# Prompt Consistency Guidelines
+
+## Overview
+This document establishes consistent patterns for LLM prompts across the codebase, following the established format in `src/prompts/`.
+
+## Prompt Structure Standard
+
+### File Organization
+- **Location**: All prompts go in `src/prompts/[domain].ts`
+- **Naming**: Use descriptive function names like `extract[Domain]DataFromMessagePrompt`
+- **Exports**: Export both the interface and the prompt function
+
+### Prompt Format Template
+```typescript
+import { DataDescription, formatKeys, formatOutput } from "./util";
+
+/** Extracted [domain] parameters from user messages */
+export interface ExtractedDataFor[Domain] {
+  param1?: type;
+  param2?: type;
+  // ... other parameters
+}
+
+const dataDescription: DataDescription<ExtractedDataFor[Domain]> = {
+  param1: {
+    type: "string" | "number" | "boolean" | "object" | "array",
+    description: "Clear description with examples",
+    default?: "default_value", // Optional
+  },
+  param2: {
+    type: "number",
+    description: "Another parameter description",
+  },
+};
+
+export const extract[Domain]DataFromMessagePrompt = (ctx: {
+  message: string;
+  // ... other context parameters
+}) => `<task>
+Brief description of what this prompt does.
+</task>
+<message>
+${ctx.message}
+</message>
+<context>
+${ctx.additionalContext || ""}
+</context>
+<instructions>
+Specific extraction rules and guidelines.
+- Rule 1
+- Rule 2
+- Rule 3
+</instructions>
+<keys>
+${formatKeys(dataDescription)}
+</keys>
+<output>
+${formatOutput(dataDescription)}
+
+Your response should include the valid JSON block and nothing else.
+</output>`;
+```
+
+## Section Guidelines
+
+### `<task>` Section
+- **Purpose**: Brief, clear description of the prompt's objective
+- **Format**: Single sentence or short paragraph
+- **Example**: `Extract withdrawal parameters from user message for transaction processing.`
+
+### `<message>` Section
+- **Purpose**: Contains the user's input message
+- **Format**: Direct interpolation of the message text
+- **Required**: Always include this section for message-based extraction
+
+### Context Sections
+- **Purpose**: Provide additional context (tokens, pools, recent messages, etc.)
+- **Format**: Named sections like `<recentMessages>`, `<knownTokens>`, `<pools>`
+- **Dynamic**: Include only relevant context for the specific prompt
+
+### `<instructions>` Section
+- **Purpose**: Specific rules and guidelines for extraction
+- **Format**: Clear, bulleted list of rules
+- **Content**: Domain-specific logic, edge cases, validation rules
+
+### `<keys>` Section
+- **Purpose**: Describes each parameter to extract
+- **Format**: Use `formatKeys(dataDescription)` utility
+- **Consistency**: Automatically generated from data description
+
+### `<output>` Section
+- **Purpose**: Specifies the expected JSON response format
+- **Format**: Use `formatOutput(dataDescription)` utility
+- **Requirement**: Always end with "Your response should include the valid JSON block and nothing else."
+
+## Data Description Pattern
+
+### Type Definitions
+```typescript
+interface ExtractedDataFor[Domain] {
+  // Use optional properties with specific types
+  param1?: string;
+  param2?: number;
+  param3?: "option1" | "option2" | "option3"; // Union types for enums
+  param4?: number | "special_value"; // Mixed types when needed
+}
+```
+
+### Description Object
+```typescript
+const dataDescription: DataDescription<ExtractedDataFor[Domain]> = {
+  param1: {
+    type: "string",
+    description: "Clear description with examples (e.g., 'strategy 1', 'position 2')",
+  },
+  param2: {
+    type: "number", 
+    description: "Numeric parameter with constraints or ranges",
+    default: "0", // Optional default value
+  },
+  param3: {
+    type: "string",
+    description: "Enumerated options: 'option1' for X, 'option2' for Y, 'option3' for Z",
+  },
+};
+```
+
+## Context Parameter Patterns
+
+### Common Context Types
+```typescript
+// Message-based extraction
+(ctx: { message: string })
+
+// With additional context
+(ctx: { 
+  message: string;
+  recentMessages: string;
+  knownTokens: string;
+})
+
+// Domain-specific context
+(ctx: {
+  message: string;
+  pools: string;
+  portfolio: string;
+})
+```
+
+### Context Usage
+- **Required**: `message` parameter for user input
+- **Optional**: Additional context based on domain needs
+- **Naming**: Use descriptive names that match the XML sections
+
+## Examples
+
+### Simple Extraction (Swap Pattern)
+```typescript
+export const extractSwapDataFromMessagePrompt = (ctx: {
+  recentMessages: string;
+  tokens: string;
+}) => `<task>
+Find parameters for new transaction from recent messages.
+</task>
+<recentMessages>
+${ctx.recentMessages}
+</recentMessages>
+<knownTokens>
+${ctx.tokens}
+</knownTokens>
+<instructions>
+Ignore messages for transactions that are either canceled or confirmed.
+Choose token symbol from known token symbols if ambiguous.
+Extract the following information for new transaction:
+  - Token symbol or address to swap from
+  - Token symbol or address to swap to
+  - Amount of tokens to swap, denominated in token to be sent
+</instructions>
+<keys>
+${formatKeys(dataDescription)}
+</keys>
+<output>
+${formatOutput(dataDescription)}
+
+Your response should include the valid JSON block and nothing else.
+</output>`;
+```
+
+### Complex Extraction (Strategy Pattern)
+```typescript
+export const extractStrategyDataFromMessagePrompt = (ctx: {
+  pools: string;
+  knownTokens: string;
+  portfolio: string;
+  recentMessages: string;
+}) => `<task>
+Extract data for next transaction from recent messages.
+</task>
+<pools>
+${ctx.pools}
+</pools>
+<knownTokens>
+${ctx.knownTokens}
+</knownTokens>
+<portfolio>
+${ctx.portfolio}
+</portfolio>
+<recentMessages>
+${ctx.recentMessages}
+</recentMessages>
+<instructions>
+Extract strategy parameters for investment transactions.
+Use known pools and tokens for validation.
+Consider user's current portfolio for context.
+</instructions>
+<keys>
+${formatKeys(dataDescription)}
+</keys>
+<output>
+${formatOutput(dataDescription)}
+
+Your response should include the valid JSON block and nothing else.
+</output>`;
+```
+
+### Content Generation (Rephrase Pattern)
+```typescript
+export const rephraseContentPrompt = (ctx: {
+  agentName: string;
+  providers: string;
+  initialThought: string;
+  initialText: string;
+  prevActions?: string;
+}) => `<task>
+Generate dialog for the character ${ctx.agentName}
+</task>
+<providers>
+${ctx.providers}
+</providers>
+<initialThought>
+${ctx.initialThought}
+</initialThought>
+<initialText>
+${ctx.initialText}
+</initialText>
+${ctx.prevActions ? `<prevActions>
+${ctx.prevActions}
+</prevActions>` : ''}
+<instructions>
+Rephrase message for the character ${ctx.agentName} based on the initial text and thought.
+
+CRITICAL DEDUPLICATION RULES:
+1. If prevActions contains specific data, DO NOT repeat them
+2. Provide NEW value: suggest actions, ask questions, offer options
+3. Keep responses concise and avoid redundant information
+
+CRITICAL DATA CONSISTENCY:
+- Check for logical contradictions in your response
+- Be consistent between detailed information and summary statements
+</instructions>
+<keys>
+${formatKeys(dataDescription)}
+</keys>
+<output>
+${formatOutput(dataDescription)}
+
+Your response should include the valid JSON block and nothing else.
+</output>`;
+```
+
+## Integration with Providers
+
+### Provider Usage Pattern
+```typescript
+import { extract[Domain]DataFromMessagePrompt, ExtractedDataFor[Domain] } from "../prompts/[domain]";
+
+// In provider
+const prompt = extract[Domain]DataFromMessagePrompt({ 
+  message: text,
+  // ... other context
+});
+
+const response = await runtime.useModel(ModelType.SMALL, prompt);
+const parsed = JSON.parse(response) as ExtractedDataFor[Domain];
+```
+
+### Type Safety
+- Use the exported interface from prompts
+- Ensure provider types match prompt interface
+- Handle optional properties appropriately
+
+## Best Practices
+
+### Prompt Design
+1. **Clear Instructions**: Be specific about extraction rules
+2. **Examples**: Include examples in descriptions when helpful
+3. **Edge Cases**: Address ambiguous inputs explicitly
+4. **Consistency**: Follow the established XML structure
+
+### Maintenance
+1. **Centralized**: Keep all prompts in `src/prompts/`
+2. **Versioning**: Update prompts carefully, test thoroughly
+3. **Documentation**: Document complex extraction logic
+4. **Reusability**: Design for reuse across similar domains
+
+### Testing
+1. **Mock Responses**: Test with various LLM response formats
+2. **Edge Cases**: Test malformed inputs and responses
+3. **Type Safety**: Verify interface compatibility
+4. **Consistency**: Ensure prompt changes don't break providers
+
+## Migration Guidelines
+
+### Converting Existing Prompts
+1. **Extract to File**: Move prompt string to `src/prompts/[domain].ts`
+2. **Define Interface**: Create `ExtractedDataFor[Domain]` interface
+3. **Create Description**: Build `DataDescription` object
+4. **Use Utilities**: Apply `formatKeys` and `formatOutput`
+5. **Update Provider**: Import and use new prompt function
+6. **Test Thoroughly**: Verify functionality is preserved
+
+### Validation Checklist
+- [ ] Prompt follows XML structure template
+- [ ] Interface matches expected output
+- [ ] Data description is complete and accurate
+- [ ] Provider imports and uses new prompt correctly
+- [ ] Tests pass with new prompt format
+- [ ] Documentation is updated
+
+## Model Type Selection
+
+**CRITICAL**: Always use `ModelType.OBJECT_SMALL` for prompts that expect JSON output. This guarantees structured object responses instead of text that needs parsing.
+
+### Model Type Guidelines
+- `ModelType.SMALL` - For simple text generation and basic prompts
+- `ModelType.OBJECT_SMALL` - **REQUIRED** for structured JSON output (parameter extraction, suggestions, rephrase utility)
+- `ModelType.LARGE` - For complex reasoning and analysis
+
+### JSON Response Handling Pattern
+
+When using `ModelType.OBJECT_SMALL`:
+
+```typescript
+const response = await runtime.useModel(ModelType.OBJECT_SMALL, prompt);
+
+// Parse response - OBJECT_SMALL should return structured JSON
+let parsedResponse: ExpectedInterface;
+if (typeof response === 'object' && response !== null) {
+  parsedResponse = response as ExpectedInterface;
+} else {
+  // Fallback parsing if response is still a string
+  const cleanResponse = response.toString().trim();
+  const jsonMatch = cleanResponse.match(/\{[\s\S]*\}/);
+  
+  if (jsonMatch) {
+    parsedResponse = JSON.parse(jsonMatch[0]) as ExpectedInterface;
+  } else {
+    runtime.logger.warn("Failed to parse LLM response, using fallback");
+    parsedResponse = { /* default values */ };
+  }
+}
+```
+
+### Benefits of OBJECT_SMALL
+- **Guaranteed JSON**: Returns structured objects instead of strings
+- **Type Safety**: Reduces parsing errors and improves reliability
+- **Performance**: Eliminates regex matching and JSON.parse overhead
+- **Consistency**: Standardizes LLM response handling across the codebase

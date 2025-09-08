@@ -1,5 +1,4 @@
-import type { Plugin } from "@elizaos/core";
-import { EventType, logger } from "@elizaos/core";
+import { EventType, logger, type Plugin } from "@elizaos/core";
 import { CancelRunSignal } from "@elizaos/plugin-bootstrap";
 import { z } from "zod";
 import { modules } from "./actions/modules";
@@ -8,6 +7,7 @@ import { newsProvider } from "./providers/news";
 import { swapParamsProvider } from "./providers/swap-params";
 import { strategyParamsProvider } from "./providers/strategy-params";
 import { positionParamsProvider } from "./providers/position-params";
+import { withdrawParamsProvider } from "./providers/withdraw-params";
 import { suggestionsEvaluator } from "./evaluators/suggestions";
 import { transactionAcknowledgeEvaluator } from "./evaluators/transaction-acknowledge";
 import statusRoute from "./routes/status";
@@ -31,7 +31,7 @@ const configSchema = z.object({
     .optional()
     .transform((val) => {
       if (!val) {
-        console.warn("Warning: Kyberswap client id is not provided");
+        logger.warn("Warning: Kyberswap client id is not provided");
       }
 
       return val;
@@ -73,7 +73,7 @@ const plugin: Plugin = {
   ],
   events: {
     [EventType.RUN_STARTED]: [
-      async ({ runtime, runId, entityId, messageId }) => {
+      async ({ runtime, runId, entityId }) => {
         const service = runtime.getService<LevvaService>(
           LevvaService.serviceType
         );
@@ -103,6 +103,7 @@ const plugin: Plugin = {
     swapParamsProvider,
     strategyParamsProvider,
     positionParamsProvider,
+    withdrawParamsProvider,
   ],
   evaluators: [suggestionsEvaluator, transactionAcknowledgeEvaluator],
 };

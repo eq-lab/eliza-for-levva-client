@@ -86,7 +86,10 @@ interface ExtractedParams {
   };
 }
 
-export const bundlerEnter = (pendle: PendleSwapParams, params: BundlerEnterParams) => {
+export const bundlerEnter = (
+  pendle: PendleSwapParams,
+  params: BundlerEnterParams
+) => {
   const extracted = pendle.contractCallParamsName.reduce<ExtractedParams>(
     (acc, name, i) => {
       const param = pendle.contractCallParams[i];

@@ -14,36 +14,99 @@ alwaysApply: false
 - Validate inputs with Zod schemas
 
 ## Action Error Pattern
-```typescript
-try {
-  // Action implementation
-  return {
-    text: "Success message",
-    values: { success: true },
-    success: true,
-  };
-} catch (error) {
-  logger.error("Error in ACTION_NAME:", error);
-  const errorMessage = (error as Error).message ?? "unknown error";
-  
-  const responseContent = await rephrase({
-    runtime,
-    content: {
-      text: `Failed to perform action: ${errorMessage}`,
-      thought: `Action failed with error: ${errorMessage}`,
-      actions: ["ACTION_NAME"],
-      source: message.content.source,
-    },
-    state: state!,
-  });
 
-  await callback?.(responseContent);
+### CRITICAL: Error Handling Must Return ActionResult
+Even error cases must return proper ActionResult objects for action chaining.
+
+**📋 For complete ActionResult structure and examples, see `action-patterns.mdc`**
+
+Key error handling principles:
+```typescript
+handler: async (runtime, message, state, options, callback) => {
+  // Compose state BEFORE try block for error handling access
+  const composedState = await runtime.composeState(message, [PROVIDER_NAME]);
+  
+  try {
+    // Action implementation - see action-patterns.mdc for full template
+    return successActionResult;
+  } catch (error) {
+    // CRITICAL: Use runtime.logger, not imported logger
+    runtime.logger.error(`Error in ${actionName}:`, error);
+    
+    const errorContent = await rephrase({ /* error message */ });
+    await callback(errorContent);
+    
+    // CRITICAL: Return ActionResult, not undefined
+    return errorActionResult; // See action-patterns.mdc for structure
+  }
+}
+```
+
+### Error Handling Best Practices
+1. **Always return ActionResult**: Never return undefined, even in error cases
+2. **Use runtime.logger**: Don't import logger directly, use `runtime.logger`
+3. **Compose state early**: Compose state before try block so it's available in catch
+4. **Call callback in errors**: Always call callback with user-friendly error message
+5. **Include error in ActionResult**: Add error object to ActionResult for debugging
+6. **Maintain consistent structure**: Error ActionResults should have same structure as success
+
+### Common Error Scenarios
+
+#### Missing Service
+```typescript
+const service = runtime.getService<ServiceType>(SERVICE_NAME);
+if (!service) {
+  const errorContent = await rephrase({
+    runtime,
+    content: { text: "Service is not available. Please try again later." },
+    state: composedState,
+  });
+  await callback(errorContent);
   
   return {
-    text: `Error: ${errorMessage}`,
-    values: { success: false, error: true },
+    text: "Service unavailable",
+    values: { success: false, responded: true, error: true },
+    data: { actionName: "ACTION_NAME", error: "Service not available" },
     success: false,
-    error: error as Error,
+  };
+}
+```
+
+#### Missing Provider Data
+```typescript
+const providerData = composedState.data?.providers?.[PROVIDER_NAME]?.data;
+if (!providerData) {
+  const errorContent = await rephrase({
+    runtime,
+    content: { text: "I need more information to process your request." },
+    state: composedState,
+  });
+  await callback(errorContent);
+  
+  return {
+    text: "Missing required parameters",
+    values: { success: false, responded: true, error: true },
+    data: { actionName: "ACTION_NAME", error: "Missing parameters" },
+    success: false,
+  };
+}
+```
+
+#### Invalid Input Validation
+```typescript
+if (!userAddress || !isHex(userAddress)) {
+  const errorContent = await rephrase({
+    runtime,
+    content: { text: "I need a valid wallet address to proceed." },
+    state: composedState,
+  });
+  await callback(errorContent);
+  
+  return {
+    text: "Invalid wallet address",
+    values: { success: false, responded: true, error: true },
+    data: { actionName: "ACTION_NAME", error: "Invalid address" },
+    success: false,
   };
 }
 ```

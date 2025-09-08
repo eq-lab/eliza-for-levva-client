@@ -1,0 +1,89 @@
+---
+description: Cursor Rules Organization and Cross-References
+globs: [".cursor/rules/**/*.mdc"]
+alwaysApply: false
+---
+
+# Cursor Rules Organization
+
+## 📋 Master Reference Files
+These files contain the complete patterns and examples:
+
+### `action-patterns.mdc` 🎯
+**Master reference for all action-related patterns**
+- Complete ActionResult structure and examples
+- Provider data patterns and access methods
+- Transaction handling with createCalldata
+- Comprehensive test setup examples
+- Handler function templates
+
+### `service-organization.mdc` 🏗️
+**Master reference for service architecture**
+- Service class vs helper module organization
+- Caching patterns and method binding
+- ABI imports and transaction encoding
+
+## 📚 Framework-Specific Files
+These files focus on specific aspects with cross-references:
+
+### `elizaos-patterns.mdc` 🔧
+ElizaOS framework patterns with cross-references to master files
+
+### `testing-patterns.mdc` 🧪
+Testing strategies with cross-references to action-patterns.mdc
+
+### `error-handling.mdc` ⚠️
+Error handling with cross-references to action-patterns.mdc
+
+### `debugging-patterns.mdc` 🐛
+Troubleshooting guide with cross-references to master files
+
+## 🎯 Domain-Specific Files
+These files contain domain-specific knowledge:
+
+### `levva-business-logic.mdc` 💼
+Levva protocol specific patterns and business rules
+
+### `blockchain-integration.mdc` ⛓️
+Blockchain interaction patterns and best practices
+
+### `database-patterns.mdc` 🗄️
+Database schema and ORM patterns using Drizzle
+
+## 🛠️ Development Files
+These files contain development workflow patterns:
+
+### `package-management.mdc` 📦
+Bun package management guidelines
+
+### `code-style.mdc` 🎨
+Code style and formatting rules
+
+### `prompt-consistency.mdc` 📝
+LLM prompt patterns and consistency guidelines
+
+## 📖 How to Use These Rules
+
+### When Writing Actions
+1. **Start with** `action-patterns.mdc` for complete templates
+2. **Reference** `elizaos-patterns.mdc` for framework context
+3. **Check** `error-handling.mdc` for error scenarios
+4. **Use** `testing-patterns.mdc` for test setup
+
+### When Debugging Issues
+1. **Start with** `debugging-patterns.mdc` for common issues
+2. **Reference** `action-patterns.mdc` for correct patterns
+3. **Check** `testing-patterns.mdc` for test fixes
+
+### When Organizing Services
+1. **Follow** `service-organization.mdc` for architecture
+2. **Use** `caching-patterns.mdc` for cache implementation
+3. **Reference** `elizaos-patterns.mdc` for framework integration
+
+## 🔄 Cross-Reference System
+Files use this notation for cross-references:
+- **📋 See `filename.mdc`** - Points to master reference
+- **📚 Also see `filename.mdc`** - Points to related information
+- **🔗 Cross-reference: `filename.mdc`** - Points to detailed examples
+
+This system prevents duplication while maintaining easy navigation between related concepts.

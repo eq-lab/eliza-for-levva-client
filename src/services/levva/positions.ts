@@ -6,6 +6,46 @@ export interface UserPosition {
   hasPendingWithdrawals: boolean;
 }
 
+export interface Strategy {
+  id: number;
+  name: string;
+  description: string;
+  shortDescription: string;
+  backgroundColor: string | null;
+  type: string;
+  category: string;
+  risk: string;
+  minimumEfficientDeposit: number;
+  liquidityAvailability: string;
+  vault?: {
+    id: number;
+    publicChainId: number;
+    address: string;
+    name: string | null;
+    underlyingToken: {
+      address: string;
+      symbol: string;
+      name: string;
+      decimals: number;
+      priceUsd: number;
+    };
+    lpToken: {
+      address: string;
+      symbol: string;
+      name: string;
+      decimals: number;
+      priceUsd: number;
+    };
+    lpTotalSupply: number;
+    performanceFee: number;
+    managementFee: number;
+    totalAssets: number;
+    currentApy: number;
+    minDeposit: number;
+    createdAt: string;
+  };
+}
+
 export interface WithdrawalRequest {
   vaultAddress: string;
   withdrawalNftAddress: string;
@@ -28,16 +68,28 @@ export interface PositionSummary {
 /**
  * Format positions into human-readable summary
  */
-export const formatPositionsSummary = (positions: UserPosition[]): string => {
+export const formatPositionsSummary = (
+  positions: UserPosition[],
+  strategies: Strategy[] = []
+): string => {
   if (positions.length === 0) {
     return "No active positions";
   }
 
   return positions
     .map((pos) => {
-      const strategyName = pos.strategyId ? `Strategy ${pos.strategyId}` : 'Unknown';
-      const pendingNote = pos.hasPendingWithdrawals ? ' - Has pending withdrawals' : '';
-      return `${strategyName}: $${pos.balanceUsd.toFixed(2)} (Balance: ${pos.balance})${pendingNote}`;
+      const strategy = strategies.find((s) => s.id === pos.strategyId);
+      const strategyName = strategy
+        ? strategy.name
+        : `Strategy ${pos.strategyId}`;
+      const assetSymbol = strategy?.vault?.underlyingToken?.symbol || "";
+      const balanceDisplay = assetSymbol
+        ? `${pos.balance} ${assetSymbol}`
+        : pos.balance.toString();
+      const pendingNote = pos.hasPendingWithdrawals
+        ? " - Pending withdrawals"
+        : "";
+      return `${strategyName}: $${pos.balanceUsd.toFixed(2)} (Balance: ${balanceDisplay})${pendingNote}`;
     })
     .join("\n");
 };
@@ -45,16 +97,18 @@ export const formatPositionsSummary = (positions: UserPosition[]): string => {
 /**
  * Format withdrawal requests into human-readable summary
  */
-export const formatWithdrawalsSummary = (withdrawals: WithdrawalRequest[]): string => {
+export const formatWithdrawalsSummary = (
+  withdrawals: WithdrawalRequest[]
+): string => {
   const pendingWithdrawals = withdrawals.filter((req) => !req.isFinalized);
-  
+
   if (pendingWithdrawals.length === 0) {
     return "No pending withdrawals";
   }
 
   return pendingWithdrawals
     .map((req) => {
-      const status = req.isFinalized ? 'Finalized' : 'Pending';
+      const status = req.isFinalized ? "Finalized" : "Pending";
       return `Request #${req.requestId}: ${req.amount} tokens from Strategy ${req.strategyId} (${status})`;
     })
     .join("\n");
@@ -64,18 +118,22 @@ export const formatWithdrawalsSummary = (withdrawals: WithdrawalRequest[]): stri
  * Create position summary from raw data
  */
 export const createPositionSummary = (
-  positions: UserPosition[], 
-  withdrawals: WithdrawalRequest[]
+  positions: UserPosition[],
+  withdrawals: WithdrawalRequest[],
+  strategies: Strategy[] = []
 ): PositionSummary => {
   const hasPositions = positions.length > 0;
+
+  // FIXED: Use withdrawal requests as the source of truth for pending status
+  // The hasPendingWithdrawals flag in positions should match !isFinalized in withdrawal requests
   const hasPendingWithdrawals = withdrawals.some((req) => !req.isFinalized);
 
   const totalPositionValue = positions.reduce(
-    (sum, position) => sum + position.balanceUsd, 
+    (sum, position) => sum + position.balanceUsd,
     0
   );
 
-  const positionsSummary = formatPositionsSummary(positions);
+  const positionsSummary = formatPositionsSummary(positions, strategies);
   const withdrawalsSummary = formatWithdrawalsSummary(withdrawals);
 
   return {

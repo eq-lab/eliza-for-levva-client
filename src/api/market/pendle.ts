@@ -74,7 +74,9 @@ const ActiveMarketsSchema = z.object({
   ),
 });
 
-export type PendleActiveMarkets = NonNullable<z.infer<typeof ActiveMarketsSchema>["markets"]>;
+export type PendleActiveMarkets = NonNullable<
+  z.infer<typeof ActiveMarketsSchema>["markets"]
+>;
 
 export const getActiveMarkets = async (chainId: number) => {
   const url = `https://api-v2.pendle.finance/core/v1/${chainId}/markets/active`;

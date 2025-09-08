@@ -106,10 +106,54 @@ import { createPositionSummary, formatPositionsSummary } from "./positions";
 import { UserPosition, formatPositionsSummary } from "../services/levva/positions";
 ```
 
+## ABI and Asset Management
+
+### Static Imports for ABIs
+```typescript
+// ✅ Prefer static imports at top of file
+import vaultAbi from "./abi/vault.abi";
+import withdrawalNftAbi from "./abi/vault.withdrawal-nft.abi";
+import poolAbi from "./abi/pool.abi";
+
+// ❌ Avoid dynamic requires
+// const vaultAbi = require("./abi/vault.abi").default;
+```
+
+### Transaction Handling with createCalldata
+```typescript
+// ✅ Use service's createCalldata method
+const calldataWithDescription = [{
+  to: contractAddress as `0x${string}`,
+  data: this.encodeFunction(params),
+  value: "0",
+  title: "Transaction Title",
+  description: "Detailed description of what this transaction does",
+}];
+
+const calldataHash = await this.createCalldata(calldataWithDescription);
+
+// ❌ Don't create raw transaction objects
+// const transactionData = { to, data, chainId, value };
+```
+
+### Encoding Methods
+```typescript
+// Keep encoding methods in service class - they use imported ABIs
+encodeRequestRedeem(shares: bigint): `0x${string}` {
+  return encodeFunctionData({
+    abi: vaultAbi, // Uses static import
+    functionName: "requestRedeem",
+    args: [shares],
+  });
+}
+```
+
 ## Migration Strategy
 When refactoring existing services:
 1. **Identify pure functions** - no `this` dependencies, no side effects
 2. **Extract interfaces first** - establish data contracts
 3. **Move pure functions** - maintain same API
 4. **Update imports** - service class and consumers
-5. **Test thoroughly** - ensure no functionality lost
+5. **Replace dynamic requires** - use static imports for ABIs
+6. **Update transaction handling** - use createCalldata method
+7. **Test thoroughly** - ensure no functionality lost

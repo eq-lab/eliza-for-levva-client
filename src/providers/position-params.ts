@@ -21,7 +21,7 @@ export const positionParamsProvider: Provider = {
   name: POSITION_PARAMS_PROVIDER_NAME,
   description: "Provides user position data and withdrawal request information",
   position: -50,
-  async get(runtime, message, state) {
+  async get(runtime, message) {
     try {
       const raw: RawMessage = (
         message.metadata as unknown as { raw: RawMessage }
@@ -50,7 +50,7 @@ export const positionParamsProvider: Provider = {
       }
 
       // Use LevvaService to get position summary with caching
-      const summary = await service.getPositionSummary(user.address);
+      const summary = await service.getPositionSummary(user.address, chainId);
 
       const data: PositionParamsProviderData = {
         userPositions: summary.positions,
@@ -68,7 +68,8 @@ ${summary.positionsSummary}
 Total Portfolio Value: $${summary.totalPositionValue.toFixed(2)}
 
 ## Withdrawal Status
-${summary.withdrawalsSummary}`;
+${summary.withdrawalsSummary}
+Overall Pending Withdrawals: ${summary.hasPendingWithdrawals ? "Yes" : "No"}`;
 
       return {
         text,
