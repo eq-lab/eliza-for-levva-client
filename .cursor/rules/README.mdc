@@ -32,6 +32,9 @@ ElizaOS framework patterns with cross-references to master files
 ### `testing-patterns.mdc` 🧪
 Testing strategies with cross-references to action-patterns.mdc
 
+### `test-organization.mdc` 📁
+Test file organization, cleanup patterns, and maintenance guidelines
+
 ### `error-handling.mdc` ⚠️
 Error handling with cross-references to action-patterns.mdc
 
@@ -61,6 +64,9 @@ Code style and formatting rules
 
 ### `prompt-consistency.mdc` 📝
 LLM prompt patterns and consistency guidelines
+
+### `llm-prompt-limitations.mdc` 🚫
+LLM prompt engineering limitations and architectural solutions for reliable behavior
 
 ## 📖 How to Use These Rules
 

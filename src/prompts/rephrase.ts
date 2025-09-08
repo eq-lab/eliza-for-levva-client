@@ -15,7 +15,7 @@ const dataDescription: DataDescription<ExtractedDataForRephrase> = {
   message: {
     type: "string",
     description:
-      "The next message for the agent to send to the conversation, rephrased from initial text",
+      "The next message for the agent to send to the conversation, rephrased from initial text. CRITICAL: If previous actions already provided similar information, focus on complementary details rather than repeating the same data.",
   },
 };
 
@@ -26,7 +26,8 @@ export const rephraseContentPrompt = (ctx: {
   initialText: string;
   prevActions?: string;
 }) => `<task>
-Generate dialog for the character ${ctx.agentName}
+Generate dialog for the character ${ctx.agentName}. 
+CRITICAL: Avoid duplicating information from previous actions. If prevActions contain data, provide complementary information instead of repeating the same data.
 </task>
 <providers>
 ${ctx.providers}
@@ -47,27 +48,35 @@ ${ctx.prevActions}
 <instructions>
 Rephrase message for the character ${ctx.agentName} based on the initial text and thought, but in your own words.
 Do not include examples of data in your response.
+CRITICAL DEDUPLICATION: Before generating your response, carefully check if prevActions already contain similar information. If they do, provide complementary information instead of repeating the same data.
 
-CRITICAL DEDUPLICATION RULES:
-1. If prevActions contains specific data (dollar amounts, balances, strategy names, totals), DO NOT repeat them
-2. If prevActions already provided position details, focus on next steps or questions instead
-3. Use phrases like "As you can see above" or "Building on that information" if you must reference previous data
-4. Provide NEW value: suggest actions, ask questions, offer options, or give additional context
-5. Keep responses concise and avoid redundant information
+CRITICAL: PRESERVE ORIGINAL FORMAT & AVOID DUPLICATION
+- If content starts with "##" (structured format), keep it structured - do NOT add conversational intro
+- If content is conversational, keep it conversational - do NOT add structured sections  
+- NEVER combine both formats in one response
+- If you see structured data (## headers, bullet points, dollar amounts), preserve the exact structure
+- DEDUPLICATION CHECK: If prevActions already contain the same structured data, focus on providing management options and next steps instead
 
-CRITICAL DATA CONSISTENCY:
-- Check for logical contradictions in your response
-- If you mention positions with "Pending withdrawals", do NOT say "no pending withdrawals" in summary
-- If individual items show pending status, overall summary must acknowledge this
-- Be consistent between detailed information and summary statements
+STRICT RULES:
+- Do NOT add "Here's your..." or "Let me show you..." to structured content
+- Do NOT add conversational explanations to structured summaries
+- Keep the original tone and format exactly as provided
+- Only improve clarity within the same format style
 
-Analyze the prevActions above. If they contain detailed information (positions, balances, amounts), your response MUST provide NEW value and NOT repeat any specific data already shared. Focus on actionable next steps, questions, or additional context.
+DEDUPLICATION PRIORITY:
+1. Check prevActions for data overlap (dollar amounts, strategy names, balances, addresses)
+2. If overlap exists: Provide complementary information (management options, next steps, additional context)
+3. If no overlap: Provide the requested information normally
+4. Always focus on adding value, never repeat identical information
 </instructions>
 <keys>
 ${formatKeys(dataDescription)}
+
+IMPORTANT: When generating the 'message' field, remember to check prevActions for duplicate information and provide complementary content instead.
 </keys>
 <output>
 ${formatOutput(dataDescription)}
 
 Your response should include the valid JSON block and nothing else.
+FINAL CHECK: Ensure your message does not duplicate information from prevActions. Focus on complementary value.
 </output>`;

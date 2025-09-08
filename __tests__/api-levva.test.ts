@@ -8,9 +8,10 @@ import {
   userPositionsResponseSchema,
   withdrawalRequestsResponseSchema,
 } from "../src/api/levva/schema";
+import { ADDRESS } from "./chat/setup";
 
 describe("Levva API", () => {
-  const testAddress = "0x40b88b09610487A26b18FB52DBe319D1268fCa22" as const;
+  const testAddress = ADDRESS;
   const testChainId = 1;
 
   describe("Unit Tests", () => {

@@ -387,3 +387,74 @@ describe("Action Name", () => {
 - Returning raw data instead of ProviderResult
 - Missing text description in ProviderResult
 - Incorrect data nesting structure
+
+## Action Separation and Deduplication
+
+### Problem: Multiple Actions Duplicating Information
+When multiple actions are triggered for the same user request, they may provide duplicate information.
+
+### Solution: Clear Action Responsibilities
+```typescript
+// ✅ GOOD: Each action has distinct purpose
+// REPLY action: Conversational summary with position details
+// MANAGE_POSITIONS action: Management options, withdrawal status, available strategies
+
+// Example of fixed MANAGE_POSITIONS action:
+text = `## Management Options
+${managementSuggestions.join("\n")}
+
+## Withdrawal Status
+${positionData.withdrawalsSummary}
+
+## Other Available Strategies
+${availableStrategies.map(service.formatStrategy).join("\n\n")}`;
+
+// ❌ BAD: Both actions providing same position details
+text = `## Your Position Summary
+${positionData.positionsSummary}  // ← Duplicates REPLY action
+**Total Portfolio Value**: ${totalValue}`;
+```
+
+### Critical Insight: LLM Deduplication Limitations
+
+**Fundamental Problem**: LLM-based deduplication via rephrase prompts is inherently unreliable and inconsistent.
+
+**Evidence from Testing**:
+- 3 iterations of increasingly specific rephrase prompt modifications
+- Tested with hardcoded patterns, step-by-step instructions, and generalized rules
+- Results: Inconsistent behavior - sometimes works, sometimes doesn't
+- Same prompt produces different results across runs
+
+**Real Example of Persistent Duplication**:
+```
+REPLY: "Strategy 1: $3.36, Safe yield: $1.00, Origin WETH Vault: $21.61, Total: $27.97"
+MANAGE_POSITIONS: "Strategy 1: $3.36, Safe yield: $1.00, Origin WETH Vault: $21.61, Total: $27.97"
+```
+
+**Why Rephrase Prompts Fail**:
+1. **Context Dependency**: LLM interpretation varies based on model state, temperature, context window
+2. **Pattern Recognition**: Complex to reliably detect semantic duplication across different formats
+3. **Multi-Action Scenarios**: Difficult to coordinate deduplication across multiple simultaneous actions
+4. **Generalization Challenge**: Rules specific enough to work are too narrow; general rules are too vague
+
+**Architectural Solution Required**:
+Instead of post-processing deduplication, design actions with inherently distinct responsibilities:
+
+- **REPLY**: Conversational acknowledgment only ("I'll analyze your positions")
+- **MANAGE_POSITIONS**: Complete structured data with management options  
+- **SELECT_STRATEGY**: Strategy selection and parameter gathering
+- **SWAP_TOKENS**: Transaction preparation and execution
+- **ANALYZE_WALLET**: Analysis and optimization insights
+
+**Key Learning**: Reliable deduplication requires architectural design, not prompt engineering.
+
+### Testing Deduplication
+```typescript
+// Integration test should verify no duplicate information
+const responses = await getAllActionResponses(message);
+const replyText = responses.find(r => r.actions.includes('REPLY'))?.text;
+const actionText = responses.find(r => r.actions.includes('MANAGE_POSITIONS'))?.text;
+
+// Should not contain same specific data (dollar amounts, strategy names)
+expect(calculateTextSimilarity(replyText, actionText)).toBeLessThan(0.3);
+```

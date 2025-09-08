@@ -49,7 +49,7 @@ describe("Withdraw Params Provider", () => {
       });
 
       mockRuntime.useModel.mockResolvedValue(mockLLMResponse);
-      mockCacheManager.get.mockReturnValue(null); // No cache hit
+      mockRuntime.getCache.mockResolvedValue(null); // No cache hit
 
       const message = {
         id: "test-message-123",
@@ -68,22 +68,24 @@ describe("Withdraw Params Provider", () => {
         )
       );
 
-      expect(mockCacheManager.set).toHaveBeenCalledWith(
+      expect(mockRuntime.setCache).toHaveBeenCalledWith(
         "withdraw-params-test-message-123",
         expect.objectContaining({
           strategyId: 2,
           amount: 150.5,
           withdrawalStep: "request",
           confidence: 95,
-        }),
-        300000 // 5 minutes TTL
+        })
       );
 
       expect(result).toEqual({
-        userAddress: "0x1234567890123456789012345678901234567890",
-        strategyId: 2,
-        amount: 150.5,
-        withdrawalStep: "request",
+        text: expect.stringContaining("Extracted withdrawal parameters"),
+        data: {
+          userAddress: "0x1234567890123456789012345678901234567890",
+          strategyId: 2,
+          amount: 150.5,
+          withdrawalStep: "request",
+        },
       });
     });
 
@@ -97,7 +99,7 @@ describe("Withdraw Params Provider", () => {
       });
 
       mockRuntime.useModel.mockResolvedValue(mockLLMResponse);
-      mockCacheManager.get.mockReturnValue(null);
+      mockRuntime.getCache.mockResolvedValue(null);
 
       const message = {
         id: "test-message-456",
@@ -110,10 +112,13 @@ describe("Withdraw Params Provider", () => {
       const result = await withdrawParamsProvider.get(mockRuntime, message);
 
       expect(result).toEqual({
-        userAddress: "0x1234567890123456789012345678901234567890",
-        strategyId: 1,
-        amount: -1, // Special value for "all"
-        withdrawalStep: "request",
+        text: expect.stringContaining("Extracted withdrawal parameters"),
+        data: {
+          userAddress: "0x1234567890123456789012345678901234567890",
+          strategyId: 1,
+          amount: -1, // Special value for "all"
+          withdrawalStep: "request",
+        },
       });
     });
 
@@ -127,7 +132,7 @@ describe("Withdraw Params Provider", () => {
       });
 
       mockRuntime.useModel.mockResolvedValue(mockLLMResponse);
-      mockCacheManager.get.mockReturnValue(null);
+      mockRuntime.getCache.mockResolvedValue(null);
 
       const message = {
         id: "test-message-789",
@@ -140,9 +145,12 @@ describe("Withdraw Params Provider", () => {
       const result = await withdrawParamsProvider.get(mockRuntime, message);
 
       expect(result).toEqual({
-        userAddress: "0x1234567890123456789012345678901234567890",
-        withdrawalStep: "claim",
-        requestId: 123,
+        text: expect.stringContaining("Extracted withdrawal parameters"),
+        data: {
+          userAddress: "0x1234567890123456789012345678901234567890",
+          withdrawalStep: "claim",
+          requestId: 123,
+        },
       });
     });
 
@@ -156,7 +164,7 @@ describe("Withdraw Params Provider", () => {
       });
 
       mockRuntime.useModel.mockResolvedValue(mockLLMResponse);
-      mockCacheManager.get.mockReturnValue(null);
+      mockRuntime.getCache.mockResolvedValue(null);
 
       const message = {
         id: "test-message-status",
@@ -169,8 +177,11 @@ describe("Withdraw Params Provider", () => {
       const result = await withdrawParamsProvider.get(mockRuntime, message);
 
       expect(result).toEqual({
-        userAddress: "0x1234567890123456789012345678901234567890",
-        withdrawalStep: "check",
+        text: expect.stringContaining("Extracted withdrawal parameters"),
+        data: {
+          userAddress: "0x1234567890123456789012345678901234567890",
+          withdrawalStep: "check",
+        },
       });
     });
   });
@@ -185,7 +196,7 @@ describe("Withdraw Params Provider", () => {
         confidence: 92,
       };
 
-      mockCacheManager.get.mockReturnValue(cachedParams);
+      mockRuntime.getCache.mockResolvedValue(cachedParams);
 
       const message = {
         id: "cached-message-123",
@@ -197,22 +208,25 @@ describe("Withdraw Params Provider", () => {
 
       const result = await withdrawParamsProvider.get(mockRuntime, message);
 
-      expect(mockCacheManager.get).toHaveBeenCalledWith(
+      expect(mockRuntime.getCache).toHaveBeenCalledWith(
         "withdraw-params-cached-message-123"
       );
       expect(mockRuntime.useModel).not.toHaveBeenCalled(); // Should not call LLM
-      expect(mockCacheManager.set).not.toHaveBeenCalled(); // Should not update cache
+      expect(mockRuntime.setCache).not.toHaveBeenCalled(); // Should not update cache
 
       expect(result).toEqual({
-        userAddress: "0x1234567890123456789012345678901234567890",
-        strategyId: 3,
-        amount: 200,
-        withdrawalStep: "request",
+        text: expect.stringContaining("Extracted withdrawal parameters"),
+        data: {
+          userAddress: "0x1234567890123456789012345678901234567890",
+          strategyId: 3,
+          amount: 200,
+          withdrawalStep: "request",
+        },
       });
     });
 
     it("should use correct cache key format", async () => {
-      mockCacheManager.get.mockReturnValue(null);
+      mockRuntime.getCache.mockResolvedValue(null);
       mockRuntime.useModel.mockResolvedValue('{"confidence": 50}');
 
       const message = {
@@ -225,13 +239,12 @@ describe("Withdraw Params Provider", () => {
 
       await withdrawParamsProvider.get(mockRuntime, message);
 
-      expect(mockCacheManager.get).toHaveBeenCalledWith(
+      expect(mockRuntime.getCache).toHaveBeenCalledWith(
         "withdraw-params-unique-message-id-789"
       );
-      expect(mockCacheManager.set).toHaveBeenCalledWith(
+      expect(mockRuntime.setCache).toHaveBeenCalledWith(
         "withdraw-params-unique-message-id-789",
-        expect.any(Object),
-        300000
+        expect.any(Object)
       );
     });
   });
@@ -239,7 +252,7 @@ describe("Withdraw Params Provider", () => {
   describe("Fallback Behavior", () => {
     it("should fallback to regex extraction when LLM fails", async () => {
       mockRuntime.useModel.mockRejectedValue(new Error("LLM API Error"));
-      mockCacheManager.get.mockReturnValue(null);
+      mockRuntime.getCache.mockResolvedValue(null);
 
       const message = {
         id: "fallback-test",
@@ -256,28 +269,30 @@ describe("Withdraw Params Provider", () => {
         expect.any(Error)
       );
 
-      expect(mockCacheManager.set).toHaveBeenCalledWith(
+      expect(mockRuntime.setCache).toHaveBeenCalledWith(
         "withdraw-params-fallback-test",
         expect.objectContaining({
           strategyId: 1,
           amount: 50,
           withdrawalStep: "request",
           confidence: 50, // Lower confidence for regex fallback
-        }),
-        300000
+        })
       );
 
       expect(result).toEqual({
-        userAddress: "0x1234567890123456789012345678901234567890",
-        strategyId: 1,
-        amount: 50,
-        withdrawalStep: "request",
+        text: expect.stringContaining("Extracted withdrawal parameters"),
+        data: {
+          userAddress: "0x1234567890123456789012345678901234567890",
+          strategyId: 1,
+          amount: 50,
+          withdrawalStep: "request",
+        },
       });
     });
 
     it("should handle malformed LLM response gracefully", async () => {
       mockRuntime.useModel.mockResolvedValue("Invalid JSON response");
-      mockCacheManager.get.mockReturnValue(null);
+      mockRuntime.getCache.mockResolvedValue(null);
 
       const message = {
         id: "malformed-test",
@@ -295,7 +310,10 @@ describe("Withdraw Params Provider", () => {
 
       // Should still return basic params with user address
       expect(result).toEqual({
-        userAddress: "0x1234567890123456789012345678901234567890",
+        text: expect.stringContaining("Extracted withdrawal parameters"),
+        data: {
+          userAddress: "0x1234567890123456789012345678901234567890",
+        },
       });
     });
   });
@@ -343,7 +361,7 @@ describe("Withdraw Params Provider", () => {
       });
 
       mockRuntime.useModel.mockResolvedValue(mockLLMResponse);
-      mockCacheManager.get.mockReturnValue(null);
+      mockRuntime.getCache.mockResolvedValue(null);
 
       const message = {
         id: "validation-test",
@@ -357,8 +375,11 @@ describe("Withdraw Params Provider", () => {
 
       // Should filter out invalid parameters
       expect(result).toEqual({
-        userAddress: "0x1234567890123456789012345678901234567890",
-        withdrawalStep: "request", // Only valid parameter should remain
+        text: expect.stringContaining("Extracted withdrawal parameters"),
+        data: {
+          userAddress: "0x1234567890123456789012345678901234567890",
+          withdrawalStep: "request", // Only valid parameter should remain
+        },
       });
     });
   });

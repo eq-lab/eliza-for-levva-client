@@ -70,7 +70,8 @@ export interface PositionSummary {
  */
 export const formatPositionsSummary = (
   positions: UserPosition[],
-  strategies: Strategy[] = []
+  strategies: Strategy[] = [],
+  withdrawals: WithdrawalRequest[] = []
 ): string => {
   if (positions.length === 0) {
     return "No active positions";
@@ -86,9 +87,13 @@ export const formatPositionsSummary = (
       const balanceDisplay = assetSymbol
         ? `${pos.balance} ${assetSymbol}`
         : pos.balance.toString();
-      const pendingNote = pos.hasPendingWithdrawals
-        ? " - Pending withdrawals"
-        : "";
+
+      // FIXED: Use withdrawal requests as single source of truth for pending status
+      const hasPendingWithdrawals = withdrawals.some(
+        (req) => req.strategyId === pos.strategyId && !req.isFinalized
+      );
+      const pendingNote = hasPendingWithdrawals ? " - Pending withdrawals" : "";
+
       return `${strategyName}: $${pos.balanceUsd.toFixed(2)} (Balance: ${balanceDisplay})${pendingNote}`;
     })
     .join("\n");
@@ -133,7 +138,11 @@ export const createPositionSummary = (
     0
   );
 
-  const positionsSummary = formatPositionsSummary(positions, strategies);
+  const positionsSummary = formatPositionsSummary(
+    positions,
+    strategies,
+    withdrawals
+  );
   const withdrawalsSummary = formatWithdrawalsSummary(withdrawals);
 
   return {

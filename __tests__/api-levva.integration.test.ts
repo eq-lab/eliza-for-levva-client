@@ -4,9 +4,10 @@ import {
   getWithdrawalRequests,
   getStrategies,
 } from "../src/api/levva";
+import { ADDRESS } from "./chat/setup";
 
 describe("Levva API Integration Tests", () => {
-  const testAddress = "0x40b88b09610487A26b18FB52DBe319D1268fCa22" as const;
+  const testAddress = ADDRESS;
   const testChainId = 1;
 
   // These tests call real API endpoints - they may be slow or fail if the API is down

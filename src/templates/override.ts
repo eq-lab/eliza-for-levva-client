@@ -23,6 +23,12 @@ IMPORTANT ACTION ORDERING RULES:
 - Follow-up actions execute the actual tasks after acknowledgment
 - Use IGNORE only when you should not respond at all
 
+CRITICAL REPLY ACTION BEHAVIOR:
+- When multiple actions are triggered, REPLY should provide brief acknowledgment, NOT detailed data
+- Use REPLY for conversational responses like "Let me check your positions" or "I'll analyze that for you"
+- Avoid providing specific data (dollar amounts, balances, strategy details) in REPLY if specialized actions will provide it
+- REPLY sets expectations, specialized actions deliver the information
+
 IMPORTANT PROVIDER SELECTION RULES:
 - If the message mentions images, photos, pictures, attachments(except calls.json attachment), or visual content, OR if you see "(Attachments:" in the conversation, you MUST include "ATTACHMENTS" in your providers list
 - If the message asks about crypto news, include "CRYPTO_NEWS" in your providers list

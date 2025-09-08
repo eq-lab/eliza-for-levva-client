@@ -1,0 +1,125 @@
+# Test Organization and Cleanup Patterns
+
+## Test File Structure
+
+### Organized Chat Tests
+```
+__tests__/chat/
+├── setup.ts              # Shared test utilities and constants
+├── basic.integration.test.ts      # Connection and socket tests
+├── levva-actions.integration.test.ts  # Core Levva action tests
+└── response-quality.integration.test.ts  # Response quality validation
+```
+
+### Benefits of Split Structure
+- **Focused Testing**: Each file tests specific functionality
+- **Shared Setup**: Common utilities in `setup.ts`
+- **Maintainability**: Easier to find and update specific tests
+- **Parallel Execution**: Tests can run in parallel more efficiently
+
+## Test Cleanup Guidelines
+
+### Remove Redundant Files
+```typescript
+// ❌ REMOVE: Duplicate test utilities
+__tests__/chat-helper.test.ts
+__tests__/utils/chat-test-helper.ts
+__tests__/utils/test-constants.ts
+
+// ❌ REMOVE: Monolithic test files after splitting
+__tests__/chat-instance.integration.test.ts
+```
+
+### Consolidate Constants
+```typescript
+// ✅ GOOD: Shared constants in setup
+// __tests__/chat/setup.ts
+export const SECRET = "0x...";
+export const ADDRESS = "0x40b88b09610487A26b18FB52DBe319D1268fCa22";
+
+// ✅ GOOD: Import shared constants
+// __tests__/api-levva.test.ts
+import { ADDRESS } from "./chat/setup";
+const testAddress = ADDRESS;
+```
+
+### Provider Test Updates
+When providers return `ProviderResult` format:
+```typescript
+// ❌ OLD: Expecting raw data
+expect(result).toEqual({
+  userAddress: "0x...",
+  strategyId: 1,
+});
+
+// ✅ NEW: Expecting ProviderResult format
+expect(result).toEqual({
+  text: expect.stringContaining("Extracted parameters"),
+  data: {
+    userAddress: "0x...",
+    strategyId: 1,
+  },
+});
+```
+
+### Cache API Updates
+When using new cache API:
+```typescript
+// ❌ OLD: Direct cache manager with TTL
+expect(mockCacheManager.set).toHaveBeenCalledWith(key, value, 300000);
+
+// ✅ NEW: Runtime cache API without TTL
+expect(mockRuntime.setCache).toHaveBeenCalledWith(key, value);
+expect(mockRuntime.getCache).toHaveBeenCalledWith(key);
+```
+
+## Test Maintenance Checklist
+
+### Before Cleanup
+1. **Identify Redundancy**: Look for duplicate test files and utilities
+2. **Check Dependencies**: Ensure no other files depend on files to be removed
+3. **Backup Important Logic**: Extract any unique test logic before deletion
+
+### During Cleanup
+1. **Split Large Files**: Break monolithic test files into focused modules
+2. **Consolidate Constants**: Move shared values to common setup files
+3. **Update Imports**: Fix import paths after file moves/deletions
+4. **Fix API Changes**: Update test expectations for new APIs
+
+### After Cleanup
+1. **Run All Tests**: Ensure no tests are broken by changes
+2. **Update Documentation**: Reflect new structure in README/docs
+3. **Update CI/CD**: Adjust test scripts if needed
+
+## Socket API Corrections
+
+### Correct API Usage
+```typescript
+// ❌ WRONG: Non-existent method
+await socket.clearMessages(channelId);
+
+// ✅ CORRECT: Use client messaging API
+await client.messaging.clearChannelHistory(channelId);
+```
+
+## Test Organization Benefits
+
+### Performance
+- **Parallel Execution**: Smaller test files run faster in parallel
+- **Focused Failures**: Easier to identify which functionality is broken
+- **Selective Testing**: Can run specific test suites during development
+
+### Maintainability
+- **Clear Separation**: Each file has a single responsibility
+- **Shared Utilities**: Common setup reduces duplication
+- **Easy Navigation**: Developers can quickly find relevant tests
+
+### Quality
+- **Comprehensive Coverage**: Organized tests are more likely to cover edge cases
+- **Consistent Patterns**: Shared setup ensures consistent test patterns
+- **Better Debugging**: Focused tests make debugging easier
+
+## Cross-References
+- See `testing-patterns.mdc` for general testing guidelines
+- See `chat-testing.mdc` for chat-specific testing patterns
+- See `action-patterns.mdc` for action testing requirements
