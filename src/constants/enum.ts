@@ -7,4 +7,11 @@ export enum LEVVA_ACTIONS {
 
 export enum LEVVA_SERVICE {
   LEVVA_COMMON = "levva-common",
+  INTENT_MANAGER = "intent-manager",
+}
+
+export enum INTENT_TYPE {
+  WITHDRAW = "WITHDRAW",
+  DEPOSIT = "DEPOSIT",
+  SWAP = "SWAP",
 }

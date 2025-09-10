@@ -3,6 +3,7 @@
 ## 📋 Cross-References
 This file contains the **master reference** for action patterns. Other files reference these patterns:
 - `elizaos-patterns.mdc` - Framework overview with cross-references
+- `intent-based-actions.mdc` - Intent-based action resolution system
 - `error-handling.mdc` - Error-specific patterns with cross-references  
 - `testing-patterns.mdc` - Test patterns with cross-references
 - `debugging-patterns.mdc` - Troubleshooting guide with cross-references

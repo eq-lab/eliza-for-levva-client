@@ -329,11 +329,19 @@ export const suggest: Suggestion[] = [
       runtime,
       { address, chainId, conversation, decision }
     ) => {
-      return exchangeAmountPrompt(runtime, {
-        address,
-        chainId,
+      const service = runtime.getService<LevvaService>("levva");
+      if (!service) {
+        throw new Error("Failed to get levva service");
+      }
+
+      const assets = await service.getWalletAssets({ address, chainId });
+      const available = await service.getAvailableTokens({ chainId });
+
+      return exchangeAmountPrompt({
         conversation,
         decision,
+        walletAssetsFormatted: service.formatWalletAssets(assets),
+        availableTokens: available,
       });
     },
   },
@@ -345,11 +353,19 @@ export const suggest: Suggestion[] = [
       runtime,
       { address, chainId, conversation, decision }
     ) => {
-      return exchangePairsPrompt(runtime, {
-        address,
-        chainId,
+      const service = runtime.getService<LevvaService>("levva");
+      if (!service) {
+        throw new Error("Failed to get levva service");
+      }
+
+      const assets = await service.getWalletAssets({ address, chainId });
+      const available = await service.getAvailableTokens({ chainId });
+
+      return exchangePairsPrompt({
         conversation,
         decision,
+        walletAssetsFormatted: service.formatWalletAssets(assets),
+        availableTokens: available,
       });
     },
   },

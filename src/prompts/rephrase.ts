@@ -21,7 +21,7 @@ const dataDescription: DataDescription<ExtractedDataForRephrase> = {
 
 export const rephraseContentPrompt = (ctx: {
   agentName: string;
-  providers: string;
+  providers?: string;
   initialThought: string;
   initialText: string;
   prevActions?: string;
@@ -29,9 +29,13 @@ export const rephraseContentPrompt = (ctx: {
 Generate dialog for the character ${ctx.agentName}. 
 CRITICAL: Avoid duplicating information from previous actions. If prevActions contain data, provide complementary information instead of repeating the same data.
 </task>
-<providers>
+${
+  ctx.providers
+    ? `<providers>
 ${ctx.providers}
-</providers>
+</providers>`
+    : ""
+}
 <initialThought>
 ${ctx.initialThought}
 </initialThought>

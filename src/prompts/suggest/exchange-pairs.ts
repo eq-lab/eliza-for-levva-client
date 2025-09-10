@@ -1,27 +1,19 @@
-import { IAgentRuntime } from "@elizaos/core";
-import { LevvaService } from "../../services/levva/class";
-import { LEVVA_SERVICE } from "../../constants/enum";
-
 export interface ExchangePairsParams {
-  address: `0x${string}`;
-  chainId: number;
   conversation: string;
   decision: any;
+  walletAssetsFormatted: string;
+  availableTokens: Array<{
+    symbol: string;
+    address?: string;
+  }>;
 }
 
-export const exchangePairsPrompt = async (
-  runtime: IAgentRuntime,
-  { address, chainId, conversation, decision }: ExchangePairsParams
-): Promise<string> => {
-  const service = runtime.getService<LevvaService>(LEVVA_SERVICE.LEVVA_COMMON);
-
-  if (!service) {
-    throw new Error("Failed to get levva service");
-  }
-
-  const assets = await service.getWalletAssets({ address, chainId });
-  const available = await service.getAvailableTokens({ chainId });
-
+export const exchangePairsPrompt = ({
+  conversation,
+  decision,
+  walletAssetsFormatted,
+  availableTokens,
+}: ExchangePairsParams): string => {
   return `<task>
 Generate suggestions for exchange pairs, given user's portfolio and available tokens
 </task>
@@ -33,11 +25,11 @@ ${conversation}
 </conversation>
 <portfolio>
 User has following tokens available in portfolio:
-${service.formatWalletAssets(assets)}
+${walletAssetsFormatted}
 </portfolio>
 <availableTokens>
 Tokens known to agent:
-${available.map((token) => `${token.symbol} - ${token.address ?? "Native token"}`).join(", ")}
+${availableTokens.map((token) => `${token.symbol} - ${token.address ?? "Native token"}`).join(", ")}
 </availableTokens>
 <instructions>
 Generate 5 suggestions for exchange pairs

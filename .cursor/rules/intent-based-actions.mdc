@@ -1,0 +1,463 @@
+---
+description: Intent-based action resolution system for complex multi-step operations
+globs: ["**/actions/**/*.ts", "**/services/intent-manager.ts", "**/providers/intent-context.ts"]
+alwaysApply: false
+---
+
+# Intent-Based Action Resolution System
+
+## 📋 Cross-References
+This file contains the **intent-based action system** patterns. Related files:
+- `elizaos-patterns.mdc` - Core ElizaOS framework patterns
+- `action-patterns.mdc` - Action handler return values and validation patterns
+- `position-management.mdc` - Position management specific business logic
+- `debugging-patterns.mdc` - Troubleshooting intent-related issues
+
+## Problem: Action Resolution Conflicts
+When multiple actions have similar validation logic (e.g., both `withdraw` and `position` actions checking if user has positions), the framework may select the wrong action, leading to incorrect behavior and poor user experience.
+
+## Solution: Persistent Intent Tracking
+Instead of separate actions competing for resolution, use a unified action system with persistent intent tracking:
+
+### Core Concept
+1. **Intent Detection**: When user expresses intent (e.g., "I want to withdraw"), detect and classify the intent type
+2. **Intent ID Generation**: Generate a unique `intent_id` that persists across the conversation flow
+3. **Intent Hierarchy**: Support parent-child intent relationships and cross-action coordination
+4. **Unified Actions**: Use domain-specific actions (`POSITION_MANAGEMENT`, `SWAP_TOKENS`) that coordinate through intent system
+5. **Context Preservation**: All subsequent messages and transactions are tagged with the `intent_id` for improved context tracking
+
+### Implementation Pattern
+```typescript
+// Intent detection and ID generation
+const detectIntent = (message: string): { type: IntentType; id: string } => {
+  const messageText = message.toLowerCase();
+  
+  if (withdrawalKeywords.some(k => messageText.includes(k))) {
+    return {
+      type: 'WITHDRAW',
+      id: `withdraw_${Date.now()}_${randomUUID().slice(0, 8)}`
+    };
+  }
+  
+  if (viewKeywords.some(k => messageText.includes(k))) {
+    return {
+      type: 'VIEW_POSITIONS',
+      id: `view_${Date.now()}_${randomUUID().slice(0, 8)}`
+    };
+  }
+  
+  return { type: 'UNKNOWN', id: '' };
+};
+
+// Unified action with intent routing
+export const positionManagementAction: Action = {
+  name: "POSITION_MANAGEMENT",
+  description: "Unified position management with intent-based routing",
+  
+  validate: async (runtime: IAgentRuntime, message: Memory) => {
+    // Check for existing intent or detect new intent
+    const existingIntent = await getActiveIntent(runtime, message);
+    const detectedIntent = detectIntent(message.content.text);
+    
+    return existingIntent || detectedIntent.type !== 'UNKNOWN';
+  },
+  
+  handler: async (runtime, message, state, options, callback) => {
+    // Get or create intent context
+    let intentContext = await getActiveIntent(runtime, message);
+    
+    if (!intentContext) {
+      const detected = detectIntent(message.content.text);
+      intentContext = {
+        id: detected.id,
+        type: detected.type,
+        createdAt: Date.now(),
+        userId: message.userId,
+        channelId: message.channelId
+      };
+      
+      await storeIntent(runtime, intentContext);
+    }
+    
+    // Route to appropriate handler based on intent type
+    switch (intentContext.type) {
+      case 'WITHDRAW':
+        return await handleWithdrawIntent(runtime, message, state, callback, intentContext);
+      case 'VIEW_POSITIONS':
+        return await handleViewIntent(runtime, message, state, callback, intentContext);
+      default:
+        return await handleUnknownIntent(runtime, message, state, callback);
+    }
+  }
+};
+```
+
+## Intent Context Management with Hierarchy
+```typescript
+interface IntentContext {
+  id: string;
+  type: 'WITHDRAW' | 'INCREASE_POSITION' | 'VIEW_POSITIONS' | 'SWAP' | 'STRATEGY_SELECT';
+  domain: 'POSITION_MANAGEMENT' | 'SWAP_TOKENS' | 'STRATEGY_SELECTION';
+  createdAt: number;
+  userId: string;
+  channelId: string;
+  metadata?: Record<string, any>;
+  status: 'ACTIVE' | 'COMPLETED' | 'CANCELLED' | 'PAUSED';
+  
+  // Intent hierarchy and relationships
+  parentIntentId?: string;  // For child intents (e.g., SWAP initiated from INCREASE_POSITION)
+  childIntentIds?: string[]; // For parent intents tracking their children
+  initiatedBy?: string;     // Parent intent that triggered this intent
+  
+  // Cross-intent data passing
+  inheritedData?: Record<string, any>; // Data passed from parent intent
+  returnData?: Record<string, any>;    // Data to return to parent when completed
+}
+
+// Intent relationship rules
+const INTENT_RELATIONSHIPS = {
+  // Conflicting intents within same domain (cancel each other)
+  CONFLICTING_PAIRS: [
+    ['WITHDRAW', 'INCREASE_POSITION'], // Can't withdraw and increase simultaneously
+  ],
+  
+  // Parent-child relationships (child intents can be spawned from parent)
+  PARENT_CHILD_ALLOWED: {
+    'INCREASE_POSITION': ['SWAP'], // Can initiate swap to get assets for position increase
+    'STRATEGY_SELECT': ['SWAP'],   // Can swap to get required assets for strategy
+  } as Record<string, string[]>,
+  
+  // Cross-domain isolation (intents in different domains don't see each other's context)
+  DOMAIN_ISOLATION: true,
+};
+
+// Enhanced intent management
+class IntentManager {
+  static async createIntent(
+    runtime: IAgentRuntime, 
+    intentData: Omit<IntentContext, 'id' | 'createdAt' | 'status'>,
+    parentIntent?: IntentContext
+  ): Promise<IntentContext> {
+    const intent: IntentContext = {
+      ...intentData,
+      id: `${intentData.type.toLowerCase()}_${Date.now()}_${randomUUID().slice(0, 8)}`,
+      createdAt: Date.now(),
+      status: 'ACTIVE',
+      parentIntentId: parentIntent?.id,
+      inheritedData: parentIntent?.returnData || {},
+    };
+    
+    // Handle conflicting intents in same domain
+    if (intentData.domain === 'POSITION_MANAGEMENT') {
+      await this.handlePositionManagementConflicts(runtime, intent, intentData.userId, intentData.channelId);
+    }
+    
+    // Update parent intent if this is a child
+    if (parentIntent) {
+      parentIntent.childIntentIds = [...(parentIntent.childIntentIds || []), intent.id];
+      parentIntent.status = 'PAUSED'; // Pause parent while child is active
+      await this.storeIntent(runtime, parentIntent);
+    }
+    
+    await this.storeIntent(runtime, intent);
+    return intent;
+  }
+  
+  static async handlePositionManagementConflicts(
+    runtime: IAgentRuntime, 
+    newIntent: IntentContext, 
+    userId: string, 
+    channelId: string
+  ) {
+    const existingIntent = await this.getActiveIntentByDomain(runtime, userId, channelId, 'POSITION_MANAGEMENT');
+    
+    if (existingIntent) {
+      // Check for conflicts
+      const isConflicting = INTENT_RELATIONSHIPS.CONFLICTING_PAIRS.some(([type1, type2]) => 
+        (existingIntent.type === type1 && newIntent.type === type2) ||
+        (existingIntent.type === type2 && newIntent.type === type1)
+      );
+      
+      if (isConflicting) {
+        // Cancel existing conflicting intent
+        existingIntent.status = 'CANCELLED';
+        await this.storeIntent(runtime, existingIntent);
+        
+        runtime.logger.info(`Cancelled conflicting intent ${existingIntent.id} (${existingIntent.type}) for new intent ${newIntent.type}`);
+      }
+    }
+  }
+  
+  static async getActiveIntentByDomain(
+    runtime: IAgentRuntime, 
+    userId: string, 
+    channelId: string, 
+    domain: string
+  ): Promise<IntentContext | null> {
+    const cacheKey = `intent_${domain}_${userId}_${channelId}`;
+    return await runtime.getCache<IntentContext>(cacheKey);
+  }
+  
+  static async storeIntent(runtime: IAgentRuntime, intent: IntentContext) {
+    // Store by domain for conflict detection
+    const domainCacheKey = `intent_${intent.domain}_${intent.userId}_${intent.channelId}`;
+    await runtime.setCache(domainCacheKey, intent, 30 * 60 * 1000); // 30 minutes TTL
+    
+    // Store by ID for direct lookup
+    const idCacheKey = `intent_id_${intent.id}`;
+    await runtime.setCache(idCacheKey, intent, 30 * 60 * 1000);
+  }
+  
+  static async completeChildIntent(
+    runtime: IAgentRuntime, 
+    childIntent: IntentContext, 
+    returnData?: Record<string, any>
+  ) {
+    childIntent.status = 'COMPLETED';
+    childIntent.returnData = returnData;
+    await this.storeIntent(runtime, childIntent);
+    
+    // Resume parent intent if exists
+    if (childIntent.parentIntentId) {
+      const parentIntent = await runtime.getCache<IntentContext>(`intent_id_${childIntent.parentIntentId}`);
+      if (parentIntent) {
+        parentIntent.status = 'ACTIVE';
+        parentIntent.inheritedData = { ...parentIntent.inheritedData, ...returnData };
+        
+        // Remove completed child from tracking
+        parentIntent.childIntentIds = parentIntent.childIntentIds?.filter(id => id !== childIntent.id) || [];
+        
+        await this.storeIntent(runtime, parentIntent);
+      }
+    }
+  }
+}
+```
+
+## Enhanced Transaction Context
+```typescript
+// Tag all transaction-related data with intent_id
+const createTransactionContext = (intentContext: IntentContext, transactionData: any) => ({
+  ...transactionData,
+  intent_id: intentContext.id,
+  intent_type: intentContext.type,
+  created_at: Date.now()
+});
+
+// Filter messages and actions by intent_id for better context
+const getIntentMessages = async (runtime: IAgentRuntime, intentId: string) => {
+  // Get all messages/actions tagged with this intent_id
+  // This provides clean transaction history scoped to the specific intent
+};
+```
+
+## Provider Integration
+```typescript
+// Intent-aware provider that includes intent context
+export const intentAwareProvider: Provider = {
+  name: "INTENT_CONTEXT",
+  description: "Provides current intent context for position management",
+  position: -200, // Run early to establish context
+  
+  async get(runtime: IAgentRuntime, message: Memory) {
+    const intentContext = await getActiveIntent(runtime, message);
+    
+    return {
+      text: intentContext 
+        ? `Active intent: ${intentContext.type} (${intentContext.id})`
+        : "No active intent detected",
+      data: {
+        intentContext,
+        hasActiveIntent: !!intentContext
+      }
+    };
+  }
+};
+```
+
+## Benefits of Intent-Based System
+
+### 1. **Eliminates Action Resolution Conflicts**
+- Single action handles all position-related operations
+- No more ambiguous validation between similar actions
+- Clear intent-based routing within the unified action
+
+### 2. **Improved Transaction Context**
+- All messages and transactions tagged with `intent_id`
+- Clean transaction history scoped to specific user intent
+- Better context for LLM responses and suggestions
+
+### 3. **Enhanced User Experience**
+- Persistent context across multi-step flows
+- No need to re-specify intent in follow-up messages
+- Smoother conversation flow for complex operations
+
+### 4. **Better Provider Integration**
+- Dedicated providers can access intent context
+- More targeted and relevant data extraction
+- Improved REPLY responses with intent awareness
+
+### 5. **Simplified Testing and Debugging**
+- Single action to test instead of multiple competing actions
+- Clear intent tracking for debugging conversation flows
+- Easier to trace transaction context and user journey
+
+## Migration Strategy
+1. **Create unified POSITION_MANAGEMENT action** with intent detection
+2. **Add intent context provider** for persistent state management
+3. **Update existing withdraw/position logic** to work within unified action
+4. **Deprecate separate actions** once unified system is stable
+5. **Enhance transaction tracking** with intent_id tagging
+
+## Usage Examples
+
+### Simple Intent Flow
+```typescript
+// User: "I want to withdraw"
+// System: Creates WITHDRAW intent in POSITION_MANAGEMENT domain
+// Intent ID: "withdraw_1703123456_abc123ef"
+
+// User: "From strategy 1, 50%"
+// System: Uses existing WITHDRAW intent context, no re-detection needed
+```
+
+### Parent-Child Intent Flow (Increase Position → Swap)
+```typescript
+// User: "I want to increase my position in strategy 1"
+// System: Creates INCREASE_POSITION intent in POSITION_MANAGEMENT domain
+// Intent ID: "increase_position_1703123456_def456gh"
+
+// User: "But I need to swap ETH for USDC first"
+// System: Detects need for SWAP, creates child intent in SWAP_TOKENS domain
+// Parent Intent: "increase_position_1703123456_def456gh" (PAUSED)
+// Child Intent: "swap_1703123456_hij789kl" (ACTIVE)
+// Inherited Data: { targetStrategy: 1, targetAmount: "1000 USDC" }
+
+// During SWAP conversation:
+// - SWAP intent has its own context, isolated from INCREASE_POSITION
+// - INCREASE_POSITION context is NOT visible to SWAP action
+// - SWAP can use inherited data to pre-populate swap parameters
+
+// User completes swap: "Swap 1 ETH for 1000 USDC"
+// System: Completes SWAP intent, returns data to parent
+// Child Intent: "swap_1703123456_hij789kl" (COMPLETED)
+// Return Data: { swappedAmount: "1000 USDC", txHash: "0x..." }
+// Parent Intent: "increase_position_1703123456_def456gh" (ACTIVE again)
+// Parent Inherited Data: { swappedAmount: "1000 USDC", txHash: "0x..." }
+
+// User: "Now increase my position with that USDC"
+// System: Uses resumed INCREASE_POSITION intent with swap completion data
+```
+
+### Conflicting Intent Cancellation
+```typescript
+// User: "I want to increase my position in strategy 1"
+// System: Creates INCREASE_POSITION intent
+// Intent ID: "increase_position_1703123456_abc123ef" (ACTIVE)
+
+// User: "Actually, I want to withdraw from strategy 1 instead"
+// System: Detects WITHDRAW intent, conflicts with INCREASE_POSITION
+// Action: Cancels "increase_position_1703123456_abc123ef" (CANCELLED)
+// Creates: "withdraw_1703123456_def456gh" (ACTIVE)
+// Reason: WITHDRAW and INCREASE_POSITION are conflicting in POSITION_MANAGEMENT domain
+```
+
+### Cross-Domain Isolation
+```typescript
+// Active intents:
+// 1. "increase_position_1703123456_abc123ef" (POSITION_MANAGEMENT domain)
+// 2. "swap_1703123456_def456gh" (SWAP_TOKENS domain) - independent swap
+
+// User: "What's my swap status?" 
+// System: Only sees SWAP intent context, not POSITION_MANAGEMENT context
+// Response focuses on swap progress, no mention of position increase
+
+// User: "How's my position increase going?"
+// System: Only sees POSITION_MANAGEMENT intent context
+// Response focuses on position increase, no mention of independent swap
+```
+
+### Data Inheritance Patterns
+```typescript
+// Parent intent sets up context for child
+const parentIntent: IntentContext = {
+  type: 'INCREASE_POSITION',
+  domain: 'POSITION_MANAGEMENT',
+  returnData: {
+    targetStrategy: 1,
+    requiredAsset: 'USDC',
+    requiredAmount: '1000',
+    slippageTolerance: '0.5%'
+  }
+};
+
+// Child intent inherits relevant data
+const childIntent: IntentContext = {
+  type: 'SWAP',
+  domain: 'SWAP_TOKENS',
+  parentIntentId: parentIntent.id,
+  inheritedData: {
+    // Pre-populated from parent
+    toToken: 'USDC',        // from requiredAsset
+    toAmount: '1000',       // from requiredAmount
+    slippage: '0.5%'        // from slippageTolerance
+  }
+};
+
+// Child completion returns data to parent
+childIntent.returnData = {
+  swappedAmount: '1000',
+  actualSlippage: '0.3%',
+  txHash: '0x...',
+  gasUsed: '21000'
+};
+```
+
+## Implementation Files
+- `src/services/intent-manager.ts` - Core IntentManager class
+- `src/providers/intent-context.ts` - Intent context provider
+- `src/actions/position-management.ts` - Unified position management action
+- `src/actions/modules.ts` - Updated action module registration
+
+## Intent Creation Best Practices
+
+### Only Create Intents for Specific Actions
+**IMPORTANT**: Only create intents for specific actions that require multi-step workflows. Default viewing/status actions should work WITHOUT intents.
+
+**Key Distinction**: 
+- **Action Similes**: Describe what the action CAN do (include "VIEW_POSITIONS", "WITHDRAW", etc.)
+- **Intent Types**: Only for actions that NEED intent tracking (exclude "VIEW_POSITIONS")
+
+```typescript
+// ✅ GOOD: Only create intents for specific actions
+if (detectionResult?.intentType && 
+    detectionResult.confidence > 0.6 && 
+    detectionResult.intentType !== "VIEW_POSITIONS") {
+  // Create intent for WITHDRAW, INCREASE_POSITION, etc.
+  intentContext = await intentService.createIntent({...});
+}
+// If no specific intent detected, intentContext remains null
+// This allows default action behavior (e.g., showing positions)
+
+// ❌ BAD: Don't force create intents for default behaviors
+// if (detectionResult?.intentType === "VIEW_POSITIONS") {
+//   intentContext = await intentService.createIntent({...}); // Wrong!
+// }
+```
+
+### Action Validation Without Intents
+```typescript
+validate: async (runtime: IAgentRuntime, message: Memory) => {
+  // ✅ GOOD: Validate based on user capabilities, not intent detection
+  const positions = await service.getUserPositions(userAddress);
+  return positions.length > 0; // Action works with or without intents
+  
+  // ❌ BAD: Don't require intent detection for validation
+  // return detectedIntent !== "UNKNOWN"; // Wrong!
+}
+```
+
+## Related Patterns
+- **📋 See `action-patterns.mdc`** for ActionResult return value patterns
+- **📋 See `elizaos-patterns.mdc`** for core ElizaOS framework patterns
+- **📋 See `debugging-patterns.mdc`** for troubleshooting intent issues

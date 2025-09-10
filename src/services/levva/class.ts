@@ -540,8 +540,8 @@ export class LevvaService
 
   getWithdrawalRequests = this.timedCache(
     300000, // 5 minutes TTL
-    async (address: `0x${string}`, vaultId: number = 1) => {
-      const result = await getWithdrawalRequests(address, vaultId);
+    async (address: `0x${string}`, chainId: number = 1) => {
+      const result = await getWithdrawalRequests(address, chainId);
       if (result.success) {
         return result.data;
       } else {
@@ -558,13 +558,20 @@ export class LevvaService
   async getPositionSummary(address: `0x${string}`, chainId: number = 1) {
     const [positions, withdrawals, strategiesResult] = await Promise.all([
       this.getUserPositions(address),
-      this.getWithdrawalRequests(address, 1),
+      this.getWithdrawalRequests(address, chainId),
       getStrategiesApi(chainId), // Use the provided chainId
     ]);
 
     const strategies = strategiesResult.success ? strategiesResult.data : [];
-    return createPositionSummary(positions, withdrawals, strategies);
+
+    return {
+      summary: createPositionSummary(positions, withdrawals, strategies),
+      positions,
+      withdrawals,
+      strategies,
+    };
   }
+
   // -- End of Position Management --
   private getPendleMarketsCacheKey = (
     chainId: number,
@@ -593,7 +600,7 @@ export class LevvaService
     const markets = await getActiveMarkets(params.chainId);
 
     if (!markets.success) {
-      console.error("Failed to get pendle markets", markets.error);
+      this.runtime.logger.error("Failed to get pendle markets", markets.error);
       throw new Error("Failed to get pendle markets");
     }
 

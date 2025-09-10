@@ -63,9 +63,9 @@ const failure = [
 ].join("\n");
 
 export {
-  withdrawParamsProvider,
-  WITHDRAW_PARAMS_PROVIDER_NAME,
-} from "./withdraw-params";
+  positionParamsProvider,
+  POSITION_PARAMS_PROVIDER_NAME,
+} from "./position-params";
 
 export const levvaProvider: Provider = {
   name: LEVVA_PROVIDER_NAME,

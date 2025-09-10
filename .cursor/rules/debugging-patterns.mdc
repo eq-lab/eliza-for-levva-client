@@ -155,6 +155,27 @@ return {
 3. **Mock rephrase properly**: Ensure rephrase mock returns expected structure
 4. **Log response content**: Debug what rephrase actually returns
 
+## Environment Configuration
+
+### Important: .env Files Are Properly Configured
+**Note**: The `.env` files in this project are properly configured and present, but they are added to `.cursorignore`. This means:
+- Environment variables are correctly set up and working
+- Workspace searches won't find `.env` files (this is intentional)
+- Terminal commands can access them directly
+- **Never suggest issues with `.env` files** - they are working as expected
+
+**Key Environment Variables**:
+- `KYBER_CLIENT_ID`: Configured for Kyberswap integration
+- `POSTGRES_URL`: Database connection properly set
+- `OPENROUTER_API_KEY`, `OPENAI_EMBEDDING_API_KEY`: AI model access configured
+- All required API keys and URLs are present
+
+### Debugging Environment Issues
+1. **Use terminal commands** to check env vars: `grep VARIABLE_NAME .env`
+2. **Don't rely on workspace search** for environment files
+3. **Check process.env** in runtime if needed
+4. **Environment is not the issue** - look elsewhere for problems
+
 ## General Debugging Workflow
 
 ### 1. Identify the Error Type
@@ -189,3 +210,44 @@ console.log('Mock calls:', mockService.method.mock.calls);
 - **Test thoroughly**: Include both success and error cases
 - **Mock completely**: Mock all service methods and runtime features
 - **Document assumptions**: Comment expected data structures and flows
+
+## LLM Response Duplication Issues
+
+### Problem: Actions Generating Duplicate Information
+**Symptoms**: Multiple actions (e.g., REPLY + MANAGE_POSITIONS) repeat identical data
+
+**Root Cause**: Insufficient deduplication instructions in LLM prompts
+
+**Solution**: Enhanced rephrase template with explicit deduplication rules
+
+#### Implementation
+```handlebars
+<prevActions>
+{{prevActions}}
+</prevActions>
+<deduplicationRules>
+CRITICAL DEDUPLICATION RULES:
+1. If prevActions contains specific data (dollar amounts, balances, strategy names, totals), DO NOT repeat them
+2. If prevActions already provided position details, focus on next steps or questions instead
+3. Use phrases like "As you can see above" or "Building on that information" if you must reference previous data
+4. Provide NEW value: suggest actions, ask questions, offer options, or give additional context
+5. Keep responses concise and avoid redundant information
+</deduplicationRules>
+```
+
+#### Testing Strategy
+- Create integration tests that verify real LLM behavior
+- Measure text similarity between consecutive responses
+- Validate that each action provides unique value
+- Use phrase detection to identify duplicated content
+
+#### Success Metrics
+- Responses should be <80% similar in content
+- Each action provides distinct information or options
+- Conversations feel natural and progressive
+
+#### Troubleshooting Persistent Duplication
+1. **Check Template**: Verify deduplication rules are properly formatted
+2. **Validate `prevActions`**: Ensure previous action context is being passed
+3. **Review LLM Model**: Consider if the model is following instructions effectively
+4. **Test Prompts**: Use the test suite to validate prompt generation

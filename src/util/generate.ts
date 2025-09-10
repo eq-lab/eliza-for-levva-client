@@ -13,7 +13,7 @@ import {
 interface RephraseParams {
   runtime: IAgentRuntime;
   content: Content;
-  state: State;
+  state?: State;
   model?: ModelTypeName;
   prevActions?: string;
 }
@@ -36,7 +36,7 @@ export const rephrase = async ({
   try {
     // Use new consistent prompt format
     const agentName = runtime.character?.name || "Agent";
-    const providers = state.providers || "";
+    const providers = state?.providers;
 
     const prompt = rephraseContentPrompt({
       agentName,

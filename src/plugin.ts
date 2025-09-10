@@ -1,4 +1,5 @@
 import { EventType, logger, type Plugin } from "@elizaos/core";
+
 import { CancelRunSignal } from "@elizaos/plugin-bootstrap";
 import { z } from "zod";
 import { modules } from "./actions/modules";
@@ -7,7 +8,6 @@ import { newsProvider } from "./providers/news";
 import { swapParamsProvider } from "./providers/swap-params";
 import { strategyParamsProvider } from "./providers/strategy-params";
 import { positionParamsProvider } from "./providers/position-params";
-import { withdrawParamsProvider } from "./providers/withdraw-params";
 import { suggestionsEvaluator } from "./evaluators/suggestions";
 import { transactionAcknowledgeEvaluator } from "./evaluators/transaction-acknowledge";
 import statusRoute from "./routes/status";
@@ -17,6 +17,7 @@ import suggestRoute from "./routes/suggest";
 import clearSuggestRoute from "./routes/clear-suggest";
 import { BrowserService } from "./services/browser";
 import { LevvaService } from "./services/levva/class";
+import { IntentManager } from "./services/intent-manager";
 
 /**
  * Define the configuration schema for the plugin with the following properties:
@@ -40,7 +41,8 @@ const configSchema = z.object({
 
 const plugin: Plugin = {
   name: "levva",
-  description: "Levva plugin for Eliza",
+  description:
+    "Comprehensive DeFi portfolio management plugin that integrates with the Levva staking protocol to provide intelligent investment strategies, cross-chain token swapping via Kyber and Pendle, automated position management with leverage capabilities, real-time market analysis, and personalized yield optimization across Ethereum, Arbitrum, and Base networks. Features include wallet analysis, risk assessment, news aggregation, intent-based action resolution, and transaction calldata generation for seamless DeFi operations.",
   priority: -1,
   dependencies: ["bootstrap"], // ensure that bootstrap is loaded first
   config: {
@@ -95,7 +97,7 @@ const plugin: Plugin = {
       },
     ],
   },
-  services: [BrowserService, LevvaService],
+  services: [BrowserService, LevvaService, IntentManager],
   actions: modules.map((m) => m.action),
   providers: [
     levvaProvider,
@@ -103,7 +105,6 @@ const plugin: Plugin = {
     swapParamsProvider,
     strategyParamsProvider,
     positionParamsProvider,
-    withdrawParamsProvider,
   ],
   evaluators: [suggestionsEvaluator, transactionAcknowledgeEvaluator],
 };

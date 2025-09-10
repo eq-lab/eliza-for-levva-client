@@ -6,6 +6,14 @@ alwaysApply: false
 
 # ElizaOS Framework Patterns
 
+## 📋 Cross-References
+This file contains **core ElizaOS framework patterns**. For specific patterns, see:
+- `action-patterns.mdc` - **Action handler return values, validation, and ActionResult patterns**
+- `intent-based-actions.mdc` - **Intent-based action resolution system for complex operations**
+- `service-organization.mdc` - **Service module organization and caching patterns**
+- `debugging-patterns.mdc` - **Troubleshooting ElizaOS-specific issues**
+- `testing-patterns.mdc` - **Testing patterns for actions, providers, and services**
+
 ## Action Structure
 ```typescript
 export const action: Action = {
@@ -18,6 +26,7 @@ export const action: Action = {
     const state = await runtime.composeState(message, ["required-provider-name"]);
     
     // Implementation using the composed state
+    // **📋 See action-patterns.mdc for complete ActionResult return patterns**
   },
   examples: [/* conversation examples */]
 };
@@ -52,7 +61,11 @@ export const provider: Provider = {
   description: "What data this provider supplies",
   position: -100, // Lower numbers run first
   async get(runtime, message, state) {
-    // Return data and text
+    // **📋 See action-patterns.mdc for ProviderResult structure**
+    return {
+      text: "Description of extracted data",
+      data: { /* actual data here */ }
+    };
   }
 };
 ```
@@ -72,7 +85,60 @@ export class MyService extends Service {
 }
 ```
 
-**Service Organization**: Follow the patterns in `service-organization.mdc` for splitting cached/stateful methods (in class) from pure helpers (in separate modules).
+**📋 See `service-organization.mdc`** for patterns on splitting cached/stateful methods (in class) from pure helpers (in separate modules).
+
+## 🤖 LLM Integration Patterns
+
+### Model Usage - NEW ElizaOS API
+```typescript
+// ✅ NEW: Use runtime.useModel (current ElizaOS version)
+const response = await runtime.useModel({
+  context: prompt,
+  modelType: ModelType.SMALL,
+  schema: {
+    type: "object",
+    properties: {
+      result: { type: "string" },
+      confidence: { type: "number", minimum: 0, maximum: 1 }
+    },
+    required: ["result", "confidence"]
+  }
+});
+
+// ❌ OLD: Don't use generateObject (deprecated in newer versions)
+// const response = await runtime.generateObject({ ... });
+
+// Use appropriate model types
+ModelType.SMALL    // For simple tasks, fast responses
+ModelType.MEDIUM   // For complex analysis  
+ModelType.LARGE    // For creative/complex generation
+```
+
+### Schema Definition Best Practices
+```typescript
+// Good schema with proper types and descriptions
+const schema = {
+  type: "object",
+  properties: {
+    selectedIntent: {
+      type: ["string", "null"],
+      description: "The most appropriate intent type, or null if none match"
+    },
+    confidence: {
+      type: "number",
+      minimum: 0,
+      maximum: 1,
+      description: "Confidence score from 0 to 1"
+    },
+    extractedValues: {
+      type: "object",
+      description: "Any values extracted from the message",
+      additionalProperties: true
+    }
+  },
+  required: ["selectedIntent", "confidence", "extractedValues"]
+};
+```
 
 ## Common Patterns
 - Always use `runtime.getService<ServiceType>()` to access services
@@ -173,3 +239,43 @@ const actualData = providerResult?.data;
 ```
 
 **📋 For troubleshooting provider data issues, see `debugging-patterns.mdc`**
+
+## Advanced Patterns
+
+### Intent-Based Action Resolution
+For complex multi-step operations that require persistent context and conflict resolution:
+
+**📋 See `intent-based-actions.mdc`** for the complete intent-based action resolution system, including:
+- Persistent intent tracking across conversations
+- Parent-child intent relationships
+- Cross-domain isolation
+- Conflict resolution between competing intents
+- Enhanced transaction context
+
+### Service Organization
+For organizing service functionality between cached methods and pure helpers:
+
+**📋 See `service-organization.mdc`** for patterns on:
+- Splitting cached/stateful methods (service class) vs pure functions (helper modules)
+- ABI and asset management
+- Transaction handling with createCalldata
+- Migration strategies
+
+### Testing Patterns
+For comprehensive testing of actions, providers, and services:
+
+**📋 See `testing-patterns.mdc`** for:
+- Action testing with proper ActionResult expectations
+- Provider mocking and data structure testing
+- Service testing with cache and runtime mocks
+- Integration testing patterns
+
+### Debugging and Troubleshooting
+For resolving common ElizaOS development issues:
+
+**📋 See `debugging-patterns.mdc`** for:
+- Action return value issues
+- Provider data access problems
+- Service method mocking
+- Cache access patterns
+- Response content handling

@@ -1,27 +1,19 @@
-import { IAgentRuntime } from "@elizaos/core";
-import { LevvaService } from "../../services/levva/class";
-import { LEVVA_SERVICE } from "../../constants/enum";
-
 export interface WithdrawalGuidanceParams {
-  address: `0x${string}`;
-  chainId: number;
   conversation: string;
   decision: any;
+  positionsSummary: string;
+  totalPositionValue: number;
+  hasPositions: boolean;
 }
 
-export const withdrawalGuidancePrompt = async (
-  runtime: IAgentRuntime,
-  { address, chainId, conversation, decision }: WithdrawalGuidanceParams
-): Promise<string> => {
-  const service = runtime.getService<LevvaService>(LEVVA_SERVICE.LEVVA_COMMON);
-
-  if (!service) {
-    throw new Error("Failed to get levva service");
-  }
-
-  const summary = await service.getPositionSummary(address, chainId);
-
-  if (!summary.hasPositions) {
+export const withdrawalGuidancePrompt = ({
+  conversation,
+  decision,
+  positionsSummary,
+  totalPositionValue,
+  hasPositions,
+}: WithdrawalGuidanceParams): string => {
+  if (!hasPositions) {
     return `<task>Generate empty suggestions since user has no positions to withdraw from</task>
 <output>
 {
@@ -35,8 +27,8 @@ export const withdrawalGuidancePrompt = async (
 ${JSON.stringify(decision)}
 </decision>
 <currentPositions>
-${summary.positionsSummary}
-Total Value: $${summary.totalPositionValue.toFixed(2)}
+${positionsSummary}
+Total Value: $${totalPositionValue.toFixed(2)}
 </currentPositions>
 <conversation>
 ${conversation}

@@ -22,9 +22,9 @@ export const getUserPositions = async (address: `0x${string}`) => {
 
 export const getWithdrawalRequests = async (
   address: `0x${string}`,
-  vaultId: number = 1
+  chainId: number = 1
 ) => {
-  const url = `${LEVVA_API_V2_BASEURL}/vaults/${vaultId}/withdrawal-requests/${address}`;
+  const url = `${LEVVA_API_V2_BASEURL}/vaults/${chainId}/withdrawal-requests/${address}`;
   const response = await fetch(url);
   const data = await response.json();
   return withdrawalRequestsResponseSchema.safeParse(data);

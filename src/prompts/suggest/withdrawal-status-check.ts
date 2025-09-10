@@ -1,39 +1,25 @@
-import { IAgentRuntime } from "@elizaos/core";
-import { LevvaService } from "../../services/levva/class";
-import { LEVVA_SERVICE } from "../../constants/enum";
-
 export interface WithdrawalStatusCheckParams {
-  address: `0x${string}`;
-  chainId: number;
   conversation: string;
   decision: any;
+  positionsSummary: string;
+  totalPositionValue: number;
+  hasPositions: boolean;
+  withdrawalsSummary: string;
+  pendingRequestsCount: number;
+  readyRequestsCount: number;
 }
 
-export const withdrawalStatusCheckPrompt = async (
-  runtime: IAgentRuntime,
-  { address, chainId, conversation, decision }: WithdrawalStatusCheckParams
-): Promise<string> => {
-  const service = runtime.getService<LevvaService>(LEVVA_SERVICE.LEVVA_COMMON);
-
-  if (!service) {
-    throw new Error("Failed to get levva service");
-  }
-
-  const summary = await service.getPositionSummary(address, chainId);
-  const withdrawalRequests = await service.getWithdrawalRequests(
-    address,
-    chainId
-  );
-
-  // Check current withdrawal state
-  const pendingRequests = withdrawalRequests.filter((req) => !req.isFinalized);
-  const readyRequests = withdrawalRequests.filter((req) => req.isFinalized);
-
-  if (
-    pendingRequests.length === 0 &&
-    readyRequests.length === 0 &&
-    !summary.hasPositions
-  ) {
+export const withdrawalStatusCheckPrompt = ({
+  conversation,
+  decision,
+  positionsSummary,
+  totalPositionValue,
+  hasPositions,
+  withdrawalsSummary,
+  pendingRequestsCount,
+  readyRequestsCount,
+}: WithdrawalStatusCheckParams): string => {
+  if (pendingRequestsCount === 0 && readyRequestsCount === 0 && !hasPositions) {
     return `<task>Generate empty suggestions since user has no positions or withdrawals</task>
 <output>
 {
@@ -47,14 +33,14 @@ export const withdrawalStatusCheckPrompt = async (
 ${JSON.stringify(decision)}
 </decision>
 <currentPositions>
-${summary.positionsSummary}
-Total Value: $${summary.totalPositionValue.toFixed(2)}
-Has Positions: ${summary.hasPositions}
+${positionsSummary}
+Total Value: $${totalPositionValue.toFixed(2)}
+Has Positions: ${hasPositions}
 </currentPositions>
 <withdrawalStatus>
-${summary.withdrawalsSummary}
-Pending Requests: ${pendingRequests.length}
-Ready to Claim: ${readyRequests.length}
+${withdrawalsSummary}
+Pending Requests: ${pendingRequestsCount}
+Ready to Claim: ${readyRequestsCount}
 </withdrawalStatus>
 <conversation>
 ${conversation}

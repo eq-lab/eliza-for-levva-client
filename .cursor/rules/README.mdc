@@ -23,11 +23,25 @@ These files contain the complete patterns and examples:
 - Caching patterns and method binding
 - ABI imports and transaction encoding
 
+### `suggestion-system.mdc` 💡
+**Master reference for suggestion system architecture**
+- Complete suggestion flow and component interaction
+- Async handler patterns and synchronous prompt helpers
+- LLM selection logic and prompt structure templates
+- Integration examples and testing strategies
+
 ## 📚 Framework-Specific Files
 These files focus on specific aspects with cross-references:
 
 ### `elizaos-patterns.mdc` 🔧
-ElizaOS framework patterns with cross-references to master files
+Core ElizaOS framework patterns with cross-references to specialized files
+
+### `intent-based-actions.mdc` 🎯
+**Complete intent-based action resolution system**
+- Persistent intent tracking and hierarchy management
+- Parent-child intent relationships and cross-domain isolation
+- Conflict resolution and data inheritance patterns
+- Migration strategies and implementation examples
 
 ### `testing-patterns.mdc` 🧪
 Testing strategies with cross-references to action-patterns.mdc
@@ -75,6 +89,7 @@ LLM prompt engineering limitations and architectural solutions for reliable beha
 2. **Reference** `elizaos-patterns.mdc` for framework context
 3. **Check** `error-handling.mdc` for error scenarios
 4. **Use** `testing-patterns.mdc` for test setup
+5. **Add suggestions** using `suggestion-system.mdc` patterns
 
 ### When Debugging Issues
 1. **Start with** `debugging-patterns.mdc` for common issues
@@ -85,6 +100,12 @@ LLM prompt engineering limitations and architectural solutions for reliable beha
 1. **Follow** `service-organization.mdc` for architecture
 2. **Use** `caching-patterns.mdc` for cache implementation
 3. **Reference** `elizaos-patterns.mdc` for framework integration
+
+### When Working with Suggestions
+1. **Start with** `suggestion-system.mdc` for complete architecture
+2. **Follow** async handler + sync prompt pattern
+3. **Test with** the provided testing script
+4. **Debug using** the analysis tools in suggestion-system.mdc
 
 ## 🔄 Cross-Reference System
 Files use this notation for cross-references:
