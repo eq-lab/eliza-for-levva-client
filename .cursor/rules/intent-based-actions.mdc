@@ -22,9 +22,9 @@ Instead of separate actions competing for resolution, use a unified action syste
 ### Core Concept
 1. **Intent Detection**: When user expresses intent (e.g., "I want to withdraw"), detect and classify the intent type
 2. **Intent ID Generation**: Generate a unique `intent_id` that persists across the conversation flow
-3. **Intent Hierarchy**: Support parent-child intent relationships and cross-action coordination
-4. **Unified Actions**: Use domain-specific actions (`POSITION_MANAGEMENT`, `SWAP_TOKENS`) that coordinate through intent system
-5. **Context Preservation**: All subsequent messages and transactions are tagged with the `intent_id` for improved context tracking
+3. **Unified Actions**: Use domain-specific actions (`MANAGE_POSITIONS`, `SWAP_TOKENS`) that coordinate through intent system
+4. **Context Preservation**: All subsequent messages and transactions are tagged with the `intent_id` for improved context tracking
+5. **Provider Integration**: Providers intelligently detect, create, and enrich intent contexts
 
 ### Implementation Pattern
 ```typescript
@@ -92,44 +92,28 @@ export const positionManagementAction: Action = {
 };
 ```
 
-## Intent Context Management with Hierarchy
+## Intent Context Management
 ```typescript
 interface IntentContext {
   id: string;
-  type: 'WITHDRAW' | 'INCREASE_POSITION' | 'VIEW_POSITIONS' | 'SWAP' | 'STRATEGY_SELECT';
-  domain: 'POSITION_MANAGEMENT' | 'SWAP_TOKENS' | 'STRATEGY_SELECTION';
+  type: INTENT_TYPE; // 'WITHDRAW' | 'DEPOSIT' | 'SWAP'
+  domain: LEVVA_ACTIONS; // 'MANAGE_POSITIONS' | 'SWAP_TOKENS' | 'SELECT_STRATEGY'
   createdAt: number;
   userId: string;
   channelId: string;
   metadata?: Record<string, any>;
-  status: 'ACTIVE' | 'COMPLETED' | 'CANCELLED' | 'PAUSED';
-  
-  // Intent hierarchy and relationships
-  parentIntentId?: string;  // For child intents (e.g., SWAP initiated from INCREASE_POSITION)
-  childIntentIds?: string[]; // For parent intents tracking their children
-  initiatedBy?: string;     // Parent intent that triggered this intent
-  
+  status: 'ACTIVE' | 'COMPLETED' | 'CANCELLED';
+  memories?: Memory[]; // Store conversation context for this intent
+
   // Cross-intent data passing
-  inheritedData?: Record<string, any>; // Data passed from parent intent
-  returnData?: Record<string, any>;    // Data to return to parent when completed
+  inheritedData?: Record<string, any>; // Data passed from previous intents
+  returnData?: Record<string, any>;    // Data extracted by providers/LLM
 }
 
-// Intent relationship rules
-const INTENT_RELATIONSHIPS = {
-  // Conflicting intents within same domain (cancel each other)
-  CONFLICTING_PAIRS: [
-    ['WITHDRAW', 'INCREASE_POSITION'], // Can't withdraw and increase simultaneously
-  ],
-  
-  // Parent-child relationships (child intents can be spawned from parent)
-  PARENT_CHILD_ALLOWED: {
-    'INCREASE_POSITION': ['SWAP'], // Can initiate swap to get assets for position increase
-    'STRATEGY_SELECT': ['SWAP'],   // Can swap to get required assets for strategy
-  } as Record<string, string[]>,
-  
-  // Cross-domain isolation (intents in different domains don't see each other's context)
-  DOMAIN_ISOLATION: true,
-};
+// Simplified intent relationship rules:
+// 1. Intents in the same domain cancel each other (only one active intent per domain)
+// 2. Intents in different domains can coexist and share data through inheritedData
+// 3. No complex parent-child hierarchies - keep it simple
 
 // Enhanced intent management
 class IntentManager {
@@ -321,7 +305,7 @@ export const intentAwareProvider: Provider = {
 // System: Uses existing WITHDRAW intent context, no re-detection needed
 ```
 
-### Parent-Child Intent Flow (Increase Position → Swap)
+### Cross-Domain Intent Flow (Position Management → Swap)
 ```typescript
 // User: "I want to increase my position in strategy 1"
 // System: Creates INCREASE_POSITION intent in POSITION_MANAGEMENT domain
@@ -546,7 +530,7 @@ The intent system has been successfully implemented in production with the follo
 - **Conversation Analysis**: `getActiveIntentByReply()` finds active intents from conversation history between user messages
 - **Conflict Resolution**: Automatic cancellation of conflicting intents in same domain with proper cleanup
 - **Caching System**: Efficient intent storage using runtime cache with TTL and proper invalidation
-- **Parent-Child Relationships**: Support for hierarchical intent structures with data inheritance
+- **Simplified Architecture**: Clean intent management without complex hierarchies
 
 #### 2. **Intent-Based Action System** 
 - **Unified Actions**: Actions like `MANAGE_POSITIONS` and `SWAP_TOKENS` handle multiple intent types through single entry points
@@ -897,9 +881,12 @@ const childIntent = await intentManager.createIntent({
 - Add transaction preparation and execution logic
 
 #### **Step 3: Update Providers**
-- Add intent detection and creation logic
+- Add intent detection and creation logic using `handleIntentDetectionAndCreation`
+- Implement context-aware behavior based on intent type
+- Create specialized prompts for each intent type's data extraction
 - Integrate intent context into provider return data
 - Implement memory management for intent conversations
+- Adapt provider text output to guide users based on active intent
 
 #### **Step 4: Modify Actions**
 - Add intent registration calls
@@ -979,27 +966,389 @@ IntentManager.registerIntent({
 4. **Flexible**: Works with or without intents for maximum compatibility
 5. **Performant**: Efficient caching and conversation analysis
 
+### 🎯 Provider-Intent Integration Pattern
+
+#### Context-Aware Provider Behavior
+
+**Key Insight**: Providers should intelligently adapt their behavior based on active intent context, generating specialized prompts and extracting relevant parameters for each intent type.
+
+This pattern emerged from implementing the `DEPOSIT` intent, where the `position-params` provider needed to handle both withdrawal and deposit contexts with different data requirements and prompt strategies.
+
+#### Implementation Pattern
+
+```typescript
+// Provider with intent-aware behavior
+export const contextAwareProvider: Provider = {
+  name: "context-aware-provider",
+  async get(runtime, message) {
+    // Get intent context using helper function
+    const intentService = runtime.getService<IntentManager>(LEVVA_SERVICE.INTENT_MANAGER);
+    let intentContext = await intentService.handleIntentDetectionAndCreation(
+      message, domain, userId, channelId, existingIntentContext
+    );
+
+    // Generate context-specific data and prompts
+    if (intentContext?.type === "WITHDRAW") {
+      return await handleWithdrawContext(intentContext, runtime, message);
+    } else if (intentContext?.type === "DEPOSIT") {
+      return await handleDepositContext(intentContext, runtime, message);
+    }
+    
+    // Default behavior for no intent
+    return await handleDefaultContext(runtime, message);
+  }
+};
+
+// Context-specific handlers
+async function handleDepositContext(intentContext: IntentContext, runtime: IAgentRuntime, message: Memory) {
+  // Gather deposit-specific data
+  const [strategies, portfolio, tokens] = await Promise.all([
+    service.getStrategies(chainId),
+    service.getWalletAssets({ address, chainId }),
+    service.getAvailableTokens({ chainId })
+  ]);
+
+  // Create specialized prompt for deposit parameter extraction
+  const prompt = extractDepositDataFromMessagePrompt({
+    inheritedData: intentContext.inheritedData,
+    returnData: intentContext.returnData,
+    messages: intentContext.memories?.map(m => m.content.text).join('\n'),
+    availableStrategies: formatStrategies(strategies),
+    userPortfolio: service.formatWalletAssets(portfolio, true),
+    availableTokens: formatTokens(tokens),
+  });
+
+  // Extract parameters with LLM
+  const result = await runtime.useModel(ModelType.OBJECT_SMALL, { prompt });
+  
+  // Store extracted data in intent context
+  if (result) {
+    intentContext.returnData = { ...intentContext.returnData, ...result };
+    await intentService.storeIntent(intentContext);
+  }
+
+  return {
+    text: generateDepositContextText(strategies, portfolio, intentContext),
+    data: { /* context-specific data with intentContext */ },
+  };
+}
+```
+
+#### Key Benefits
+
+1. **Specialized Data Extraction**: Each intent type gets tailored prompts with relevant context
+2. **Rich Context Provision**: Providers gather and format domain-specific data for LLM processing
+3. **Progressive Parameter Building**: Intent context accumulates parameters across conversation turns
+4. **Context-Aware UI**: Provider output adapts to show relevant information based on intent
+5. **Improved Accuracy**: LLM gets better context for parameter extraction and decision making
+
+#### Prompt Engineering for Intent Context
+
+```typescript
+export const extractDepositDataFromMessagePrompt = (ctx: {
+  inheritedData?: Record<string, any>;
+  returnData?: Record<string, any>;
+  messages?: string;
+  availableStrategies: string;
+  userPortfolio: string;
+  availableTokens: string;
+}) => {
+  return `<task>
+Extract deposit parameters from user message for investment transaction processing.
+Consider available strategies, user portfolio, and conversation context.
+</task>
+<message>
+${ctx.messages?.split('\n').pop() || ""}
+</message>
+<availableStrategies>
+${ctx.availableStrategies}
+</availableStrategies>
+<userPortfolio>
+${ctx.userPortfolio}
+</userPortfolio>
+<availableTokens>
+${ctx.availableTokens}
+</availableTokens>
+${ctx.returnData ? `<previousData>${JSON.stringify(ctx.returnData)}</previousData>` : ""}
+<instructions>
+CRITICAL DEPOSIT LOGIC:
+- Match strategy names case-insensitively
+- Use portfolio tokens when available  
+- Handle amount formats: numeric, percentage, "all", "max"
+- Consider conversation history for context clues
+- Provide confidence based on parameter clarity
+
+EXTRACTION RULES:
+- Return null for unclear parameters
+- Use exact matches from available data
+- Leverage previous conversation context
+- Score confidence based on completeness
+</instructions>`;
+};
+```
+
+#### Best Practices
+
+- **Fetch Relevant Data**: Only gather data needed for the specific intent type
+- **Format for LLM**: Structure data in a way that's easy for LLM to process
+- **Progressive Enhancement**: Build on previous intent data rather than starting fresh
+- **Context-Specific Output**: Adapt provider text output to guide user based on intent
+- **Error Handling**: Gracefully handle missing or invalid intent context
+- **Use Helper Functions**: Leverage `handleIntentDetectionAndCreation` for consistency
+
+#### Real-World Example: Position-Params Provider
+
+```typescript
+// From src/providers/position-params.ts
+if (intentContext?.type === "DEPOSIT") {
+  // Get additional data needed for deposit context
+  const [availableTokens, walletAssets] = await Promise.all([
+    service.getAvailableTokens({ chainId }),
+    service.getWalletAssets({ address: user.address, chainId }),
+  ]);
+
+  const availableStrategiesText = strategies
+    .map((s) => `${s.name} (ID: ${s.id}, Risk: ${s.risk}, Type: ${s.type}) - ${s.shortDescription}`)
+    .join("\n");
+
+  const userPortfolioText = service.formatWalletAssets(walletAssets, true);
+  const availableTokensText = availableTokens
+    .map((token) => `${token.symbol} (${token.address})`)
+    .join(", ");
+
+  const prompt = extractDepositDataFromMessagePrompt({
+    inheritedData: intentContext.inheritedData,
+    returnData: intentContext.returnData,
+    messages: intentContext.memories?.map((m) => m.content.text).join("\n"),
+    strategyIdMap,
+    availableStrategies: availableStrategiesText,
+    userPortfolio: userPortfolioText,
+    availableTokens: availableTokensText,
+  });
+
+  const result: ExtractedDataForDeposit = await runtime.useModel(ModelType.OBJECT_SMALL, { prompt });
+  
+  if (result) {
+    intentContext.returnData = { ...intentContext.returnData, ...result };
+    await intentService.storeIntent(intentContext);
+  }
+}
+
+// Context-specific text output
+let contextSpecificText = "";
+if (intentContext?.type === "DEPOSIT") {
+  const availableStrategiesCount = strategies.length;
+  contextSpecificText = `\n## Available Investment Strategies\n${availableStrategiesCount} strategies available across different risk profiles\n- Ultra-Safe: Low risk, stable returns\n- Safe: Moderate risk, balanced returns\n- Brave: Higher risk, potential for higher returns\n- Custom: Tailored strategies`;
+} else if (intentContext?.type === "WITHDRAW") {
+  contextSpecificText = summary.hasPendingWithdrawals
+    ? `\n## Withdrawal Options\nYou have pending withdrawals that may be ready to claim.`
+    : `\n## Withdrawal Options\nYou can withdraw from any of your active positions.`;
+}
+```
+
+### 🎯 **Latest Insights (December 2024)**
+
+#### **Strategy-Aware Token Handling for Vault Strategies**
+
+**Key Discovery**: Vault strategies should automatically determine their token requirements from the `vault.underlyingToken` field, not from user input. This prevents users from attempting to deposit incompatible tokens.
+
+**Implementation Pattern**:
+```typescript
+// ✅ CORRECT: Strategy-aware token resolution
+if (strategy.type === "vault") {
+  // Vault strategies only accept their specific underlyingToken
+  if (!strategy.vault?.underlyingToken) {
+    throw new Error(`Vault strategy ${strategy.id} missing underlyingToken information`);
+  }
+  
+  actualToken = strategy.vault.underlyingToken.symbol;
+  tokenIn = strategy.vault.underlyingToken.address;
+  
+  // Validate user-specified token if provided
+  if (tokenSymbol || tokenAddress) {
+    const userToken = tokenAddress || tokenSymbol;
+    const isValidToken = 
+      userToken.toLowerCase() === strategy.vault.underlyingToken.symbol.toLowerCase() ||
+      userToken.toLowerCase() === strategy.vault.underlyingToken.address.toLowerCase() ||
+      // Handle ETH/WETH aliases
+      (userToken.toLowerCase() === "eth" && strategy.vault.underlyingToken.symbol.toLowerCase() === "weth");
+    
+    if (!isValidToken) {
+      throw new Error(
+        `Invalid token for ${strategy.name}. This vault only accepts ${strategy.vault.underlyingToken.symbol} deposits.`
+      );
+    }
+  }
+} else if (strategy.type === "pool") {
+  // Pool strategies require user to specify token
+  tokenIn = tokenAddress || tokenSymbol;
+  if (!tokenIn) {
+    throw new Error("Token information is required for pool strategies");
+  }
+}
+```
+
+**Prompt Engineering Updates**:
+```typescript
+// ✅ UPDATED: Strategy-aware token extraction
+CRITICAL DEPOSIT LOGIC:
+- **Token Detection**: 
+  - For VAULT strategies: Token is automatically determined by vault's underlyingToken - DO NOT extract tokenSymbol/tokenAddress unless user explicitly mentions a different token (for validation)
+  - For POOL strategies: Extract token symbols/addresses from user input
+  - Handle ETH/WETH aliases appropriately
+
+TOKEN MATCHING:
+- **For VAULT strategies**: Only extract token if user explicitly mentions it (for validation against vault's underlyingToken)
+- **For POOL strategies**: Extract token from user input and match against availableTokens
+- **Strategy-Token Validation**: If both strategy and token are mentioned, ensure token is compatible with strategy type
+```
+
+**Benefits**:
+- **Prevents Invalid Deposits**: Users can't accidentally deposit wrong tokens into vaults
+- **Reduces User Confusion**: No more asking for tokens when strategy determines it
+- **Automatic Token Inference**: Strategy selection automatically determines compatible tokens
+- **Clear Error Messages**: Specific validation errors guide users to correct tokens
+
+#### **Portfolio-Based Suggestion Generation**
+
+**Key Discovery**: Intent-aware suggestions should use the user's actual portfolio balances to generate realistic, actionable suggestions instead of generic placeholder amounts.
+
+**Implementation Pattern**:
+```typescript
+// ✅ ENHANCED: Portfolio-aware suggestion generation
+async function generateIntentAwareSuggestions(
+  runtime: IAgentRuntime,
+  activeIntent: any,
+  conversation: string
+): Promise<{ suggestions: Suggestions[] } | undefined> {
+  // Get user portfolio data
+  const service = runtime.getService<LevvaService>(LEVVA_SERVICE.LEVVA_COMMON);
+  const userAddress = await extractUserAddressFromConversation(activeIntent);
+  
+  if (activeIntent.type === "DEPOSIT" && userAddress) {
+    const assets = await service.getWalletAssets({ address: userAddress, chainId });
+    const availableTokens = await service.getAvailableTokens({ chainId });
+    
+    // Create token lookup map
+    const tokenMap = new Map(
+      availableTokens.map(token => [token.address ?? ETH_NULL_ADDR, token])
+    );
+    
+    // Filter and format significant assets
+    const significantAssets = assets
+      .filter(asset => asset.amount > 0n)
+      .map(asset => {
+        const tokenInfo = tokenMap.get(asset.token ?? ETH_NULL_ADDR);
+        const symbol = tokenInfo?.symbol ?? "ETH";
+        const balance = formatUnits(asset.amount, tokenInfo?.decimals ?? 18);
+        return { symbol, balance: parseFloat(balance) };
+      })
+      .filter(asset => asset.balance > 0.001) // Filter out dust
+      .sort((a, b) => b.balance - a.balance) // Sort by balance descending
+      .slice(0, 3); // Top 3 assets
+
+    // Generate realistic suggestions based on actual balances
+    const strategy = activeIntent.returnData?.strategyName || `${activeIntent.returnData?.strategyRisk} strategy`;
+    
+    return {
+      suggestions: [
+        {
+          label: `Deposit ${significantAssets[0]?.balance.toFixed(2)} ${significantAssets[0]?.symbol}`,
+          text: `I want to deposit ${significantAssets[0]?.balance.toFixed(2)} ${significantAssets[0]?.symbol} into ${strategy}`
+        },
+        {
+          label: `Deposit ${(significantAssets[0]?.balance * 0.5).toFixed(2)} ${significantAssets[0]?.symbol}`,
+          text: `Let me deposit ${(significantAssets[0]?.balance * 0.5).toFixed(2)} ${significantAssets[0]?.symbol}`
+        },
+        {
+          label: `Deposit ${(significantAssets[0]?.balance * 0.25).toFixed(2)} ${significantAssets[0]?.symbol}`,
+          text: `I'd like to invest ${(significantAssets[0]?.balance * 0.25).toFixed(2)} ${significantAssets[0]?.symbol}`
+        },
+        {
+          label: "Swap for needed token",
+          text: `Swap ${significantAssets[1]?.symbol} -> ${significantAssets[0]?.symbol}`
+        },
+        {
+          label: "Portfolio management",
+          text: "Manage Positions"
+        }
+      ]
+    };
+  }
+}
+```
+
+**Key Benefits**:
+- **Realistic Amounts**: Suggestions show actual user balances (e.g., "50 USDC" if user has 50 USDC)
+- **Percentage Options**: Offers 100%, 50%, 25% of actual holdings
+- **Token Swaps**: Suggests swaps when user doesn't have the right token
+- **Actionable Suggestions**: All suggestions are immediately executable without asking for more info
+- **Context Awareness**: Builds on active intent context and conversation history
+
+#### **API Schema Validation with Nullable Fields**
+
+**Key Discovery**: Real API responses often contain `null` values for optional fields, requiring Zod schemas to explicitly handle nullable types.
+
+**Problem Pattern**:
+```typescript
+// ❌ WRONG: Schema expects string or undefined
+protocol: z.string().optional(),
+
+// 🔍 ACTUAL API RESPONSE:
+"protocol": null  // API returns null, not undefined
+```
+
+**Solution Pattern**:
+```typescript
+// ✅ CORRECT: Schema accepts string, null, or undefined
+protocol: z.string().nullable().optional(),
+```
+
+**Debugging Approach**:
+```typescript
+// ✅ DEBUGGING: Create test script to inspect actual API responses
+const testApiResponse = async () => {
+  const result = await getStrategies(1);
+  
+  if (result.success) {
+    console.log("✅ API validation successful");
+    console.log("First strategy:", JSON.stringify(result.data[0], null, 2));
+  } else {
+    console.log("❌ Validation errors:");
+    result.error.issues.forEach((issue, index) => {
+      console.log(`  ${index + 1}. Path: ${issue.path?.join('.')} - ${issue.message}`);
+    });
+  }
+};
+```
+
+**Key Insights**:
+- **Test with Real Data**: Always validate schemas against actual API responses, not documentation
+- **Handle Null Values**: Use `.nullable()` for fields that can be `null` in the API
+- **Debugging Scripts**: Create temporary test scripts to inspect API response structure
+- **Iterative Validation**: Fix validation errors one by one based on actual data patterns
+
 ### 🚀 Next Steps for Production
 
-#### 1. **Additional Intent Types**
-- `INCREASE_POSITION`: Add funds to existing positions
-- `SWAP`: Token swapping with intent context
-- `STRATEGY_SELECT`: Strategy selection and setup
+#### 1. **Enhanced Strategy Matching**
+- Implement strategy-token compatibility validation across all actions
+- Add automatic ETH/WETH conversion suggestions for vault strategies
+- Create strategy recommendation engine based on user portfolio composition
 
-#### 2. **Parent-Child Intent Relationships**
-- Cross-domain intent coordination
-- Data inheritance between parent and child intents
-- Automatic resumption of parent intents
+#### 2. **Advanced Portfolio Integration**
+- Real-time balance updates during conversation flows
+- Portfolio-based risk assessment for strategy recommendations
+- Automatic rebalancing suggestions based on current positions
 
-#### 3. **Enhanced Analytics**
-- Intent success/failure tracking
-- User journey analytics
-- Performance metrics and optimization
+#### 3. **Robust API Integration**
+- Comprehensive error handling for API validation failures
+- Automatic schema updates based on API response changes
+- API response caching with proper invalidation strategies
 
-#### 4. **Advanced Features**
-- Intent scheduling and delayed execution
-- Batch intent processing
-- Intent templates for common workflows
+#### 4. **User Experience Enhancements**
+- Context-aware conversation flows that remember user preferences
+- Intelligent parameter inference from conversation history
+- Proactive suggestions based on portfolio changes and market conditions
 
 ### 🧪 Testing Coverage
 

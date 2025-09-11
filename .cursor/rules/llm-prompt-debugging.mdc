@@ -360,6 +360,183 @@ const template = `<task>{{specificTask}}</task><scope>{{allowedTopics}}</scope>`
 - **Testing Patterns**: Always test prompt changes with integration tests
 - **Error Handling**: Include error scenarios in prompt testing
 
+## Natural Conversation Flow Patterns
+
+### Context-Aware Parameter Handling
+**Problem**: Robotic responses that ignore conversation context and ask for already-provided information.
+
+**Solution**: Build context-aware parameter extraction and missing parameter handlers.
+
+#### ✅ Context-Aware Missing Parameter Handler
+```typescript
+// Instead of generic "Please specify token"
+async function handleMissingDepositParameters(intentContext, missingParam) {
+  const { returnData } = intentContext;
+  const { strategyName, tokenSymbol, amount } = returnData || {};
+  
+  if (missingParam === "token") {
+    if (strategyName) {
+      // Use known strategy in response
+      return `Great choice on the ${strategyName}! Which token would you like to deposit? You can use USDC, ETH, or other tokens from your portfolio.`;
+    } else {
+      return `Which token would you like to deposit? I can see your available tokens and help you choose.`;
+    }
+  }
+  
+  if (missingParam === "amount") {
+    const strategy = strategyName || 'strategy';
+    const token = tokenSymbol || 'tokens';
+    // Reference both known parameters
+    return `Perfect! How much ${token} would you like to deposit into the ${strategy}? You can specify an amount like "100 USDC" or "0.1 ETH".`;
+  }
+}
+```
+
+#### ✅ Natural Suggestion Generation
+```typescript
+// Avoid placeholder text in suggestions
+// ❌ Bad: "I want to deposit [amount] USDC into the ultra-safe strategy"
+// ✅ Good: "I want to deposit 100 USDC into the Ultra-Safe strategy"
+
+SUGGESTION_FORMATS: {
+  // Use realistic amounts users would actually type
+  amounts: ["10", "50", "100", "500", "1000"], // USDC
+  ethAmounts: ["0.01", "0.1", "0.5", "1.0"], // ETH
+  
+  // Write from user perspective, not agent perspective
+  userVoice: "I want to deposit 100 USDC into the Safe strategy",
+  agentVoice: "Please specify the amount to deposit", // ❌ Avoid
+}
+```
+
+### Conversation Context Patterns
+
+#### Context Inheritance Pattern
+```typescript
+// Extract and preserve context across conversation turns
+const conversationContext = {
+  previousMentions: {
+    strategy: extractStrategyFromHistory(conversationHistory),
+    token: extractTokenFromHistory(conversationHistory),
+    amount: extractAmountFromHistory(conversationHistory),
+  },
+  userPreferences: {
+    riskTolerance: inferRiskToleranceFromHistory(conversationHistory),
+    preferredTokens: getFrequentlyMentionedTokens(conversationHistory),
+  }
+};
+
+// Use context to avoid repetitive questions
+if (conversationContext.previousMentions.token === "USDC") {
+  // Don't ask "which token?" - build on USDC context
+  response = `How much USDC would you like to deposit?`;
+}
+```
+
+#### Smart Parameter Inference Pattern
+```typescript
+// Infer missing parameters from conversation context
+const smartInference = {
+  // If user mentioned strategy and conversation shows token discussion
+  inferTokenFromContext: (strategy, conversationHistory) => {
+    if (conversationHistory.includes("USDC") && strategy === "ultra-safe") {
+      return { tokenSymbol: "USDC", confidence: 0.8 };
+    }
+  },
+  
+  // If user has clear portfolio preferences
+  inferAmountFromPortfolio: (token, userPortfolio) => {
+    const balance = userPortfolio.find(asset => asset.symbol === token);
+    if (balance && balance.value > 1000) {
+      return { suggestedAmount: "100", confidence: 0.7 }; // Conservative 10%
+    }
+  }
+};
+```
+
+### Anti-Patterns for Natural Conversation
+
+#### ❌ Placeholder Text in Suggestions
+```typescript
+// Never generate suggestions users wouldn't actually type
+BAD_SUGGESTIONS = [
+  "I want to deposit [amount] USDC", // Users don't type [amount]
+  "Deposit [Token] into [Strategy]", // Placeholder text
+  "Please specify the amount", // Agent voice, not user voice
+];
+
+GOOD_SUGGESTIONS = [
+  "I want to deposit 100 USDC into the Ultra-Safe strategy",
+  "Let me try the Safe strategy with 50 USDC", 
+  "I'd like to invest 0.1 ETH in a brave strategy",
+];
+```
+
+#### ❌ Ignoring Conversation Context
+```typescript
+// Don't ask for information already discussed
+if (conversationHistory.includes("ultra-safe strategy")) {
+  // ❌ Bad: "Which strategy would you like to use?"
+  // ✅ Good: "Great choice on the ultra-safe strategy! Which token would you like to deposit?"
+}
+```
+
+#### ❌ Repetitive Information Requests
+```typescript
+// Track what's already been asked/answered
+const conversationState = {
+  askedForStrategy: false,
+  askedForToken: false, 
+  askedForAmount: false,
+  knownParameters: {}
+};
+
+// Only ask for truly missing information
+if (!conversationState.askedForAmount && !knownParameters.amount) {
+  askForAmount();
+}
+```
+
+### Conversation Flow Quality Metrics
+
+#### Natural Flow Indicators
+- **Context Retention**: > 90% of responses reference previous conversation elements
+- **Parameter Reuse**: < 10% of conversations ask for the same parameter twice
+- **Suggestion Realism**: 0% placeholder text in user-facing suggestions
+- **Conversation Efficiency**: Average < 3 exchanges to complete intent
+- **User Voice Consistency**: 100% of suggestions written from user perspective
+
+#### Testing Natural Conversation
+```typescript
+describe("Natural Conversation Flow", () => {
+  it("should not ask for already-provided information", async () => {
+    const conversation = [
+      { user: "I want to use the ultra-safe strategy" },
+      { agent: "Great choice! Which token would you like to deposit?" },
+      { user: "USDC" },
+    ];
+    
+    const response = await handleMissingAmount(conversation);
+    
+    // Should reference both known parameters
+    expect(response).toContain("USDC");
+    expect(response).toContain("ultra-safe");
+    expect(response).not.toContain("Which strategy"); // Don't re-ask
+    expect(response).not.toContain("Which token"); // Don't re-ask
+  });
+  
+  it("should generate realistic user suggestions", async () => {
+    const suggestions = await generateDepositSuggestions(context);
+    
+    suggestions.forEach(suggestion => {
+      expect(suggestion.text).not.toMatch(/\[.*\]/); // No placeholder text
+      expect(suggestion.text).toMatch(/\d+/); // Contains real numbers
+      expect(suggestion.text).toMatch(/^I want|^Let me|^I'd like/); // User voice
+    });
+  });
+});
+```
+
 ## Success Metrics
 
 - **Duplication**: < 30% text similarity between sequential responses
@@ -367,3 +544,6 @@ const template = `<task>{{specificTask}}</task><scope>{{allowedTopics}}</scope>`
 - **Relevance**: > 95% of responses stay on topic
 - **Accuracy**: 0% hallucinated data when real data is available
 - **User Satisfaction**: Positive feedback on response quality
+- **Conversation Efficiency**: < 3 exchanges to complete typical intents
+- **Context Retention**: > 90% of responses appropriately reference conversation history
+- **Natural Language**: 0% placeholder text in user-facing suggestions

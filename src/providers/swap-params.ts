@@ -1,6 +1,6 @@
 import { parseUnits } from "viem";
 import { ModelType, Provider } from "@elizaos/core";
-import { LEVVA_SERVICE, LEVVA_ACTIONS, INTENT_TYPE } from "../constants/enum";
+import { LEVVA_SERVICE, LEVVA_ACTIONS } from "../constants/enum";
 import { ETH_NULL_ADDR } from "../constants/eth";
 import { LevvaService } from "../services/levva/class";
 import { selectSwapDataFromMessagesPrompt } from "../prompts/swap";
@@ -80,44 +80,24 @@ export const swapParamsProvider: Provider = {
           LEVVA_ACTIONS.SWAP_TOKENS
         );
 
-        // Detect intent from current message
-        const detect = await intentService.detectIntentWithLLM(
+        // Use helper function to handle intent detection and creation
+        intentContext = await intentService.handleIntentDetectionAndCreation(
           message,
-          LEVVA_ACTIONS.SWAP_TOKENS
+          LEVVA_ACTIONS.SWAP_TOKENS,
+          userId,
+          channelId,
+          intentContext
         );
 
-        // Create new intent if detected and different from existing
+        // Add swap-specific metadata if intent was created
         if (
-          detect?.intentType &&
-          detect.confidence > 0.6 &&
-          detect.intentType === INTENT_TYPE.SWAP &&
-          detect.intentType !== intentContext?.type
+          intentContext &&
+          intentContext.metadata &&
+          !intentContext.metadata.userAddress
         ) {
-          const parentIntent =
-            await intentService.getActiveIntentByReply(message);
-
-          intentContext = await intentService.createIntent(
-            {
-              type: INTENT_TYPE.SWAP,
-              domain: LEVVA_ACTIONS.SWAP_TOKENS,
-              userId: userId,
-              channelId: channelId,
-              memories: [],
-              returnData: detect.extractedValues || {},
-              metadata: {
-                userAddress: user.address,
-                chainId: chainId,
-                detectedAt: Date.now(),
-                confidence: detect.confidence,
-                reasoning: detect.reasoning,
-              },
-            },
-            parentIntent ?? undefined
-          );
-
-          runtime.logger.info(
-            `Created new SWAP intent: ${intentContext.id} (${intentContext.type}) with confidence ${detect.confidence}`
-          );
+          intentContext.metadata.userAddress = user.address;
+          intentContext.metadata.chainId = chainId;
+          await intentService.storeIntent(intentContext);
         }
 
         // Add current message to intent memory

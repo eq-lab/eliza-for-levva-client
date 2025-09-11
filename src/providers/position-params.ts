@@ -1,6 +1,6 @@
 import { ModelType, type Provider, logger } from "@elizaos/core";
 import { isHex } from "viem";
-import { INTENT_TYPE, LEVVA_ACTIONS, LEVVA_SERVICE } from "../constants/enum";
+import { LEVVA_ACTIONS, LEVVA_SERVICE } from "../constants/enum";
 import { RawMessage } from "../types/core";
 import { LevvaService } from "../services/levva/class";
 import { UserPosition, WithdrawalRequest } from "../services/levva/positions";
@@ -9,7 +9,11 @@ import {
   ExtractedDataForWithdraw,
   extractWithdrawDataFromMessagePrompt,
 } from "src/prompts/withdraw";
-import { StrategiesResponse } from "src/api/levva/schema";
+import {
+  ExtractedDataForDeposit,
+  extractDepositDataFromMessagePrompt,
+} from "src/prompts/deposit";
+import { StrategyEntry } from "../services/levva/pool";
 
 export interface PositionParamsProviderData {
   userPositions: UserPosition[];
@@ -21,7 +25,7 @@ export interface PositionParamsProviderData {
   positionsSummary: string;
   withdrawalsSummary: string;
   intentContext?: IntentContext;
-  strategies: StrategiesResponse;
+  strategies: StrategyEntry[];
 }
 
 export const POSITION_PARAMS_PROVIDER_NAME = "position-params";
@@ -81,34 +85,14 @@ export const positionParamsProvider: Provider = {
         LEVVA_ACTIONS.MANAGE_POSITIONS
       );
 
-      const detect = await intentService.detectIntentWithLLM(
+      // Use helper function to handle intent detection and creation
+      intentContext = await intentService.handleIntentDetectionAndCreation(
         message,
-        LEVVA_ACTIONS.MANAGE_POSITIONS
+        LEVVA_ACTIONS.MANAGE_POSITIONS,
+        userId,
+        channelId,
+        intentContext
       );
-
-      if (detect.intentType) {
-        if (detect.intentType !== intentContext?.type) {
-          // TODO get parent intent by previous message's domain
-          // do we need evaluator for that?
-          intentContext = await intentService.createIntent({
-            type: detect.intentType as INTENT_TYPE,
-            domain: LEVVA_ACTIONS.MANAGE_POSITIONS,
-            userId: userId,
-            channelId: channelId,
-            memories: [],
-            returnData: detect.extractedValues || {},
-            metadata: {
-              detectedAt: Date.now(),
-              confidence: detect.confidence,
-              reasoning: detect.reasoning,
-            },
-          });
-
-          runtime.logger.info(
-            `Created new intent: ${intentContext.id} (${intentContext.type}) with confidence ${detect.confidence}`
-          );
-        }
-      }
 
       if (intentContext) {
         await intentService.addMemoryToIntent(intentContext, message);
@@ -143,6 +127,51 @@ export const positionParamsProvider: Provider = {
           intentContext.returnData = { ...intentContext.returnData, ...result };
           await intentService.storeIntent(intentContext);
         }
+      } else if (intentContext?.type === "DEPOSIT") {
+        // Get additional data needed for deposit context
+        const [availableTokens, walletAssets] = await Promise.all([
+          service.getAvailableTokens({ chainId }),
+          service.getWalletAssets({ address: user.address, chainId }),
+        ]);
+
+        const availableStrategiesText = strategies
+          .map(
+            (s) =>
+              `${s.name} (ID: ${s.id}, Risk: ${s.risk}, Type: ${s.type}) - ${s.shortDescription}`
+          )
+          .join("\n");
+
+        const userPortfolioText = service.formatWalletAssets(
+          walletAssets,
+          true
+        );
+
+        const availableTokensText = availableTokens
+          .map((token) => `${token.symbol} (${token.address})`)
+          .join(", ");
+
+        const prompt = extractDepositDataFromMessagePrompt({
+          inheritedData: intentContext.inheritedData,
+          returnData: intentContext.returnData,
+          messages: intentContext.memories
+            ?.map((m) => m.content.text)
+            .join("\n"),
+          strategyIdMap,
+          availableStrategies: availableStrategiesText,
+          userPortfolio: userPortfolioText,
+          availableTokens: availableTokensText,
+        });
+
+        const result: ExtractedDataForDeposit = await runtime.useModel(
+          ModelType.OBJECT_SMALL,
+          { prompt }
+        );
+
+        if (result) {
+          // TODO proper typing for returnData
+          intentContext.returnData = { ...intentContext.returnData, ...result };
+          await intentService.storeIntent(intentContext);
+        }
       }
 
       const data: PositionParamsProviderData = {
@@ -159,8 +188,24 @@ export const positionParamsProvider: Provider = {
       };
 
       const intentText = intentContext
-        ? `\n## Current Intent\nActive: ${intentContext.type} (${intentContext.id})\nStatus: ${intentContext.status}`
+        ? `\n## Current Intent\nActive: ${intentContext.type} (${intentContext.id})\nStatus: ${intentContext.status}${
+            intentContext.returnData &&
+            Object.keys(intentContext.returnData).length > 0
+              ? `\nExtracted Data: ${JSON.stringify(intentContext.returnData, null, 2)}`
+              : ""
+          }`
         : "";
+
+      // Generate context-specific text based on intent type
+      let contextSpecificText = "";
+      if (intentContext?.type === "DEPOSIT") {
+        const availableStrategiesCount = strategies.length;
+        contextSpecificText = `\n## Available Investment Strategies\n${availableStrategiesCount} strategies available across different risk profiles\n- Ultra-Safe: Low risk, stable returns\n- Safe: Moderate risk, balanced returns\n- Brave: Higher risk, potential for higher returns\n- Custom: Tailored strategies`;
+      } else if (intentContext?.type === "WITHDRAW") {
+        contextSpecificText = summary.hasPendingWithdrawals
+          ? `\n## Withdrawal Options\nYou have pending withdrawals that may be ready to claim.`
+          : `\n## Withdrawal Options\nYou can withdraw from any of your active positions.`;
+      }
 
       const text = `## Current Positions
 ${summary.positionsSummary}
@@ -169,7 +214,7 @@ Total Portfolio Value: $${summary.totalPositionValue.toFixed(2)}
 
 ## Withdrawal Status
 ${summary.withdrawalsSummary}
-Overall Pending Withdrawals: ${summary.hasPendingWithdrawals ? "Yes" : "No"}${intentText}`;
+Overall Pending Withdrawals: ${summary.hasPendingWithdrawals ? "Yes" : "No"}${contextSpecificText}${intentText}`;
 
       return {
         text,

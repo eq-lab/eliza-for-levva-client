@@ -15,7 +15,7 @@ export interface IntentOption {
  * Expected structure of LLM response for intent detection
  */
 export interface LLMIntentAnalysis {
-  selectedIntent: INTENT_TYPE | null;
+  selectedIntent: INTENT_TYPE | undefined;
   confidence: number;
   extractedValues: Record<string, any>;
   reasoning: string;
@@ -24,8 +24,8 @@ export interface LLMIntentAnalysis {
 const dataDescription: DataDescription<LLMIntentAnalysis> = {
   selectedIntent: {
     type: "string",
-    description: "The most appropriate intent type, or null if none match",
-    default: "null",
+    description: "The most appropriate intent type, or undefined if none match",
+    default: "undefined",
   },
   confidence: {
     type: "number",
@@ -45,7 +45,8 @@ const dataDescription: DataDescription<LLMIntentAnalysis> = {
 export const createIntentDetectionPrompt = (
   message: string,
   intentOptions: IntentOption[],
-  domain: LEVVA_ACTIONS
+  domain: LEVVA_ACTIONS,
+  conversationContext?: string
 ): string => {
   const intentList = intentOptions
     .map(
@@ -54,8 +55,15 @@ export const createIntentDetectionPrompt = (
     )
     .join("\n");
 
+  const contextSection = conversationContext
+    ? `<conversationContext>
+${conversationContext}
+</conversationContext>`
+    : "";
+
   return `<task>
 Analyze the user message and determine the most appropriate intent from the available options.
+Use conversation context to understand the flow and what the agent was asking for.
 </task>
 <message>
 ${message}
@@ -63,16 +71,34 @@ ${message}
 <domain>
 ${domain}
 </domain>
+${contextSection}
 <availableIntents>
 ${intentList}
 </availableIntents>
 <instructions>
-1. Analyze the user's message to understand their intention
-2. Select the most appropriate intent from the available options, or null if none match well
-3. Extract any relevant values from the message (amounts, strategy names, etc.)
-4. Provide a confidence score (0-1) based on how well the message matches the intent
-5. If confidence is below 0.6, consider returning null for selectedIntent
-6. Only return specific action intents - general viewing/status requests should return null
+1. **Context Analysis**: Use conversation context to understand what the agent was asking for
+   - If agent asked "What amount would you like to deposit?" and user responds with a number → DEPOSIT intent
+   - If agent asked "How much would you like to withdraw?" and user responds with a number → WITHDRAW intent
+   - If agent asked about strategy selection and user responds → DEPOSIT intent (for investment)
+
+2. **Message Analysis**: Analyze the user's current message for explicit intent keywords
+   - Look for direct action words (deposit, withdraw, swap, send, etc.)
+   - Consider the context of numbers and amounts based on what was previously asked
+
+3. **Intent Selection**: Select the most appropriate intent from available options
+   - Prioritize conversation context over isolated message analysis
+   - If user provides requested information (amount, strategy, etc.), continue the active flow
+   - Return null only if the message is clearly unrelated to any intent
+
+4. **Confidence Scoring**: 
+   - High (0.8-1.0): Clear intent from context or explicit keywords
+   - Medium (0.6-0.7): Reasonable inference from context
+   - Low (0.3-0.5): Ambiguous but some indication
+   - Very Low (0.0-0.2): No clear intent indication
+
+5. **Value Extraction**: Extract relevant parameters (amounts, tokens, addresses, etc.)
+
+6. **Flow Continuity**: Favor continuing existing conversation flows over starting new ones
 </instructions>
 <keys>
 ${formatKeys(dataDescription)}

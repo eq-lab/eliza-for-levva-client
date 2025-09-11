@@ -56,7 +56,7 @@ export interface IntentRegistration {
 }
 
 export interface IntentDetectionResult {
-  intentType: INTENT_TYPE | null;
+  intentType: INTENT_TYPE | undefined;
   confidence: number;
   extractedValues?: Record<string, any>;
   reasoning?: string;
@@ -120,6 +120,116 @@ export class IntentManager extends Service {
     return Array.from(this.intentRegistry.values()).filter(
       (registration) => registration.domain === domain
     );
+  }
+
+  /**
+   * Check if an intent type is registered for a specific domain
+   */
+  static isIntentRegisteredForDomain(
+    domain: LEVVA_ACTIONS,
+    intentType: INTENT_TYPE
+  ): boolean {
+    const key = `${domain}:${intentType}`;
+    return this.intentRegistry.has(key);
+  }
+
+  /**
+   * Get all registered intent types for a domain
+   */
+  static getRegisteredIntentTypesForDomain(
+    domain: LEVVA_ACTIONS
+  ): INTENT_TYPE[] {
+    return this.getRegisteredIntentsForDomain(domain).map(
+      (registration) => registration.type
+    );
+  }
+
+  /**
+   * Validate if detected intent belongs to the expected domain
+   */
+  static validateIntentForDomain(
+    domain: LEVVA_ACTIONS,
+    intentType: INTENT_TYPE | undefined
+  ): boolean {
+    if (!intentType) return false;
+    return this.isIntentRegisteredForDomain(domain, intentType);
+  }
+
+  /**
+   * Instance method to validate intent for domain (preferred over static)
+   */
+  validateIntentForDomain(
+    domain: LEVVA_ACTIONS,
+    intentType: INTENT_TYPE | undefined
+  ): boolean {
+    return IntentManager.validateIntentForDomain(domain, intentType);
+  }
+
+  /**
+   * Instance method to get registered intent types for domain
+   */
+  getRegisteredIntentTypesForDomain(domain: LEVVA_ACTIONS): INTENT_TYPE[] {
+    return IntentManager.getRegisteredIntentTypesForDomain(domain);
+  }
+
+  /**
+   * Helper function to handle intent detection and creation logic
+   * This consolidates the common pattern used across providers
+   */
+  async handleIntentDetectionAndCreation(
+    message: Memory,
+    domain: LEVVA_ACTIONS,
+    userId: string,
+    channelId: string,
+    existingIntentContext?: IntentContext,
+    confidenceThreshold: number = 0.6
+  ): Promise<IntentContext | undefined> {
+    try {
+      // Detect intent from current message
+      const detect = await this.detectIntentWithLLM(message, domain);
+
+      // Create new intent if detected, valid for domain, and different from existing
+      if (
+        detect?.intentType &&
+        detect.confidence > confidenceThreshold &&
+        this.validateIntentForDomain(domain, detect.intentType) &&
+        detect.intentType !== existingIntentContext?.type
+      ) {
+        // Get parent intent by previous message's domain
+        const parentIntent = await this.getActiveIntentByReply(message);
+
+        const intentContext = await this.createIntent(
+          {
+            type: detect.intentType as INTENT_TYPE,
+            domain: domain,
+            userId: userId,
+            channelId: channelId,
+            memories: [],
+            returnData: detect.extractedValues || {},
+            metadata: {
+              detectedAt: Date.now(),
+              confidence: detect.confidence,
+              reasoning: detect.reasoning,
+            },
+          },
+          parentIntent ?? undefined
+        );
+
+        this.runtime.logger.info(
+          `Created new intent: ${intentContext.id} (${intentContext.type}) with confidence ${detect.confidence}`
+        );
+
+        return intentContext;
+      }
+
+      return existingIntentContext || undefined;
+    } catch (error) {
+      this.runtime.logger.warn(
+        "Error in intent detection and creation:",
+        error
+      );
+      return existingIntentContext || undefined;
+    }
   }
 
   /**
@@ -216,7 +326,9 @@ export class IntentManager extends Service {
     return intent?.status === "ACTIVE" ? intent : undefined;
   }
 
-  async getActiveIntentByReply(reply: Memory): Promise<IntentContext | null> {
+  async getActiveIntentByReply(
+    reply: Memory
+  ): Promise<IntentContext | undefined> {
     try {
       const { id: messageId, roomId } = reply;
       const room = await this.runtime.getRoom(roomId);
@@ -238,7 +350,7 @@ export class IntentManager extends Service {
 
       if (!channelId) {
         logger.debug(`No channel ID found in room: ${roomId}`);
-        return null;
+        return undefined;
       }
 
       // Get recent messages from the conversation
@@ -251,7 +363,7 @@ export class IntentManager extends Service {
 
       if (!recentMessages || recentMessages.length === 0) {
         logger.debug("No recent messages found");
-        return null;
+        return undefined;
       }
 
       // Find the current user message and previous user message
@@ -269,7 +381,7 @@ export class IntentManager extends Service {
 
       if (currentMessageIndex === -1) {
         logger.debug("Current message not found in recent messages");
-        return null;
+        return undefined;
       }
 
       const agentResponses: Memory[] = [];
@@ -291,7 +403,7 @@ export class IntentManager extends Service {
 
       if (!agentResponses.length) {
         logger.debug("No previous user message found");
-        return null;
+        return undefined;
       }
 
       logger.debug("Found agent responses to analyze", {
@@ -335,17 +447,17 @@ export class IntentManager extends Service {
       }
 
       logger.debug("No active intents found in agent responses or by domain");
-      return null;
+      return undefined;
     } catch (error) {
       logger.error("Error finding active intent from reply:", error);
-      return null;
+      return undefined;
     }
   }
 
-  async getIntentById(intentId: string): Promise<IntentContext | null> {
+  async getIntentById(intentId: string): Promise<IntentContext | undefined> {
     const cacheKey = `intent_id_${intentId}`;
     const cached = await this.runtime.getCache<IntentContext>(cacheKey);
-    return cached || null;
+    return cached;
   }
 
   /** @deprecated not the most efficient way to store intents, consider implementing dedicated schema */
@@ -400,7 +512,7 @@ export class IntentManager extends Service {
 
       if (domainIntents.length === 0 || !message.content.text) {
         const result = {
-          intentType: null,
+          intentType: undefined,
           confidence: 0,
           reasoning: "No registered intents found for domain",
         };
@@ -408,6 +520,22 @@ export class IntentManager extends Service {
         await this.runtime.setCache(cacheKey, result);
         return result;
       }
+
+      // Get recent conversation context for better intent detection
+      const recentMessages = await this.runtime.getMemories({
+        roomId: message.roomId,
+        count: 5,
+        unique: false,
+        tableName: "messages",
+      });
+
+      const conversationContext = recentMessages
+        .slice(-5) // Last 5 messages
+        .map((msg) => {
+          const isAgent = msg.content.actions && msg.content.actions.length > 0;
+          return `${isAgent ? "Agent" : "User"}: ${msg.content.text}`;
+        })
+        .join("\n");
 
       // Create prompt for LLM analysis
       const intentOptions: IntentOption[] = domainIntents.map((intent) => ({
@@ -419,7 +547,8 @@ export class IntentManager extends Service {
       const prompt = createIntentDetectionPrompt(
         message.content.text,
         intentOptions,
-        domain
+        domain,
+        conversationContext
       );
 
       // Use LLM to analyze intent
@@ -482,7 +611,7 @@ export class IntentManager extends Service {
     // No default intent for position management - let action handle default behavior
 
     return {
-      intentType: null,
+      intentType: undefined,
       confidence: 0,
       reasoning: "No matching intent found",
     };

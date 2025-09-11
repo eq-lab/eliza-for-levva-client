@@ -599,13 +599,11 @@ export class LevvaService
   );
 
   async getPositionSummary(address: `0x${string}`, chainId: number) {
-    const [positions, withdrawals, strategiesResult] = await Promise.all([
+    const [positions, withdrawals, strategies] = await Promise.all([
       this.getUserPositions(address, chainId),
       this.getWithdrawalRequests(address, chainId),
-      getStrategiesApi(chainId), // Use the provided chainId
+      this.getStrategies(chainId), // Use processed StrategyEntry[] instead of raw API
     ]);
-
-    const strategies = strategiesResult.success ? strategiesResult.data : [];
 
     return {
       summary: createPositionSummary(positions, withdrawals, strategies),
@@ -726,31 +724,70 @@ export class LevvaService
       throw new Error("Failed to get strategies");
     }
 
-    return result.data.map<StrategyEntry>((x) => {
-      const type: StrategyType = "vault";
-      const strategy: Strategy =
-        x.type === "UltraSafe"
-          ? "ultra-safe"
-          : x.type === "Safe"
-            ? "safe"
-            : x.type === "Brave"
-              ? "brave"
-              : "custom";
+    logger.debug("Raw strategies data:", {
+      count: result.data.length,
+      firstStrategy: result.data[0],
+    });
 
-      const contractAddress = x.vault?.address;
+    return result.data.map<StrategyEntry>((x, index) => {
+      try {
+        logger.debug(`Processing strategy ${index}:`, {
+          id: x.id,
+          name: x.name,
+          type: x.type,
+          risk: x.risk,
+          category: x.category,
+        });
 
-      if (!isHex(contractAddress)) {
-        throw new Error(`Invalid contract address: ${contractAddress}`);
+        const type: StrategyType = "vault";
+        const strategy: Strategy =
+          x.type === "UltraSafe"
+            ? "ultra-safe"
+            : x.type === "Safe"
+              ? "safe"
+              : x.type === "Brave"
+                ? "brave"
+                : "custom";
+
+        const contractAddress = x.vault?.address;
+
+        if (!isHex(contractAddress)) {
+          throw new Error(
+            `Invalid contract address: ${contractAddress} for strategy ${x.id}`
+          );
+        }
+
+        const strategyEntry: StrategyEntry = {
+          type,
+          vaultChainId: x.vault?.publicChainId ?? 1,
+          contractAddress: contractAddress as `0x${string}`,
+          strategy,
+          description: x.description,
+          id: x.id,
+          name: x.name,
+          risk: x.risk,
+          category: x.category,
+          shortDescription: x.shortDescription,
+          backgroundColor: x.backgroundColor,
+          minimumEfficientDeposit: x.minimumEfficientDeposit,
+          apy: x.apy,
+          liquidityAvailability: x.liquidityAvailability,
+          bonuses: x.bonuses,
+          vault: x.vault,
+        };
+
+        logger.debug(
+          `Successfully processed strategy ${index}:`,
+          strategyEntry
+        );
+        return strategyEntry;
+      } catch (error) {
+        logger.error(`Error processing strategy ${index}:`, {
+          error,
+          strategy: x,
+        });
+        throw error;
       }
-
-      return {
-        type,
-        vaultChainId: x.vault?.publicChainId ?? 1,
-        contractAddress: contractAddress as `0x${string}`,
-        strategy,
-        description: x.description,
-        id: x.id,
-      };
     });
   }, this.getStrategiesKey);
 

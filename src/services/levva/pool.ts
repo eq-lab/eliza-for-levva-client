@@ -21,6 +21,60 @@ export interface StrategyMapping {
 export interface StrategyEntry extends StrategyMapping {
   strategy: Strategy;
   id: number;
+  name: string;
+  risk: string;
+  category: string;
+  shortDescription: string;
+  backgroundColor: string | null;
+  minimumEfficientDeposit: number;
+  apy?: number;
+  liquidityAvailability: string;
+  bonuses?: Array<{
+    bonusType: string;
+    amountType?: string;
+    amount: number;
+  }>;
+  vault?: {
+    id: number;
+    publicChainId: number;
+    address: string;
+    name: string | null;
+    underlyingToken: {
+      address: string;
+      symbol: string;
+      name: string;
+      decimals: number;
+      priceUsd: number;
+      protocol?: string;
+      bonuses?: Array<{
+        bonusTypeId?: number;
+        bonusType: string;
+        amount: number;
+        amountType?: string;
+      }>;
+    };
+    lpToken: {
+      address: string;
+      symbol: string;
+      name: string;
+      decimals: number;
+      priceUsd: number;
+      protocol?: string;
+      bonuses?: Array<{
+        bonusTypeId?: number;
+        bonusType: string;
+        amount: number;
+        amountType?: string;
+      }>;
+    };
+    lpTotalSupply: number;
+    performanceFee: number;
+    managementFee: number;
+    totalAssets: number;
+    currentApy: number;
+    minDeposit: number;
+    createdAt: string;
+  };
 }
 
 export const getPoolConstants = async (

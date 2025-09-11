@@ -14,4 +14,5 @@ export enum INTENT_TYPE {
   WITHDRAW = "WITHDRAW",
   DEPOSIT = "DEPOSIT",
   SWAP = "SWAP",
+  SEND = "SEND",
 }

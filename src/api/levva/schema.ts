@@ -1,13 +1,20 @@
 import { z } from "zod";
 
+const bonusSchema = z.object({
+  bonusTypeId: z.number().optional(),
+  bonusType: z.string(),
+  amount: z.number(),
+  amountType: z.string().optional(),
+});
+
 const tokenSchema = z.object({
   address: z.string(),
   symbol: z.string(),
   name: z.string(),
   decimals: z.number(),
   priceUsd: z.number(),
-  protocol: z.any().optional(),
-  bonuses: z.array(z.any()).optional(),
+  protocol: z.string().nullable().optional(),
+  bonuses: z.array(bonusSchema).optional(),
 });
 
 export const strategiesResponseSchema = z.array(
@@ -21,7 +28,9 @@ export const strategiesResponseSchema = z.array(
     category: z.string(),
     risk: z.string(),
     minimumEfficientDeposit: z.number(),
+    apy: z.number().optional(),
     liquidityAvailability: z.string(),
+    bonuses: z.array(bonusSchema).optional(),
     vault: z
       .object({
         id: z.number(),

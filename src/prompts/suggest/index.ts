@@ -27,3 +27,7 @@ export {
   positionDiversificationPrompt,
   type PositionDiversificationParams,
 } from "./position-diversification";
+export {
+  depositOpportunitiesPrompt,
+  type DepositOpportunitiesParams,
+} from "./deposit-opportunities";

@@ -2,12 +2,11 @@ import { PoolConstants } from "./pool";
 import pendleAdapterAbi from "./abi/pendle.adapter.abi";
 import type { PendleActiveMarkets } from "../../api/market/pendle";
 import { getChain, getClient } from "../../util/eth";
+import { ETH_NULL_ADDR } from "../../constants/eth";
 
 const ADAPTERS = new Map<number, `0x${string}`>([
   [42161, "0x03fA449776FBE2a38771BD638be94E32592372f6"],
 ]);
-
-const NULL_ADDRESS = "0x0000000000000000000000000000000000000000";
 
 export const getPendleParams = async (
   chainId: number,
@@ -35,7 +34,7 @@ export const getPendleParams = async (
     args: [params.baseToken, params.quoteToken],
   });
 
-  if (market === NULL_ADDRESS) {
+  if (market === ETH_NULL_ADDR) {
     return;
   }
 

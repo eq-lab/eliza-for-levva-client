@@ -206,8 +206,16 @@ In case of "vault" strategy, suggest swap, eg. { "label": "Swap ETH(0.32 availab
 In case of "pool" strategy, suggest deposit, eg. { "label": "Deposit USDT(486.36 available)", "text": "I want to deposit USDT" }
 "label" should display token symbol and balance if greater than 0, example: "ETH(0.32 available)" - with balance, "USDC" - without balance
 "text" should include token symbol
+
+ETH/WETH CONVERSION RULES:
+- If user has ETH and strategy requires WETH, suggest: { "label": "Wrap ETH(0.32 available) -> WETH", "text": "I want to wrap ETH to WETH and deposit" }
+- If user has WETH and wants to use ETH, suggest: { "label": "Unwrap WETH(0.5 available) -> ETH", "text": "I want to unwrap WETH to ETH" }
+- ETH and WETH are interchangeable through wrapping/unwrapping (1:1 ratio)
+- Consider both ETH and WETH options when user has either token
+
 IMPORTANT ORDERING RULES:
 - First prefer tokens with higher balance in portfolio
+- Include ETH/WETH conversion suggestions when relevant
 - Second include base token of pool
 - Tokens with no balance should be included afterwards
 </instructions>

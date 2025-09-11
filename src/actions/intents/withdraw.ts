@@ -19,13 +19,14 @@ import { LevvaService } from "../../services/levva/class";
 import { rephrase } from "../../util/generate";
 import { IntentContext, IntentHandler } from "../../services/intent-manager";
 import { ExtractedDataForWithdraw } from "../../prompts/withdraw";
-import { StrategiesResponse, WithdrawalRequest } from "../../api/levva/schema";
+import { WithdrawalRequest } from "../../api/levva/schema";
+import { StrategyEntry } from "../../services/levva/pool";
 import { CalldataWithDescription } from "../../types/tx";
 
 async function handleRequestRedeem(
   runtime: IAgentRuntime,
   address: `0x${string}`,
-  strategy: StrategiesResponse[number],
+  strategy: StrategyEntry,
   amount: number | "all"
 ): Promise<Content> {
   const levvaService = runtime.getService<LevvaService>(
@@ -109,7 +110,7 @@ After signing, you'll receive withdrawal NFT to your wallet. The withdrawal will
 async function handleClaimWithdrawal(
   runtime: IAgentRuntime,
   address: `0x${string}`,
-  strategy: StrategiesResponse[number],
+  strategy: StrategyEntry,
   withdrawal: WithdrawalRequest
 ): Promise<Content> {
   const service = runtime.getService<LevvaService>(LEVVA_SERVICE.LEVVA_COMMON);

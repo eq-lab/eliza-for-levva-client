@@ -15,3 +15,5 @@
 // Export intent handlers for use by actions
 export { handleWithdrawIntent } from "./withdraw";
 export { handleSwapIntent, onSwapSuccess } from "./swap";
+export { handleDepositIntent, onDepositSuccess } from "./deposit";
+export { handleSendIntent, onSendSuccess } from "./send";

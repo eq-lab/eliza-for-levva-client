@@ -9,6 +9,8 @@ import { IntentManager, IntentContext } from "../services/intent-manager";
 import { LEVVA_SERVICE } from "../constants/enum";
 import { onWithdrawSuccess } from "src/actions/intents/withdraw";
 import { onSwapSuccess } from "src/actions/intents/swap";
+import { onDepositSuccess } from "src/actions/intents/deposit";
+import { onSendSuccess } from "src/actions/intents/send";
 
 interface TransactionData {
   type: string;
@@ -169,6 +171,30 @@ async function handleTransactionConfirmation(
             activeIntentContext
           );
         }
+        break;
+      }
+      case "DEPOSIT": {
+        await onDepositSuccess(runtime, activeIntentContext);
+
+        // Always complete deposit intents after successful transaction
+        await handleIntentCompletion(
+          runtime,
+          message,
+          receipt,
+          activeIntentContext
+        );
+        break;
+      }
+      case "SEND": {
+        await onSendSuccess(runtime, activeIntentContext);
+
+        // Always complete send intents after successful transaction
+        await handleIntentCompletion(
+          runtime,
+          message,
+          receipt,
+          activeIntentContext
+        );
         break;
       }
       default:

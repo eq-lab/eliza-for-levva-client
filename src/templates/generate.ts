@@ -16,14 +16,27 @@ ${enumWithDescription(types)}
 {{userData}}
 </user>
 <instructions>
-Select relevant data provided by user's responses and decide which suggestion type is best suited for user's next message.
+Analyze the conversation to understand the current context and what the user needs to provide next.
 
-IMPORTANT DATA SELECTION RULES;
+CONTEXT ANALYSIS RULES:
+- Look at the agent's last message to understand what information is being requested
+- If agent asks for "amount", "how much", or "specify amount" → prioritize amount-based suggestions
+- If agent asks for "strategy", "which strategy" → prioritize strategy selection suggestions  
+- If agent asks for "token", "which token" → prioritize token selection suggestions
+- If agent asks for "address", "recipient" → prioritize address-based suggestions
+
+IMPORTANT DATA SELECTION RULES:
 - If user asked to cancel transaction, no KNOWN data can be selected before the cancel.
 - If user confirmed transaction, no KNOWN data can be selected before the confirmation.
 - Ignore data if it was provided as an example by an agent.
+- Focus on what the user still needs to provide based on the agent's current request
 
-First, decide what data is KNOWN and which field is UNKNOWN. Then select the most suitable suggestion type. If you cannot find any data, select the most general suggestion type.
+CONVERSATION FLOW PRIORITY:
+1. If agent is asking for specific information (amount, token, strategy), generate suggestions for that specific need
+2. If conversation shows active transaction flow, continue that flow with appropriate suggestions
+3. If no specific request, use general suggestions
+
+First, identify what the agent is currently asking for, then decide what data is KNOWN and which field is UNKNOWN. Select the suggestion type that best helps the user respond to the agent's current request.
 </instructions>
 <keys>
 - "thought" should be a short description of what the agent is thinking about and planning.

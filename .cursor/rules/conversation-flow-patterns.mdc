@@ -1,0 +1,386 @@
+---
+description: Natural conversation flow patterns and context-aware prompting for better user experience
+globs: ["**/*.ts"]
+alwaysApply: false
+---
+
+# Natural Conversation Flow Patterns
+
+## Overview
+
+This rule documents patterns for creating natural, context-aware conversations that avoid robotic responses and repetitive information requests. Based on real-world improvements to deposit intent handling.
+
+## Core Principles
+
+### 1. Context Awareness Over Repetition
+**Never ask for information already provided in the conversation.**
+
+```typescript
+// ❌ Bad: Ignoring context
+User: "I want to use the ultra-safe strategy"
+Agent: "Please specify which strategy you'd like to use."
+
+// ✅ Good: Building on context
+User: "I want to use the ultra-safe strategy" 
+Agent: "Great choice on the ultra-safe strategy! Which token would you like to deposit?"
+```
+
+### 2. User Voice in Suggestions
+**Write suggestions as the user would speak, not as the agent.**
+
+```typescript
+// ❌ Bad: Agent voice
+suggestions = [
+  { label: "Specify amount", text: "Please specify the amount to deposit" }
+];
+
+// ✅ Good: User voice  
+suggestions = [
+  { label: "Deposit 100 USDC", text: "I want to deposit 100 USDC into the Ultra-Safe strategy" }
+];
+```
+
+### 3. Real Values Over Placeholders
+**Use realistic amounts and tokens users would actually type.**
+
+```typescript
+// ❌ Bad: Placeholder text
+"I want to deposit [amount] USDC into the [strategy]"
+
+// ✅ Good: Real values
+"I want to deposit 100 USDC into the Ultra-Safe strategy"
+```
+
+## Implementation Patterns
+
+### Context-Aware Parameter Handling
+
+#### Missing Parameter Handler Pattern
+```typescript
+async function handleMissingParameters(intentContext, missingParam) {
+  const { returnData } = intentContext;
+  const { strategyName, tokenSymbol, amount } = returnData || {};
+  
+  // Build response using known context
+  if (missingParam === "token" && strategyName) {
+    return `Great choice on the ${strategyName}! Which token would you like to deposit? You can use USDC, ETH, or other tokens from your portfolio.`;
+  }
+  
+  if (missingParam === "amount" && strategyName && tokenSymbol) {
+    return `Perfect! How much ${tokenSymbol} would you like to deposit into the ${strategyName}? You can specify an amount like "100 USDC" or "0.1 ETH".`;
+  }
+  
+  // Fallback for no context
+  return `I'd be happy to help you with your deposit. Could you tell me which strategy and token you'd like to use?`;
+}
+```
+
+#### Context Extraction Pattern
+```typescript
+// Extract conversation context for smart responses
+const conversationContext = {
+  extractFromHistory: (messages) => ({
+    mentionedStrategy: extractStrategyMentions(messages),
+    mentionedTokens: extractTokenMentions(messages), 
+    mentionedAmounts: extractAmountMentions(messages),
+    userPreferences: inferPreferences(messages)
+  }),
+  
+  buildContextualResponse: (context, missingParam) => {
+    // Use extracted context to avoid repetitive questions
+    if (context.mentionedStrategy && missingParam === "token") {
+      return `I see you're interested in ${context.mentionedStrategy}. Which token would you like to use?`;
+    }
+  }
+};
+```
+
+### Natural Suggestion Generation
+
+#### Realistic Amount Patterns
+```typescript
+const REALISTIC_AMOUNTS = {
+  USDC: ["10", "50", "100", "200", "500", "1000"],
+  ETH: ["0.01", "0.05", "0.1", "0.25", "0.5", "1.0"],
+  WETH: ["0.1", "0.25", "0.5", "1.0", "2.0"],
+};
+
+const generateNaturalSuggestions = (availableTokens, strategies) => {
+  return strategies.map(strategy => {
+    const token = selectAppropriateToken(availableTokens, strategy);
+    const amount = selectRealisticAmount(token);
+    
+    return {
+      label: `Deposit ${amount} ${token}`,
+      text: `I want to deposit ${amount} ${token} into the ${strategy.name}`
+    };
+  });
+};
+```
+
+#### User Voice Templates
+```typescript
+const USER_VOICE_TEMPLATES = {
+  deposit: [
+    "I want to deposit {amount} {token} into the {strategy}",
+    "Let me try the {strategy} with {amount} {token}",
+    "I'd like to invest {amount} {token} in a {risk} strategy",
+    "Deposit {amount} {token} into the {strategy}"
+  ],
+  
+  swap: [
+    "I want to swap {amount} {fromToken} for {toToken}",
+    "Let me exchange {amount} {fromToken} to {toToken}",
+    "Swap {amount} {fromToken} for {toToken}"
+  ]
+};
+```
+
+### Conversation State Management
+
+#### Parameter Tracking Pattern
+```typescript
+interface ConversationState {
+  askedParameters: Set<string>;
+  knownParameters: Record<string, any>;
+  userPreferences: Record<string, any>;
+  conversationHistory: Message[];
+}
+
+const updateConversationState = (state: ConversationState, newInfo: any) => {
+  // Track what we've asked for to avoid repetition
+  if (newInfo.askedFor) {
+    state.askedParameters.add(newInfo.askedFor);
+  }
+  
+  // Store known parameters for context
+  if (newInfo.extractedParams) {
+    Object.assign(state.knownParameters, newInfo.extractedParams);
+  }
+  
+  return state;
+};
+```
+
+#### Smart Parameter Inference
+```typescript
+const inferMissingParameters = (conversationState, userPortfolio) => {
+  const { knownParameters, conversationHistory } = conversationState;
+  
+  // Infer token from conversation context
+  if (!knownParameters.token && conversationHistory.some(msg => msg.includes("USDC"))) {
+    return { ...knownParameters, token: "USDC", confidence: 0.8 };
+  }
+  
+  // Infer amount from portfolio size
+  if (!knownParameters.amount && knownParameters.token) {
+    const tokenBalance = userPortfolio.find(asset => asset.symbol === knownParameters.token);
+    if (tokenBalance && tokenBalance.value > 1000) {
+      return { ...knownParameters, amount: "100", confidence: 0.7 }; // Conservative 10%
+    }
+  }
+  
+  return knownParameters;
+};
+```
+
+## Prompt Engineering Patterns
+
+### Context-Aware Extraction Prompts
+
+#### Enhanced Data Extraction
+```typescript
+export const extractDataWithContext = (ctx: {
+  currentMessage: string;
+  conversationHistory: string;
+  knownParameters: Record<string, any>;
+  userPortfolio: string;
+}) => `
+<task>Extract parameters from user message using conversation context to avoid asking for known information.</task>
+
+<currentMessage>${ctx.currentMessage}</currentMessage>
+
+<conversationContext>
+Previous conversation: ${ctx.conversationHistory}
+Known parameters: ${JSON.stringify(ctx.knownParameters)}
+</conversationContext>
+
+<userPortfolio>${ctx.userPortfolio}</userPortfolio>
+
+<instructions>
+CONTEXT-AWARE EXTRACTION:
+- If user mentions strategy and conversation shows token discussion, infer the token
+- If user mentions amount and conversation shows strategy preference, connect them
+- Use conversation history to fill gaps in current message
+- Prefer parameters mentioned more recently in conversation
+- Build on known parameters rather than asking again
+
+CONFIDENCE SCORING:
+- High (0.8-1.0): Parameters explicitly stated or clearly inferrable from context
+- Medium (0.5-0.7): Parameters inferrable from conversation patterns
+- Low (0.2-0.4): Limited context, need clarification
+</instructions>
+`;
+```
+
+#### Natural Response Generation
+```typescript
+export const generateNaturalResponse = (ctx: {
+  missingParameter: string;
+  knownParameters: Record<string, any>;
+  conversationTone: string;
+}) => `
+<task>Generate natural, conversational response that builds on known context.</task>
+
+<context>
+Missing: ${ctx.missingParameter}
+Known: ${JSON.stringify(ctx.knownParameters)}
+Tone: ${ctx.conversationTone}
+</context>
+
+<instructions>
+NATURAL RESPONSE RULES:
+- Reference known parameters in the response to show context awareness
+- Use conversational language ("Great choice!", "Perfect!", "I see you want...")
+- Provide specific examples relevant to the user's situation
+- Avoid robotic phrases like "Please specify" or "You must provide"
+- Make the response feel like a natural conversation continuation
+
+RESPONSE PATTERNS:
+- If strategy known: "Great choice on the {strategy}! Now I need..."
+- If token known: "I see you want to use {token}. How much would you like..."
+- If both known: "Perfect! So you want {token} in {strategy}. What amount..."
+</instructions>
+`;
+```
+
+## Anti-Patterns to Avoid
+
+### ❌ Robotic Information Requests
+```typescript
+// Don't use generic, robotic language
+BAD_RESPONSES = [
+  "Please specify which investment strategy you'd like to use.",
+  "You must provide the token address.",
+  "The amount parameter is required.",
+  "Please provide the missing deposit information."
+];
+
+// Use conversational, context-aware language
+GOOD_RESPONSES = [
+  "Which strategy interests you? You can choose ultra-safe, safe, or brave.",
+  "I see you want to deposit tokens. Which one would you like to use?",
+  "How much would you like to deposit? You can say something like '100 USDC'.",
+  "I'd be happy to help! What strategy and token are you thinking about?"
+];
+```
+
+### ❌ Placeholder Text in User Suggestions
+```typescript
+// Never generate suggestions with placeholder text
+BAD_SUGGESTIONS = [
+  "I want to deposit [amount] USDC",
+  "Swap [fromToken] for [toToken]", 
+  "Please specify the [parameter]"
+];
+
+// Always use realistic, specific values
+GOOD_SUGGESTIONS = [
+  "I want to deposit 100 USDC into the Ultra-Safe strategy",
+  "Swap 0.1 ETH for USDC",
+  "Let me try the Safe strategy with 50 USDC"
+];
+```
+
+### ❌ Ignoring Conversation Context
+```typescript
+// Don't ask for information already provided
+if (conversationIncludes("ultra-safe strategy")) {
+  // ❌ Bad: "Which strategy would you like to use?"
+  // ✅ Good: "Great choice on the ultra-safe strategy!"
+}
+
+if (conversationIncludes("USDC")) {
+  // ❌ Bad: "Which token would you like to deposit?"
+  // ✅ Good: "How much USDC would you like to deposit?"
+}
+```
+
+## Testing Patterns
+
+### Conversation Flow Tests
+```typescript
+describe("Natural Conversation Flow", () => {
+  it("should build on previous context", async () => {
+    const conversation = [
+      { user: "I want to use the ultra-safe strategy" },
+      { agent: await handleIntent(message1) }
+    ];
+    
+    const response = await handleMissingToken(conversation);
+    
+    expect(response).toContain("ultra-safe strategy");
+    expect(response).not.toContain("Which strategy"); // Don't re-ask
+    expect(response).toMatch(/Great choice|Perfect|I see/); // Conversational
+  });
+  
+  it("should generate realistic suggestions", async () => {
+    const suggestions = await generateSuggestions(context);
+    
+    suggestions.forEach(suggestion => {
+      expect(suggestion.text).not.toMatch(/\[.*\]/); // No placeholders
+      expect(suggestion.text).toMatch(/\d+/); // Real numbers
+      expect(suggestion.text).toMatch(/^I want|^Let me|^I'd like/); // User voice
+    });
+  });
+  
+  it("should avoid repetitive questions", async () => {
+    const conversation = [
+      { user: "I want to deposit USDC" },
+      { agent: "Which strategy would you like?" },
+      { user: "Ultra-safe" }
+    ];
+    
+    const response = await handleMissingAmount(conversation);
+    
+    expect(response).toContain("USDC");
+    expect(response).toContain("ultra-safe");
+    expect(response).not.toContain("Which token");
+    expect(response).not.toContain("Which strategy");
+  });
+});
+```
+
+### Quality Metrics
+```typescript
+const CONVERSATION_QUALITY_METRICS = {
+  contextRetention: 0.9, // 90% of responses reference previous context
+  parameterReuse: 0.1,   // <10% ask for same parameter twice
+  suggestionRealism: 1.0, // 0% placeholder text in suggestions
+  conversationEfficiency: 3, // <3 exchanges to complete intent
+  userVoiceConsistency: 1.0, // 100% suggestions in user voice
+};
+```
+
+## Implementation Checklist
+
+When implementing natural conversation flow:
+
+- [ ] **Extract conversation context** from message history
+- [ ] **Track known parameters** across conversation turns
+- [ ] **Build contextual responses** that reference known information
+- [ ] **Generate realistic suggestions** with actual amounts and tokens
+- [ ] **Write suggestions in user voice** ("I want to..." not "Please specify...")
+- [ ] **Avoid placeholder text** like [amount], [token], [strategy]
+- [ ] **Test conversation continuity** with multi-turn scenarios
+- [ ] **Measure conversation efficiency** (exchanges to completion)
+- [ ] **Validate context retention** (responses reference previous messages)
+
+## Related Patterns
+
+- **Intent-Based Actions**: Use intent context for parameter persistence
+- **Provider Integration**: Leverage providers for conversation state
+- **LLM Prompt Debugging**: Apply context injection patterns
+- **Error Handling**: Provide helpful guidance instead of generic errors
+
+This pattern significantly improves user experience by making conversations feel natural and efficient rather than robotic and repetitive.

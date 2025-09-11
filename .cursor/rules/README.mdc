@@ -18,6 +18,7 @@ This directory contains workspace-specific rules and patterns for the ElizaOS Le
 
 ### 🎯 **Intent System & Actions**
 - **intent-based-actions**: Complete intent-based action resolution system with proof of concept documentation
+- **provider-intent-patterns**: Provider-intent integration patterns for context-aware behavior and specialized data extraction
 - **position-management**: Position management patterns and API integration
 - **levva-business-logic**: Levva protocol specific business logic and patterns
 
@@ -28,7 +29,11 @@ This directory contains workspace-specific rules and patterns for the ElizaOS Le
 ### 🔧 **Development Tools**
 - **debugging-patterns**: Debugging patterns and troubleshooting guidelines (includes Bun debugging with debug.bun.sh)
 - **llm-prompt-debugging**: Comprehensive LLM prompt debugging, limitations, and consistency guidelines
+- **conversation-flow-patterns**: Natural conversation flow patterns and context-aware prompting for better UX
 - **code-style**: Code style standards and linting configuration
+- **ethereum-constants**: Ethereum constants and address patterns (ETH_NULL_ADDR usage)
+- **typescript-conventions**: TypeScript coding conventions and best practices (undefined vs null, type safety)
+- **api-integration-patterns**: API integration patterns, schema validation, and error handling best practices
 
 ### 🏛️ **Architecture & Infrastructure**
 - **blockchain-integration**: Blockchain integration patterns and best practices

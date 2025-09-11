@@ -5,6 +5,10 @@ export interface PositionManagementParams {
   totalPositionValue: number;
   withdrawalsSummary: string;
   hasPositions: boolean;
+  availableStrategies?: string; // Available strategies for deposit suggestions
+  portfolioText?: string; // User's current token holdings
+  hasEth?: boolean; // Whether user has ETH for WETH conversion
+  riskDistribution?: string; // Current risk distribution across positions
 }
 
 export const positionManagementPrompt = ({
@@ -14,6 +18,10 @@ export const positionManagementPrompt = ({
   totalPositionValue,
   withdrawalsSummary,
   hasPositions,
+  availableStrategies,
+  portfolioText,
+  hasEth,
+  riskDistribution,
 }: PositionManagementParams): string => {
   // Only suggest if user has positions
   if (!hasPositions) {
@@ -25,7 +33,11 @@ export const positionManagementPrompt = ({
 </output>`;
   }
 
-  return `<task>Generate position management suggestions for user with active DeFi positions</task>
+  const ethContext = hasEth
+    ? `\nUser has ETH available for wrapping to WETH if needed for deposits.`
+    : "";
+
+  return `<task>Generate intelligent position management suggestions that consider deposit opportunities and portfolio optimization</task>
 <decision>
 ${JSON.stringify(decision)}
 </decision>
@@ -33,6 +45,15 @@ ${JSON.stringify(decision)}
 ${positionsSummary}
 Total Value: $${totalPositionValue.toFixed(2)}
 </currentPositions>
+<riskDistribution>
+${riskDistribution || "Risk distribution not available"}
+</riskDistribution>
+<availableStrategies>
+${availableStrategies || "Available strategies not provided"}
+</availableStrategies>
+<userPortfolio>
+${portfolioText || "Portfolio information not available"}${ethContext}
+</userPortfolio>
 <withdrawalStatus>
 ${withdrawalsSummary}
 </withdrawalStatus>
@@ -40,32 +61,37 @@ ${withdrawalsSummary}
 ${conversation}
 </conversation>
 <instructions>
-Generate 4 position management suggestions:
-1. "Check Positions" - to view current portfolio
-2. "Withdraw Funds" - if user has significant positions
-3. "Diversify Portfolio" - if concentrated in few strategies
-4. "Strategy Analysis" - to analyze performance
+Generate 4-5 intelligent position management suggestions based on the user's current portfolio state:
 
-Each suggestion should be actionable and relevant to their current positions.
+PORTFOLIO ANALYSIS PRIORITIES:
+1. **Position Optimization**: If user has successful positions, suggest increasing allocation
+2. **Risk Rebalancing**: If concentrated in one risk level, suggest diversification deposits
+3. **Strategy Diversification**: If limited to few strategies, suggest new strategy deposits
+4. **Token Utilization**: If user has unused tokens, suggest deposit opportunities
+5. **ETH/WETH Optimization**: If user has ETH, suggest WETH conversion for DeFi strategies
+
+SUGGESTION TYPES TO CONSIDER:
+- "Add to [Strategy Name]" - increase allocation to well-performing strategies
+- "Diversify with [Risk Level]" - balance risk exposure with new deposits
+- "Deposit [Token]" - utilize available tokens for new positions
+- "Wrap ETH for DeFi" - convert ETH to WETH for strategy compatibility
+- "Withdraw from [Strategy]" - reduce overexposed positions
+- "Check Performance" - analyze current strategy performance
+- "Rebalance Portfolio" - optimize overall allocation
+
+Each suggestion should:
+- Be specific to their actual positions and available tokens
+- Consider deposit opportunities alongside withdrawal options
+- Include actionable next steps that lead to deposit intents
+- Balance growth opportunities with risk management
 </instructions>
 <output>
+Respond using JSON format:
 {
   "suggestions": [
     {
-      "label": "Check Positions",
-      "text": "Show me my current positions"
-    },
-    {
-      "label": "Withdraw Funds", 
-      "text": "I want to withdraw some of my positions"
-    },
-    {
-      "label": "Diversify Portfolio",
-      "text": "Help me diversify my portfolio"
-    },
-    {
-      "label": "Strategy Analysis",
-      "text": "Analyze my strategy performance"
+      "label": "Short, specific action",
+      "text": "Natural message that would initiate deposit intent or position action"
     }
   ]
 }

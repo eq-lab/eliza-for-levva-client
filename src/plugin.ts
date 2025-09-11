@@ -42,7 +42,7 @@ const configSchema = z.object({
 const plugin: Plugin = {
   name: "levva",
   description:
-    "Comprehensive DeFi portfolio management plugin that integrates with the Levva staking protocol to provide intelligent investment strategies, cross-chain token swapping via Kyber and Pendle, automated position management with leverage capabilities, real-time market analysis, and personalized yield optimization across Ethereum, Arbitrum, and Base networks. Features include wallet analysis, risk assessment, news aggregation, intent-based action resolution, and transaction calldata generation for seamless DeFi operations.",
+    "Advanced DeFi portfolio management and investment assistant powered by the Levva protocol. Provides intelligent, context-aware investment strategies with multi-step intent-based actions for seamless user experiences. Core capabilities include: comprehensive portfolio analysis and optimization, automated deposit/withdrawal management with risk assessment, cross-chain token swapping via Kyber and Pendle with ETH/WETH conversion, personalized strategy recommendations (ultra-safe to brave risk profiles), real-time market intelligence and news aggregation, persistent transaction flows with smart parameter extraction, and multi-chain support across Ethereum, Arbitrum, and Base. Features advanced intent system for complex operations, yield farming optimization, leverage management, and transaction calldata generation for institutional-grade DeFi operations.",
   priority: -1,
   dependencies: ["bootstrap"], // ensure that bootstrap is loaded first
   config: {

@@ -19,9 +19,11 @@ import { rephrase } from "../util/generate";
 import { getPreviousReplyContext } from "../util/action-results";
 import { positionManagementPrompt } from "../prompts/suggest/position-management";
 import { positionDiversificationPrompt } from "../prompts/suggest/position-diversification";
+import { depositOpportunitiesPrompt } from "../prompts/suggest/deposit-opportunities";
+import { ETH_NULL_ADDR } from "../constants/eth";
 import { IntentManager, IntentContext } from "../services/intent-manager";
 import { Suggestion } from "./types";
-import { handleWithdrawIntent } from "./intents/withdraw";
+import { handleWithdrawIntent, handleDepositIntent } from "./intents";
 
 // Register the withdraw intent
 IntentManager.registerIntent({
@@ -41,6 +43,31 @@ IntentManager.registerIntent({
   handler: handleWithdrawIntent,
   description:
     "Handle withdrawal requests from Levva positions with multi-step process support",
+});
+
+// Register the deposit intent
+IntentManager.registerIntent({
+  type: INTENT_TYPE.DEPOSIT,
+  domain: LEVVA_ACTIONS.MANAGE_POSITIONS,
+  keywords: [
+    "deposit",
+    "invest",
+    "stake",
+    "add funds",
+    "put money",
+    "increase position",
+    "add to position",
+    "fund",
+    "contribute",
+    "strategy",
+    "earning strategy",
+    "farming strategy",
+    "select strategy",
+    "suggest strategy",
+  ],
+  handler: handleDepositIntent,
+  description:
+    "Handle deposit/investment requests for Levva strategies with transaction creation and multi-step process support",
 });
 
 async function validateAction() {
@@ -383,7 +410,7 @@ export const suggest: Suggestion[] = [
   {
     name: "position-management",
     description:
-      "Suggest position management options when user has active positions",
+      "Suggest intelligent position management options including deposit opportunities based on current positions",
     getPrompt: async (
       runtime,
       { address, chainId, conversation, decision }
@@ -396,7 +423,31 @@ export const suggest: Suggestion[] = [
         throw new Error("Failed to get levva service");
       }
 
-      const { summary } = await service.getPositionSummary(address, chainId);
+      const [{ summary, strategies }, portfolio] = await Promise.all([
+        service.getPositionSummary(address, chainId),
+        service.getWalletAssets({ address, chainId }),
+      ]);
+
+      // Check for ETH in portfolio
+      const ethAsset = portfolio.find(
+        (asset) =>
+          asset.token === ETH_NULL_ADDR ||
+          asset.address === ETH_NULL_ADDR
+      );
+      const hasEth = ethAsset ? ethAsset.amount > 0n : false;
+
+      // Get available strategies for deposit suggestions
+      const availableStrategies = strategies
+        .map((s) => `${s.name} (${s.risk} risk) - ${s.shortDescription}`)
+        .join("\n");
+
+      // Analyze risk distribution
+      const riskLevels = summary.positions.map((pos: any) => {
+        const strategy = strategies.find((s) => s.id === pos.strategyId);
+        return strategy?.risk || "unknown";
+      });
+      const uniqueRisks = [...new Set(riskLevels)];
+      const riskDistribution = `Risk levels: ${uniqueRisks.join(", ")} (${riskLevels.length} positions)`;
 
       return positionManagementPrompt({
         conversation,
@@ -405,13 +456,17 @@ export const suggest: Suggestion[] = [
         totalPositionValue: summary.totalPositionValue,
         withdrawalsSummary: summary.withdrawalsSummary,
         hasPositions: summary.hasPositions,
+        availableStrategies,
+        portfolioText: service.formatWalletAssets(portfolio, true),
+        hasEth,
+        riskDistribution,
       });
     },
   },
   {
     name: "position-diversification",
     description:
-      "Suggest diversification options when user has positions in limited strategies",
+      "Suggest deposit-focused diversification options to balance portfolio risk and strategy exposure",
     getPrompt: async (
       runtime,
       { address, chainId, conversation, decision }
@@ -423,17 +478,33 @@ export const suggest: Suggestion[] = [
         throw new Error("Failed to get levva service");
       }
 
-      const { summary, strategies } = await service.getPositionSummary(
-        address,
-        chainId
-      );
+      const [{ summary, strategies }, portfolio] = await Promise.all([
+        service.getPositionSummary(address, chainId),
+        service.getWalletAssets({ address, chainId }),
+      ]);
 
+      // Filter strategies user doesn't have positions in
       const availableStrategies = strategies.filter((strategy) => {
         const hasPosition = summary.positions.some(
           (pos: any) => pos.strategyId === strategy.id
         );
         return !hasPosition;
       });
+
+      // Check for ETH in portfolio
+      const ethAsset = portfolio.find(
+        (asset) =>
+          asset.token === ETH_NULL_ADDR ||
+          asset.address === ETH_NULL_ADDR
+      );
+      const hasEth = ethAsset ? ethAsset.amount > 0n : false;
+
+      // Analyze current risk levels
+      const currentRiskLevels = summary.positions.map((pos: any) => {
+        const strategy = strategies.find((s) => s.id === pos.strategyId);
+        return strategy?.risk || "unknown";
+      });
+      const uniqueCurrentRisks = [...new Set(currentRiskLevels)];
 
       return positionDiversificationPrompt({
         conversation,
@@ -442,9 +513,61 @@ export const suggest: Suggestion[] = [
         availableStrategiesFormatted: availableStrategies
           .map(
             (s) =>
-              `${s.name} - Contract: ${s.vault?.address}. Type: "vault". ${s.description}`
+              `${s.name} (${s.risk} risk, ${s.category}) - ${s.shortDescription}. Contract: ${s.vault?.address || "N/A"}`
           )
           .join("\n"),
+        portfolioText: service.formatWalletAssets(portfolio, true),
+        hasEth,
+        currentRiskLevels: uniqueCurrentRisks,
+      });
+    },
+  },
+  {
+    name: "deposit-opportunities",
+    description:
+      "Suggest specific deposit opportunities based on user's portfolio and existing positions",
+    getPrompt: async (
+      runtime,
+      { address, chainId, conversation, decision }
+    ) => {
+      const service = runtime.getService<LevvaService>(
+        LEVVA_SERVICE.LEVVA_COMMON
+      );
+      if (!service) {
+        throw new Error("Failed to get levva service");
+      }
+
+      const [{ summary, strategies }, portfolio] = await Promise.all([
+        service.getPositionSummary(address, chainId),
+        service.getWalletAssets({ address, chainId }),
+      ]);
+
+      // Check for ETH in portfolio
+      const ethAsset = portfolio.find(
+        (asset) =>
+          asset.token === ETH_NULL_ADDR ||
+          asset.address === ETH_NULL_ADDR
+      );
+      const hasEth = ethAsset ? ethAsset.amount > 0n : false;
+
+      // Get tokens with significant balances for deposit suggestions
+      const significantTokens = portfolio
+        .filter((asset) => asset.amount > 0n)
+        .map((asset) => asset.token)
+        .slice(0, 5); // Top 5 tokens by balance
+
+      return depositOpportunitiesPrompt({
+        conversation,
+        decision,
+        positionsSummary: summary.positionsSummary,
+        totalPositionValue: summary.totalPositionValue,
+        hasPositions: summary.hasPositions,
+        availableStrategies: strategies
+          .map((s) => `${s.name} (${s.risk} risk) - ${s.shortDescription}`)
+          .join("\n"),
+        portfolioText: service.formatWalletAssets(portfolio, true),
+        hasEth,
+        significantTokens,
       });
     },
   },

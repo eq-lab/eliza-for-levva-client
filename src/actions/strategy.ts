@@ -1,5 +1,4 @@
 import { Action, Content } from "@elizaos/core";
-import { ETH_NULL_ADDR } from "../constants/eth";
 
 import { LEVVA_ACTIONS, LEVVA_SERVICE } from "../constants/enum";
 import {
@@ -16,12 +15,12 @@ import {
 import { selectProviderState } from "../providers/util";
 import { LevvaService } from "../services/levva/class";
 import { Suggestion } from "./types";
-import { CalldataWithDescription } from "../types/tx";
 import { rephrase } from "../util/generate";
 import { getPreviousReplyContext } from "../util/action-results";
+import { ETH_NULL_ADDR } from "../constants/eth";
 
 const description =
-  "Select and manage earning strategy for user and ask for lacking parameters to build a transaction.";
+  "Provide investment strategy recommendations and suggestions. Transaction creation is handled by the DEPOSIT intent in MANAGE_POSITIONS domain.";
 
 export const action: Action = {
   name: LEVVA_ACTIONS.SELECT_STRATEGY,
@@ -67,7 +66,8 @@ export const action: Action = {
         throw new Error("Failed to get current user, please connect wallet");
       }
 
-      const address = lvva.user.address;
+      // User address available for future use
+      // const address = lvva.user.address;
 
       const service = runtime.getService<LevvaService>(
         LEVVA_SERVICE.LEVVA_COMMON
@@ -92,135 +92,34 @@ export const action: Action = {
         `Strategy selection, known data: ${JSON.stringify(params)}`
       );
 
-      // Helper function to handle missing parameters
-      const handleMissingParameter = async (
-        paramName: string,
-        text: string,
-        thought: string
-      ) => {
-        const content = {
-          text,
-          thought,
-          actions: ["SELECT_STRATEGY"],
-          source: message.content.source,
-        };
+      // Since parameter extraction is now handled by the deposit intent,
+      // this action focuses on providing strategy recommendations and guidance
+      const thought = `User is asking about investment strategies. I should provide comprehensive strategy information and guide them to use the deposit intent for actual transactions.`;
 
-        const result = await rephrase({
-          runtime,
-          state: composedState,
-          content,
-          prevActions,
-        });
+      let text = `### Investment Strategy Recommendations\n\n`;
+      text += `**Available Strategies:** ${params.strategies.length} strategies across different risk profiles\n\n`;
+      text += `**Your Portfolio:**\n${params.portfolioText}\n\n`;
+      text += `**Available Strategies:**\n${params.strategiesText}\n\n`;
 
-        await callback(result);
+      text += `### How to Invest\n\n`;
+      text += `To invest in any of these strategies, simply tell me:\n`;
+      text += `- "I want to deposit [amount] [token] into [strategy name]"\n`;
+      text += `- "I want to invest in ultra-safe strategy"\n`;
+      text += `- "Deposit 100 USDC into safe strategy"\n\n`;
 
-        return {
-          text: `Generated text: ${result?.text}`,
-          values: {
-            success: true,
-            responded: true,
-            lastReply: result.text,
-            lastReplyTime: Date.now(),
-            thoughtProcess: result?.thought,
-          },
-          data: {
-            actionName: LEVVA_ACTIONS.SELECT_STRATEGY,
-            response: result,
-            thought: result?.thought,
-            initialReply: content.text,
-            initialThought: content.thought,
-            messageGenerated: true,
-          },
-          success: true,
-        };
-      };
+      text += `I'll help you with the complete investment process, including:\n`;
+      text += `- Strategy selection and validation\n`;
+      text += `- Token compatibility and conversion (ETH ↔ WETH)\n`;
+      text += `- Amount validation and balance checking\n`;
+      text += `- Transaction preparation and execution\n\n`;
 
-      if (!params.strategy) {
-        return await handleMissingParameter(
-          "strategy",
-          `###Known strategies\n${composedState.values.strategies}\n\nPlease select desired strategy`,
-          "Since user didn't choose risk profile, give him summary and display options."
-        );
-      }
-
-      const strategy = params.strategy;
-
-      if (!params.tokenIn) {
-        return await handleMissingParameter(
-          "tokenIn",
-          `### Strategy: ${composedState.values.strategy}\n### Portfolio\n${composedState.values.portfolio}\n\n${composedState.values.tokenIn}`,
-          "Since user didn't choose token, give him summary and display options."
-        );
-      }
-
-      const tokenIn = params.tokenIn;
-
-      if (!params.amount) {
-        return await handleMissingParameter(
-          "amount",
-          `Strategy: ${composedState.values.strategy}\n\nSelected token: ${composedState.values.tokenIn}\n\nPortfolio: ${composedState.values.portfolio}\n\n${composedState.values.amountIn}`,
-          "Since user didn't choose amount, give him summary and display options."
-        );
-      }
-
-      const amount = params.amount;
-      const leverage = params.leverage;
-      let calldata: CalldataWithDescription[] | undefined;
-      let thought: string | undefined;
-      let text: string | undefined;
-
-      if (strategy.type === "pool") {
-        calldata = await service.handlePoolStrategy(
-          strategy,
-          address,
-          tokenIn.address ?? ETH_NULL_ADDR,
-          amount,
-          leverage
-        );
-
-        thought = `Prepared transaction to deposit ${amount} ${tokenIn.symbol} to pool ${strategy.contractAddress} with x${leverage} leverage, need to display confirmation`;
-
-        const detailedSteps = calldata
-          .map((c, i) => `${i + 1}. ${c.description}`)
-          .join("\n");
-
-        text = `Strategy: ${service.formatStrategy(strategy)}\n\nToken: ${service.formatToken(tokenIn)}\n\nAmount: ${amount}\n\nLeverage: x${leverage}\n\n### Transaction steps:\n${detailedSteps}`;
-      } else if (strategy.type === "vault") {
-        calldata = await service.handleVaultStrategy(
-          strategy,
-          address,
-          amount
-          // todo decide when to wrap tokens
-        );
-
-        thought = `Prepared transaction to deposit ${amount} ${tokenIn.symbol} to vault ${strategy.contractAddress}, need to display confirmation`;
-
-        const detailedSteps = calldata
-          .map((c, i) => `${i + 1}. ${c.description}`)
-          .join("\n");
-
-        text = `Strategy: ${service.formatStrategy(strategy)}\n\nToken: ${service.formatToken(tokenIn)}\n\nAmount: ${amount}\n\n### Transaction steps:\n${detailedSteps}`;
-      }
-
-      if (!calldata || !thought || !text) {
-        throw new Error(
-          `Failed to prepare calldata for strategy(${service.formatStrategy(strategy)})`
-        );
-      }
-
-      const hash = await service.createCalldata(calldata);
-
-      const json = {
-        id: "calls.json",
-        url: `/api/calldata?hash=${hash}`,
-      };
+      text += `**Need help choosing?** Ask me about specific risk levels or strategy types!`;
 
       const content: Content = {
         thought,
         text,
         actions: ["SELECT_STRATEGY"],
         source: message.content.source,
-        attachments: [json],
       };
 
       const responseContent = await rephrase({
@@ -232,7 +131,7 @@ export const action: Action = {
       await callback(responseContent);
 
       return {
-        text: `Generated calldata accessible at ${json.url}, generated text: ${responseContent?.text}`,
+        text: "Strategy recommendations provided successfully",
         values: {
           success: true,
           responded: true,
@@ -242,11 +141,9 @@ export const action: Action = {
         },
         data: {
           actionName: LEVVA_ACTIONS.SELECT_STRATEGY,
-          response: responseContent,
-          thought: responseContent?.thought,
-          initialReply: content.text,
-          initialThought: content.thought,
-          messageGenerated: true,
+          recommendation: true,
+          strategiesCount: params.strategies.length,
+          guidanceProvided: true,
         },
         success: true,
       };
@@ -489,11 +386,23 @@ export const suggest: Suggestion[] = [
         }),
       ]);
 
+      // Check for ETH in portfolio for WETH conversion awareness
+      const ethBalance = assets.find(
+        (asset) =>
+          asset.token === ETH_NULL_ADDR ||
+          asset.address === ETH_NULL_ADDR
+      );
+
+      const hasEth = ethBalance && ethBalance.amount > 0n;
+      const ethConversionNote = hasEth
+        ? `\n\nNOTE: User has ETH available. ETH can be wrapped to WETH for DeFi strategies that require WETH. Suggest both ETH and WETH options when relevant.`
+        : "";
+
       return suggestStrategyAssetPrompt({
         pools: strategies.join("\n"),
         decision: params.decision,
         conversation: params.conversation,
-        portfolio: service.formatWalletAssets(assets, true),
+        portfolio: service.formatWalletAssets(assets, true) + ethConversionNote,
         availableTokens: availableTokens
           .map((token) => `${token.symbol}(${token.address})`)
           .join(", "),
@@ -537,15 +446,28 @@ export const suggest: Suggestion[] = [
         }),
       ]);
 
+      // Check for ETH in portfolio for WETH conversion awareness
+      const ethBalance = portfolio.find(
+        (asset) =>
+          asset.token === ETH_NULL_ADDR ||
+          asset.address === ETH_NULL_ADDR
+      );
+
+      const hasEth = ethBalance && ethBalance.amount > 0n;
+      const ethConversionNote = hasEth
+        ? `\n\nNOTE: User has ETH available. ETH can be wrapped to WETH (1:1 ratio) for strategies requiring WETH. Consider both ETH and WETH amounts when suggesting deposit amounts.`
+        : "";
+
       return suggestStrategyAmountPrompt({
         decision: params.decision,
         conversation: params.conversation,
         strategies: strategies.join("\n"),
-        portfolio: service.formatWalletAssets(portfolio, true),
+        portfolio:
+          service.formatWalletAssets(portfolio, true) + ethConversionNote,
         availableTokens: tokens
           .map(
             (token) =>
-              `${token.symbol}(${token.address === "0x0000000000000000000000000000000000000000" ? "Native token" : token.address})`
+              `${token.symbol}(${token.address === ETH_NULL_ADDR ? "Native token" : token.address})`
           )
           .join(", "),
       });
