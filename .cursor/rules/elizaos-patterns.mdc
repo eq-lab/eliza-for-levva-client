@@ -1,281 +1,176 @@
 ---
-description: ElizaOS framework patterns and conventions
-globs: ["**/actions/**/*.ts", "**/providers/**/*.ts", "**/services/**/*.ts"]
-alwaysApply: false
+description: ElizaOS framework patterns and conventions including useModel patterns and validation anti-patterns
+globs: ["src/**/*.ts", "src/**/*.js"]
+alwaysApply: true
 ---
 
-# ElizaOS Framework Patterns
+# ElizaOS Framework Patterns and Conventions
 
-## 📋 Cross-References
-This file contains **core ElizaOS framework patterns**. For specific patterns, see:
-- `action-patterns.mdc` - **Action handler return values, validation, and ActionResult patterns**
-- `intent-based-actions.mdc` - **Intent-based action resolution system for complex operations**
-- `service-organization.mdc` - **Service module organization and caching patterns**
-- `debugging-patterns.mdc` - **Troubleshooting ElizaOS-specific issues**
-- `testing-patterns.mdc` - **Testing patterns for actions, providers, and services**
+## Model Usage Patterns
 
-## Action Structure
+### useModel for Object Generation
+Use the `runtime.useModel()` pattern for structured object generation in providers and actions:
+
 ```typescript
-export const action: Action = {
-  name: "ACTION_NAME",
-  description: "Clear description of what this action does",
-  similes: ["alternative", "names", "for", "action"],
-  validate: async () => true,
-  handler: async (runtime, message, _state, options, callback) => {
-    // Compose state with required providers to ensure they're executed
-    const state = await runtime.composeState(message, ["required-provider-name"]);
-    
-    // Implementation using the composed state
-    // **📋 See action-patterns.mdc for complete ActionResult return patterns**
-  },
-  examples: [/* conversation examples */]
+// ✅ Correct pattern for object generation
+const result = await runtime.useModel(
+  ModelType.OBJECT_SMALL,
+  { prompt }
+);
+
+// ✅ For complex structured data
+const analysis = await runtime.useModel(
+  ModelType.OBJECT_LARGE, 
+  { 
+    prompt: analysisPrompt,
+    schema: analysisSchema // Optional schema validation
+  }
+);
+```
+
+### Model Type Selection
+- **`ModelType.OBJECT_SMALL`**: Simple structured objects, quick responses
+- **`ModelType.OBJECT_LARGE`**: Complex analysis, detailed structured data
+- **`ModelType.TEXT`**: Plain text generation
+- **`ModelType.EMBEDDING`**: Vector embeddings for similarity search
+
+### Best Practices
+- Always await model calls - they are async operations
+- Use appropriate model size for the complexity of the task
+- Include clear, specific prompts for better object generation
+- Consider schema validation for critical structured data
+
+## Validation and State Management
+
+### CRITICAL: Avoid State Composition in Validators
+
+**❌ NEVER do this - leads to infinite loops:**
+```typescript
+// This creates infinite recursion
+const validator = (runtime: IAgentRuntime, message: Memory) => {
+  // Calling useModel or other state-changing operations in validator
+  const result = await runtime.useModel(ModelType.OBJECT_SMALL, { prompt });
+  return result.isValid;
 };
 ```
 
-### State Composition Pattern
-When actions depend on specific providers, use `runtime.composeState()` to ensure providers are executed:
-
+**✅ Correct approach - pure validation functions:**
 ```typescript
-handler: async (runtime, message, state, options, callback) => {
-  // Compose state with required providers BEFORE try block
-  // This ensures composed state is available in both try and catch blocks
-  const composedState = await runtime.composeState(message, [
-    "POSITION_PARAMS_PROVIDER_NAME",
-    "OTHER_REQUIRED_PROVIDER"
-  ]);
-  
+// Validators should be pure functions that only examine existing state
+const validator = (runtime: IAgentRuntime, message: Memory) => {
+  // Only check existing properties, no state changes
+  return message.content.text.includes("specific pattern");
+};
+
+// Separate state composition from validation
+const handler = async (runtime: IAgentRuntime, message: Memory) => {
+  if (validator(runtime, message)) {
+    // State changes happen in handlers, not validators
+    const result = await runtime.useModel(ModelType.OBJECT_SMALL, { prompt });
+    return result;
+  }
+};
+```
+
+### Validation Rules
+1. **Pure functions only**: Validators must not modify state or trigger side effects
+2. **Synchronous checks**: Avoid async operations in validators
+3. **Examine existing data**: Only check properties already available
+4. **No model calls**: Never call `useModel` or similar state-changing methods
+5. **Fast execution**: Keep validation logic lightweight and quick
+
+## Plugin Architecture Patterns
+
+### Service Registration
+```typescript
+// Register services in plugin initialization
+export const plugin: Plugin = {
+  name: "my-plugin",
+  services: [MyService],
+  actions: [myAction],
+  providers: [myProvider]
+};
+```
+
+### Action Implementation
+```typescript
+export const myAction: Action = {
+  name: "MY_ACTION",
+  similes: ["do something", "perform action"],
+  validate: (runtime, message) => {
+    // Pure validation only
+    return message.content.text.includes("trigger");
+  },
+  handler: async (runtime, message) => {
+    // State changes and model calls here
+    const result = await runtime.useModel(ModelType.OBJECT_SMALL, {
+      prompt: "Generate response based on: " + message.content.text
+    });
+    return result;
+  }
+};
+```
+
+### Provider Implementation
+```typescript
+export const myProvider: Provider = {
+  get: async (runtime, message) => {
+    // Model calls are appropriate in providers
+    const data = await runtime.useModel(ModelType.OBJECT_SMALL, {
+      prompt: "Analyze context: " + message.content.text
+    });
+    return data;
+  }
+};
+```
+
+## Memory and Context Management
+
+### Memory Storage Patterns
+- Use `runtime.messageManager` for message persistence
+- Leverage `runtime.cacheManager` for temporary data
+- Store structured data with proper typing
+
+### Context Building
+- Providers build context for actions
+- Actions consume context and produce results
+- Evaluators process results and update state
+
+## Error Handling Patterns
+
+### Graceful Degradation
+```typescript
+try {
+  const result = await runtime.useModel(ModelType.OBJECT_SMALL, { prompt });
+  return result;
+} catch (error) {
+  console.error("Model generation failed:", error);
+  // Provide fallback behavior
+  return { success: false, error: error.message };
+}
+```
+
+### Validation Error Handling
+```typescript
+// In validators - return boolean, don't throw
+const validator = (runtime: IAgentRuntime, message: Memory) => {
   try {
-    // Now safely access provider data from composed state
-    const providerData = selectProviderState("provider-name", composedState);
+    return message.content.text.length > 0;
   } catch (error) {
-    // 'composedState' is available here too for error handling
-    const errorResponse = await rephrase({ runtime, content, state: composedState });
-  }
-}
-```
-
-## Provider Structure
-```typescript
-export const provider: Provider = {
-  name: "provider-name",
-  description: "What data this provider supplies",
-  position: -100, // Lower numbers run first
-  async get(runtime, message, state) {
-    // **📋 See action-patterns.mdc for ProviderResult structure**
-    return {
-      text: "Description of extracted data",
-      data: { /* actual data here */ }
-    };
+    return false; // Fail closed
   }
 };
 ```
 
-## Service Structure
-```typescript
-export class MyService extends Service {
-  static serviceType = "my-service";
-  
-  constructor(runtime: IAgentRuntime) {
-    super(runtime);
-  }
-  
-  static async start(runtime: IAgentRuntime) {
-    return new MyService(runtime);
-  }
-}
-```
+## Performance Considerations
 
-**📋 See `service-organization.mdc`** for patterns on splitting cached/stateful methods (in class) from pure helpers (in separate modules).
+### Model Call Optimization
+- Cache frequently requested data
+- Use appropriate model sizes
+- Batch related operations when possible
+- Implement timeouts for model calls
 
-## 🤖 LLM Integration Patterns
-
-### Model Usage - NEW ElizaOS API
-```typescript
-// ✅ NEW: Use runtime.useModel (current ElizaOS version)
-const response = await runtime.useModel({
-  context: prompt,
-  modelType: ModelType.SMALL,
-  schema: {
-    type: "object",
-    properties: {
-      result: { type: "string" },
-      confidence: { type: "number", minimum: 0, maximum: 1 }
-    },
-    required: ["result", "confidence"]
-  }
-});
-
-// ❌ OLD: Don't use generateObject (deprecated in newer versions)
-// const response = await runtime.generateObject({ ... });
-
-// Use appropriate model types
-ModelType.SMALL    // For simple tasks, fast responses
-ModelType.MEDIUM   // For complex analysis  
-ModelType.LARGE    // For creative/complex generation
-```
-
-### Schema Definition Best Practices
-```typescript
-// Good schema with proper types and descriptions
-const schema = {
-  type: "object",
-  properties: {
-    selectedIntent: {
-      type: ["string", "null"],
-      description: "The most appropriate intent type, or null if none match"
-    },
-    confidence: {
-      type: "number",
-      minimum: 0,
-      maximum: 1,
-      description: "Confidence score from 0 to 1"
-    },
-    extractedValues: {
-      type: "object",
-      description: "Any values extracted from the message",
-      additionalProperties: true
-    }
-  },
-  required: ["selectedIntent", "confidence", "extractedValues"]
-};
-```
-
-## Common Patterns
-- Always use `runtime.getService<ServiceType>()` to access services
-- Use `selectProviderState<T>()` to access provider data
-- Use `runtime.logger` instead of importing `logger` directly
-- Implement proper error boundaries in actions
-- Use `rephrase()` for consistent response formatting
-- Use background processing for non-critical operations
-
-## Caching Patterns
-```typescript
-// ✅ Correct cache usage
-const cached = await runtime.getCache<T>(cacheKey);
-if (!cached) {
-  const newData = await computeExpensiveOperation();
-  await runtime.setCache(cacheKey, newData);
-}
-
-// ❌ Incorrect - don't access cacheManager directly
-// const cached = (runtime as any).cacheManager?.get(key) as T;
-// (runtime as any).cacheManager?.set(key, value, ttl);
-```
-
-**Cache Guidelines**:
-- Always use `runtime.getCache<T>()` and `runtime.setCache()`
-- Specify generic types for type safety
-- Cache operations are async - always await them
-- Framework handles TTL automatically
-
-## Previous Action Results Access
-ElizaOS stores action results in `runtime.stateCache` with key `${message.id}_action_results`. Use the typed utilities:
-
-```typescript
-import { getPreviousActionResults, getLastActionResult, getPreviousReplyContext } from "../util/action-results";
-
-// Get all previous action results
-const results = await getPreviousActionResults(runtime, message);
-
-// Get last action result of specific type
-const lastReply = await getLastActionResult(runtime, message, "REPLY");
-
-// Get formatted context from previous REPLY to avoid repetition
-const prevActions = await getPreviousReplyContext(runtime, message);
-
-// Pass to rephrase utility to intelligently avoid duplication
-const responseContent = await rephrase({ 
-  runtime, 
-  content, 
-  state, 
-  prevActions 
-});
-```
-
-### Benefits of Rephrase Integration
-- **Clean separation**: Logic for avoiding duplication is in the rephrase utility
-- **AI-powered deduplication**: LLM intelligently avoids repeating previous information
-- **Consistent behavior**: All actions using rephrase get this benefit automatically
-
-### Action Results Structure
-```typescript
-interface ActionResult {
-  text: string;
-  values: Record<string, any>;
-  data: Record<string, any>;
-  success: boolean;
-  error?: Error;
-  actionName?: string;
-}
-```
-
-## CRITICAL: Action Handler Return Values
-
-### Actions Must Return ActionResult Objects
-**NEVER return undefined or void from action handlers** - this breaks action chaining.
-
-**📋 For complete ActionResult patterns and examples, see `action-patterns.mdc`**
-
-Key principles:
-- Always return `ActionResult` objects with `text`, `values`, `data`, `success` properties
-- Call `callback()` AND return `ActionResult` for proper action chaining
-- Error cases must also return `ActionResult` with `success: false`
-
-### Provider Result Structure
-**📋 For complete provider patterns, see `action-patterns.mdc`**
-
-Providers must return `ProviderResult` objects:
-```typescript
-return {
-  text: "Description of extracted data",
-  data: { /* actual data here */ },
-};
-```
-
-### Accessing Provider Data in Actions
-```typescript
-const providerResult = composedState.data?.providers?.[PROVIDER_NAME];
-const actualData = providerResult?.data;
-```
-
-**📋 For troubleshooting provider data issues, see `debugging-patterns.mdc`**
-
-## Advanced Patterns
-
-### Intent-Based Action Resolution
-For complex multi-step operations that require persistent context and conflict resolution:
-
-**📋 See `intent-based-actions.mdc`** for the complete intent-based action resolution system, including:
-- Persistent intent tracking across conversations
-- Parent-child intent relationships
-- Cross-domain isolation
-- Conflict resolution between competing intents
-- Enhanced transaction context
-
-### Service Organization
-For organizing service functionality between cached methods and pure helpers:
-
-**📋 See `service-organization.mdc`** for patterns on:
-- Splitting cached/stateful methods (service class) vs pure functions (helper modules)
-- ABI and asset management
-- Transaction handling with createCalldata
-- Migration strategies
-
-### Testing Patterns
-For comprehensive testing of actions, providers, and services:
-
-**📋 See `testing-patterns.mdc`** for:
-- Action testing with proper ActionResult expectations
-- Provider mocking and data structure testing
-- Service testing with cache and runtime mocks
-- Integration testing patterns
-
-### Debugging and Troubleshooting
-For resolving common ElizaOS development issues:
-
-**📋 See `debugging-patterns.mdc`** for:
-- Action return value issues
-- Provider data access problems
-- Service method mocking
-- Cache access patterns
-- Response content handling
+### Memory Management
+- Clean up large objects after use
+- Use weak references for temporary data
+- Monitor memory usage in long-running processes

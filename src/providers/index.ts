@@ -69,7 +69,8 @@ export {
 
 export const levvaProvider: Provider = {
   name: LEVVA_PROVIDER_NAME,
-  description: "Supplies with core information about the user and tokens",
+  description:
+    "Supplies with core information about the user and tokens, checks for intent cancellation",
   position: -100,
   async get(runtime, message) {
     try {

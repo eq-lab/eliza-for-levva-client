@@ -60,6 +60,7 @@ export interface PositionSummary {
   withdrawals: WithdrawalRequest[];
   hasPositions: boolean;
   hasPendingWithdrawals: boolean;
+  hasReadyWithdrawals: boolean;
   totalPositionValue: number;
   positionsSummary: string;
   withdrawalsSummary: string;
@@ -105,18 +106,32 @@ export const formatPositionsSummary = (
 export const formatWithdrawalsSummary = (
   withdrawals: WithdrawalRequest[]
 ): string => {
-  const pendingWithdrawals = withdrawals.filter((req) => !req.isFinalized);
-
-  if (pendingWithdrawals.length === 0) {
-    return "No pending withdrawals";
+  if (withdrawals.length === 0) {
+    return "No withdrawal requests";
   }
 
-  return pendingWithdrawals
-    .map((req) => {
-      const status = req.isFinalized ? "Finalized" : "Pending";
-      return `Request #${req.requestId}: ${req.amount} tokens from Strategy ${req.strategyId} (${status})`;
-    })
-    .join("\n");
+  const pendingWithdrawals = withdrawals.filter((req) => !req.isFinalized);
+  const readyWithdrawals = withdrawals.filter((req) => req.isFinalized);
+
+  const summaryParts: string[] = [];
+
+  if (pendingWithdrawals.length > 0) {
+    summaryParts.push(
+      `**Pending**: ${pendingWithdrawals.length} request(s) processing`
+    );
+  }
+
+  if (readyWithdrawals.length > 0) {
+    summaryParts.push(
+      `**Ready to Claim**: ${readyWithdrawals.length} request(s) ready`
+    );
+  }
+
+  if (summaryParts.length === 0) {
+    return "No withdrawal requests";
+  }
+
+  return summaryParts.join(", ");
 };
 
 /**
@@ -132,6 +147,7 @@ export const createPositionSummary = (
   // FIXED: Use withdrawal requests as the source of truth for pending status
   // The hasPendingWithdrawals flag in positions should match !isFinalized in withdrawal requests
   const hasPendingWithdrawals = withdrawals.some((req) => !req.isFinalized);
+  const hasReadyWithdrawals = withdrawals.some((req) => req.isFinalized);
 
   const totalPositionValue = positions.reduce(
     (sum, position) => sum + position.balanceUsd,
@@ -150,6 +166,7 @@ export const createPositionSummary = (
     withdrawals,
     hasPositions,
     hasPendingWithdrawals,
+    hasReadyWithdrawals,
     totalPositionValue,
     positionsSummary,
     withdrawalsSummary,

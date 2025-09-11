@@ -16,6 +16,7 @@ export interface PositionParamsProviderData {
   withdrawalRequests: WithdrawalRequest[];
   hasPositions: boolean;
   hasPendingWithdrawals: boolean;
+  hasReadyWithdrawals: boolean;
   totalPositionValue: number;
   positionsSummary: string;
   withdrawalsSummary: string;
@@ -30,7 +31,9 @@ export const positionParamsProvider: Provider = {
   description: "Provides user position data and withdrawal request information",
   position: -50,
   async get(runtime, message) {
-    logger.info(`[POSITION-PARAMS] Provider started for: "${message.content.text}"`);
+    logger.info(
+      `[POSITION-PARAMS] Provider started for: "${message.content.text}"`
+    );
     try {
       const raw: RawMessage = (
         message.metadata as unknown as { raw: RawMessage }
@@ -47,7 +50,7 @@ export const positionParamsProvider: Provider = {
       if (!service) {
         throw new Error("Failed to get levva service");
       }
-      
+
       const user = await service.getUserById(userId);
 
       if (!user) {
@@ -122,7 +125,7 @@ export const positionParamsProvider: Provider = {
 
         const result: ExtractedDataForWithdraw = await runtime.useModel(
           ModelType.OBJECT_SMALL,
-          prompt
+          { prompt }
         );
 
         if (result) {
@@ -137,6 +140,7 @@ export const positionParamsProvider: Provider = {
         withdrawalRequests: summary.withdrawals,
         hasPositions: summary.hasPositions,
         hasPendingWithdrawals: summary.hasPendingWithdrawals,
+        hasReadyWithdrawals: summary.hasReadyWithdrawals,
         totalPositionValue: summary.totalPositionValue,
         positionsSummary: summary.positionsSummary,
         withdrawalsSummary: summary.withdrawalsSummary,
@@ -175,6 +179,7 @@ Overall Pending Withdrawals: ${summary.hasPendingWithdrawals ? "Yes" : "No"}${in
           withdrawalRequests: [],
           hasPositions: false,
           hasPendingWithdrawals: false,
+          hasReadyWithdrawals: false,
           totalPositionValue: 0,
           positionsSummary: "Error loading positions",
           withdrawalsSummary: "Error loading withdrawal requests",

@@ -46,10 +46,9 @@ export const rephrase = async ({
       prevActions,
     });
 
-    const response = await runtime.useModel(
-      model ?? ModelType.OBJECT_SMALL,
-      prompt
-    );
+    const response = await runtime.useModel(model ?? ModelType.OBJECT_SMALL, {
+      prompt,
+    });
 
     // Parse LLM response - OBJECT_SMALL should return structured JSON
     let parsedResponse: ExtractedDataForRephrase;

@@ -47,7 +47,7 @@ export const action: Action = {
 
   handler: async (runtime, message, state, options, callback) => {
     // Get previous action context BEFORE try block for error handling
-    const prevActions = await getPreviousReplyContext(runtime, message);
+    const prevActions = await getPreviousReplyContext(runtime, message, state);
 
     try {
       runtime.logger.info("SWAP_TOKENS action called");
@@ -329,7 +329,9 @@ export const suggest: Suggestion[] = [
       runtime,
       { address, chainId, conversation, decision }
     ) => {
-      const service = runtime.getService<LevvaService>("levva");
+      const service = runtime.getService<LevvaService>(
+        LEVVA_SERVICE.LEVVA_COMMON
+      );
       if (!service) {
         throw new Error("Failed to get levva service");
       }
@@ -353,7 +355,9 @@ export const suggest: Suggestion[] = [
       runtime,
       { address, chainId, conversation, decision }
     ) => {
-      const service = runtime.getService<LevvaService>("levva");
+      const service = runtime.getService<LevvaService>(
+        LEVVA_SERVICE.LEVVA_COMMON
+      );
       if (!service) {
         throw new Error("Failed to get levva service");
       }

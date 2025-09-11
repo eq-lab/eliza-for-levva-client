@@ -208,7 +208,12 @@ export class IntentManager extends Service {
     domain: LEVVA_ACTIONS
   ) {
     const cacheKey = `intent_${domain}_${userId}_${channelId}`;
-    return this.runtime.getCache<IntentContext>(cacheKey);
+    const intent = await this.runtime.getCache<IntentContext>(cacheKey);
+    return intent?.status === "ACTIVE" ? intent : undefined;
+  }
+
+  async getActiveIntentByReply(reply: Memory) {
+    //reply.
   }
 
   async getIntentById(intentId: string): Promise<IntentContext | null> {
@@ -217,6 +222,7 @@ export class IntentManager extends Service {
     return cached || null;
   }
 
+  /** @deprecated not the most efficient way to store intents, consider implementing dedicated schema */
   async storeIntent(intent: IntentContext) {
     // Store by domain for conflict detection
     const domainCacheKey = `intent_${intent.domain}_${intent.userId}_${intent.channelId}`;
@@ -291,10 +297,9 @@ export class IntentManager extends Service {
       );
 
       // Use LLM to analyze intent
-      const response = await this.runtime.useModel(
-        ModelType.OBJECT_SMALL,
-        prompt
-      );
+      const response = await this.runtime.useModel(ModelType.OBJECT_SMALL, {
+        prompt,
+      });
 
       const analysis = response as LLMIntentAnalysis;
 

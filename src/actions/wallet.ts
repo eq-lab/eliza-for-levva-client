@@ -26,7 +26,7 @@ export const action: Action = {
 
   handler: async (runtime, message, state, options, callback) => {
     // Get previous action context BEFORE try block for error handling
-    const prevActions = await getPreviousReplyContext(runtime, message);
+    const prevActions = await getPreviousReplyContext(runtime, message, state);
 
     // Compose state with required providers
     const composedState = await runtime.composeState(message, [

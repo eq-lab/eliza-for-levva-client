@@ -46,39 +46,8 @@ IntentManager.registerIntent({
     "Handle withdrawal requests from Levva positions with multi-step process support",
 });
 
-async function validateAction(runtime: IAgentRuntime, message: Memory) {
-  try {
-    const composedState = await runtime.composeState(message, [
-      LEVVA_PROVIDER_NAME,
-      POSITION_PARAMS_PROVIDER_NAME,
-    ]);
-
-    const lvva = selectProviderState<LevvaProviderState>(
-      LEVVA_PROVIDER_NAME,
-      composedState
-    );
-
-    if (!lvva?.user?.address) {
-      return false;
-    }
-
-    const service = runtime.getService<LevvaService>(
-      LEVVA_SERVICE.LEVVA_COMMON
-    );
-
-    if (!service) {
-      return false;
-    }
-
-    // Always allow position management - we can show "no positions" status
-    return true;
-  } catch (error) {
-    runtime.logger.warn(
-      "Error checking user positions in position validate:",
-      error
-    );
-    return false;
-  }
+async function validateAction() {
+  return true;
 }
 
 async function handleRequestRedeem(
@@ -168,7 +137,6 @@ After signing, you'll receive withdrawal NFT to your wallet. The withdrawal will
 async function handleClaimWithdrawal(
   runtime: IAgentRuntime,
   address: `0x${string}`,
-  nftAddress: `0x${string}`,
   strategy: StrategiesResponse[number],
   withdrawal: WithdrawalRequest
 ): Promise<Content> {
@@ -184,8 +152,14 @@ async function handleClaimWithdrawal(
     );
   }
 
+  if (!isHex(withdrawal.withdrawalNftAddress)) {
+    throw new Error(
+      `Incorrect withdrawal NFT address for strategy ${strategy.id}`
+    );
+  }
+
   const calldata: CalldataWithDescription = {
-    to: nftAddress,
+    to: withdrawal.withdrawalNftAddress,
     data: service.encodeClaimWithdrawal(withdrawal.requestId, address),
     value: "0",
     title: `Claim Withdrawal`,
@@ -277,7 +251,7 @@ async function handleWithdrawIntent(
     };
   }
 
-  const { strategyId, amount, withdrawalStep, nftAddress } = withdrawParams;
+  const { strategyId, amount, withdrawalStep } = withdrawParams;
 
   if (!strategyId) {
     const errorContent = await rephrase({
@@ -371,7 +345,7 @@ async function handleWithdrawIntent(
             text: `### Your withdrawal
 ${withdrawal.amount} tokens from ${strategy.name}
 ${withdrawal.isFinalized ? "Ready to claim" : "Processing..."}
-NFT Address: ${nftAddress}`,
+NFT Address: ${withdrawal.withdrawalNftAddress}`,
           };
         }
         break;
@@ -380,14 +354,9 @@ NFT Address: ${nftAddress}`,
           throw new Error(`Withdrawal not found(strategyId: ${strategyId})`);
         }
 
-        if (!isHex(nftAddress)) {
-          throw new Error(`NFT address not found(strategyId: ${strategyId})`);
-        }
-
         result = await handleClaimWithdrawal(
           runtime,
           address,
-          nftAddress,
           strategy,
           withdrawal
         );
@@ -462,14 +431,16 @@ NFT Address: ${nftAddress}`,
 async function handleAction(
   runtime: IAgentRuntime,
   message: Memory,
-  _state?: State,
+  state?: State,
   _options?: {},
   callback?: HandlerCallback
 ) {
-  logger.info(`[MANAGE_POSITIONS] Action started for: "${message.content.text}"`);
-  
+  logger.info(
+    `[MANAGE_POSITIONS] Action started for: "${message.content.text}"`
+  );
+
   // Get previous action results from runtime to avoid repetition (outside try block for error handler access)
-  const prevActions = await getPreviousReplyContext(runtime, message);
+  const prevActions = await getPreviousReplyContext(runtime, message, state);
 
   // Compose state with position params provider to ensure it's executed
   const composedState = await runtime.composeState(message, [
@@ -536,13 +507,11 @@ async function handleAction(
       );
     }
 
-    // Get available strategies for suggestions
-    const strategies = await service.getStrategies(lvva.chainId);
-
-    const availableStrategies = strategies.filter((strategy) => {
+    // Get available strategies for suggestions (use strategies from provider which has .id)
+    const availableStrategies = positionParams.strategies.filter((strategy) => {
       // Filter out strategies user already has positions in
       const hasPosition = positionParams.userPositions.some(
-        (pos: any) => pos.strategyId === strategy.contractAddress
+        (pos: any) => pos.strategyId === strategy.id
       );
       return !hasPosition;
     });
@@ -557,7 +526,12 @@ async function handleAction(
       text = `You currently have no active positions in Levva strategies.
 
 ## Available Strategies
-${availableStrategies.map(service.formatStrategy).join("\n\n")}
+${availableStrategies
+  .map(
+    (strategy) =>
+      `${strategy.name} - Contract: ${strategy.vault?.address}. Type: "vault". ${strategy.description}`
+  )
+  .join("\n\n")}
 
 Would you like to explore any of these investment opportunities?`;
     } else {
@@ -579,11 +553,22 @@ Would you like to explore any of these investment opportunities?`;
         }
       }
 
+      if (positionParams.hasReadyWithdrawals) {
+        managementSuggestions.push(
+          "- **Claim Funds**: Claim your ready withdrawal requests"
+        );
+      }
+
       if (positionParams.hasPendingWithdrawals) {
         managementSuggestions.push(
-          "- **Check Status**: Monitor withdrawal progress and claim ready funds"
+          "- **Check Status**: Monitor withdrawal progress"
         );
-      } else if (positionParams.hasPositions) {
+      }
+
+      if (
+        positionParams.hasPositions &&
+        !positionParams.hasPendingWithdrawals
+      ) {
         managementSuggestions.push(
           "- **Quick Withdraw**: Start withdrawal process for any position"
         );
@@ -603,7 +588,12 @@ ${managementSuggestions.join("\n")}
 ${
   availableStrategies.length > 0
     ? `## Other Available Strategies
-${availableStrategies.map(service.formatStrategy).join("\n\n")}`
+${availableStrategies
+  .map(
+    (strategy) =>
+      `${strategy.name} - Contract: ${strategy.vault?.address}. Type: "vault". ${strategy.description}`
+  )
+  .join("\n\n")}`
     : ""
 }`;
     }
@@ -779,7 +769,10 @@ export const suggest: Suggestion[] = [
       runtime,
       { address, chainId, conversation, decision }
     ) => {
-      const service = runtime.getService<LevvaService>("levva");
+      const service = runtime.getService<LevvaService>(
+        LEVVA_SERVICE.LEVVA_COMMON
+      );
+
       if (!service) {
         throw new Error("Failed to get levva service");
       }
@@ -804,7 +797,9 @@ export const suggest: Suggestion[] = [
       runtime,
       { address, chainId, conversation, decision }
     ) => {
-      const service = runtime.getService<LevvaService>("levva");
+      const service = runtime.getService<LevvaService>(
+        LEVVA_SERVICE.LEVVA_COMMON
+      );
       if (!service) {
         throw new Error("Failed to get levva service");
       }
@@ -826,7 +821,10 @@ export const suggest: Suggestion[] = [
         decision,
         positionsSummary: summary.positionsSummary,
         availableStrategiesFormatted: availableStrategies
-          .map((s) => service.formatStrategy(s))
+          .map(
+            (s) =>
+              `${s.name} - Contract: ${s.vault?.address}. Type: "vault". ${s.description}`
+          )
           .join("\n"),
       });
     },

@@ -7,7 +7,6 @@ export interface ExtractedDataForWithdraw {
   strategyId?: number;
   amount?: number | "all";
   withdrawalStep?: "request" | "check" | "claim";
-  nftAddress?: string;
   confidence?: number;
 }
 
@@ -25,11 +24,6 @@ const dataDescription: DataDescription<ExtractedDataForWithdraw> = {
     type: "string",
     description:
       "The withdrawal action: 'request' for new withdrawal, 'check' for status, 'claim' for finalized requests",
-  },
-  nftAddress: {
-    type: "string",
-    description:
-      "The withdrawal NFT address for claiming (e.g., '0x1234567890123456789012345678901234567890')",
   },
   confidence: {
     type: "number",

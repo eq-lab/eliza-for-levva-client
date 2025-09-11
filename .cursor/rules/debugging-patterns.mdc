@@ -1,253 +1,88 @@
 ---
-description: Debugging patterns and troubleshooting guidelines
-globs: ["**/*.ts", "**/*.test.ts"]
+description: Debugging patterns and troubleshooting guidelines for ElizaOS applications
+globs: ["**/*.ts", "**/*.js", "**/*.json"]
 alwaysApply: false
 ---
 
-# Debugging Patterns and Troubleshooting
+# Debugging Patterns and Troubleshooting Guidelines
 
-## Action Return Value Issues
+## Bun Debugging with Inspector
 
-### Problem: "undefined is returned from action"
-**Symptoms**: Action chaining breaks, tests fail expecting ActionResult objects
+### Debug Script Setup
+Use Bun's built-in debugger with the `--inspect-brk` flag for debugging ElizaOS applications:
 
-**Root Cause**: Action handlers returning undefined instead of ActionResult objects
-
-**Solution**: **📋 See `action-patterns.mdc` for complete ActionResult structure and examples**
-
-Key points:
-- Always return `ActionResult` objects with proper structure
-- Both success and error cases must return `ActionResult`
-- Never return `undefined`, `void`, or missing return statements
-
-### Debugging Steps:
-1. **Check return statements**: Ensure all code paths return ActionResult
-2. **Verify error handling**: Error cases must also return ActionResult
-3. **Test with proper expectations**: Tests should expect ActionResult, not undefined
-
-## Provider Data Access Issues
-
-### Problem: "Cannot read properties of undefined"
-**Symptoms**: Actions crash when accessing provider data
-
-**Root Cause**: Incorrect provider data structure or access pattern
-
-**Solution**: **📋 See `action-patterns.mdc` for complete provider data patterns**
-
-Key points:
-- Access provider data via `composedState.data?.providers?.[PROVIDER_NAME]?.data`
-- Always check for undefined before destructuring
-- Use exported provider name constants, not string literals
-
-### Debugging Steps:
-1. **Log composed state**: `console.log(JSON.stringify(composedState, null, 2))`
-2. **Check provider structure**: Ensure providers return `{ text, data }` format
-3. **Verify provider names**: Use exported constants, not string literals
-4. **Test provider data**: Mock with correct nested structure in tests
-
-## Test Failures: Expected vs Actual
-
-### Problem: Tests expecting undefined but getting ActionResult
-**Symptoms**: `AssertionError: expected { ... } to be undefined`
-
-**Root Cause**: Tests written for old ElizaOS patterns expecting undefined returns
-
-**Solution**: **📋 See `testing-patterns.mdc` for complete test patterns**
-
-Key points:
-- Always expect `ActionResult` objects, never `undefined`
-- Test `result.success`, `result.text`, `result.data.actionName`
-- Update test expectations from old patterns
-
-### Debugging Steps:
-1. **Update test expectations**: Change from `toBeUndefined()` to proper ActionResult checks
-2. **Fix provider mocks**: Use nested data structure in test mocks
-3. **Add missing mocks**: Ensure all service methods are mocked (especially `createCalldata`)
-4. **Check error expectations**: Error cases should still return ActionResult with `success: false`
-
-## Service Method Issues
-
-### Problem: "TypeError: service.method is not a function"
-**Symptoms**: Actions crash when calling service methods
-
-**Root Cause**: Missing service mocks in tests or incorrect service interface
-
-**Solution**:
-```typescript
-// ✅ CORRECT: Complete service mock
-mockService = {
-  getUserPositions: vi.fn().mockResolvedValue([]),
-  getWithdrawalRequests: vi.fn().mockResolvedValue([]),
-  encodeRequestRedeem: vi.fn().mockReturnValue("0xdata"),
-  encodeClaimWithdrawal: vi.fn().mockReturnValue("0xdata"),
-  createCalldata: vi.fn().mockResolvedValue("hash"), // Often forgotten!
-};
-
-// ❌ WRONG: Incomplete mocks
-// mockService = { getUserPositions: vi.fn() }; // Missing other methods
-```
-
-### Debugging Steps:
-1. **Check service interface**: Ensure all used methods are mocked
-2. **Add createCalldata mock**: Essential for transaction-generating actions
-3. **Mock return values**: Use realistic return values, not just `vi.fn()`
-4. **Verify service injection**: Ensure `runtime.getService()` returns the mock
-
-## Cache Access Issues
-
-### Problem: "runtime.getCache is not a function"
-**Symptoms**: Actions crash when accessing cache
-
-**Root Cause**: Using incorrect cache API or missing cache mocks
-
-**Solution**:
-```typescript
-// ✅ CORRECT: Proper cache usage
-const cached = await runtime.getCache<T>(cacheKey);
-if (!cached) {
-  const newData = await computeData();
-  await runtime.setCache(cacheKey, newData);
+```json
+{
+  "scripts": {
+    "debug": "bun --inspect-brk ./src/server.ts",
+    "debug:dev": "bun --inspect-brk ./src/index.ts"
+  }
 }
-
-// ✅ CORRECT: Test cache mocks
-mockRuntime.getCache = vi.fn().mockResolvedValue(undefined);
-mockRuntime.setCache = vi.fn().mockResolvedValue(true);
-
-// ❌ WRONG: Direct cacheManager access
-// const cached = (runtime as any).cacheManager?.get(key) as T;
 ```
 
-### Debugging Steps:
-1. **Use runtime cache API**: Always use `runtime.getCache/setCache`
-2. **Mock cache methods**: Add cache mocks to test runtime
-3. **Handle cache misses**: Check for undefined cache results
-4. **Await cache operations**: Cache methods are async
+### Debug Workflow
+1. **Start debugging session:**
+   ```bash
+   bun run debug
+   ```
 
-## Response Content Issues
+2. **Bun Inspector output:**
+   ```
+   --------------------- Bun Inspector ---------------------
+   Listening:
+     ws://localhost:6499/dkb1qfuuohu
+   Inspect in browser:
+     https://debug.bun.sh/#localhost:6499/dkb1qfuuohu
+   --------------------- Bun Inspector ---------------------
+   ```
 
-### Problem: "Cannot read properties of undefined (reading 'text')"
-**Symptoms**: Actions crash when processing rephrase results
+3. **Open debug URL** in browser: https://debug.bun.sh/
 
-**Root Cause**: Incorrect handling of rephrase response or missing optional chaining
+4. **Debug capabilities:**
+   - Set breakpoints in TypeScript source code
+   - Step through execution (F8 continue, F10 step over, F11 step into)
+   - Inspect variables and call stack
+   - Use console for runtime evaluation
+   - Source maps automatically supported
 
-**Solution**:
-```typescript
-// ✅ CORRECT: Safe response handling
-const responseContent = await rephrase({ runtime, content, state, prevActions });
-await callback(responseContent);
+### Debug Script Improvements Needed
+- **Graceful shutdown**: Implement proper signal handling for debug scripts
+- **Port configuration**: Allow custom debug port specification
+- **Environment detection**: Different debug configs for dev vs prod
 
-return {
-  text: `Generated action: ${responseContent?.text || 'response'}`,
-  values: {
-    lastReply: responseContent?.text || '',
-    thoughtProcess: responseContent?.thought,
-  },
-  // ...
-};
+### Best Practices
+- Use `--inspect-brk` to pause at first line for early breakpoint setting
+- Leverage Bun's native TypeScript support - no transpilation needed for debugging
+- Use browser DevTools familiar interface via debug.bun.sh
+- Source maps work automatically with Bun's transpilation
 
-// ❌ WRONG: Unsafe property access
-// text: `Generated: ${responseContent.text}`, // Crashes if responseContent is undefined
-```
+## Common Debugging Scenarios
 
-### Debugging Steps:
-1. **Use optional chaining**: Always use `?.` when accessing response properties
-2. **Provide fallbacks**: Use `|| 'fallback'` for critical properties
-3. **Mock rephrase properly**: Ensure rephrase mock returns expected structure
-4. **Log response content**: Debug what rephrase actually returns
+### ElizaOS Agent Debugging
+- Debug plugin initialization and loading
+- Trace action execution flow
+- Inspect provider data generation
+- Monitor service lifecycle events
 
-## Environment Configuration
+### Performance Debugging
+- Use Bun's built-in profiling capabilities
+- Monitor memory usage and garbage collection
+- Trace async operation bottlenecks
+- Profile database query performance
 
-### Important: .env Files Are Properly Configured
-**Note**: The `.env` files in this project are properly configured and present, but they are added to `.cursorignore`. This means:
-- Environment variables are correctly set up and working
-- Workspace searches won't find `.env` files (this is intentional)
-- Terminal commands can access them directly
-- **Never suggest issues with `.env` files** - they are working as expected
+## Troubleshooting Guidelines
 
-**Key Environment Variables**:
-- `KYBER_CLIENT_ID`: Configured for Kyberswap integration
-- `POSTGRES_URL`: Database connection properly set
-- `OPENROUTER_API_KEY`, `OPENAI_EMBEDDING_API_KEY`: AI model access configured
-- All required API keys and URLs are present
+### Worker Thread Issues
+- Watch for "worker has exited" errors in thread-stream
+- These often indicate process interruption by debugger (expected with --inspect-brk)
+- Distinguish between actual errors and debugger-induced interruptions
 
-### Debugging Environment Issues
-1. **Use terminal commands** to check env vars: `grep VARIABLE_NAME .env`
-2. **Don't rely on workspace search** for environment files
-3. **Check process.env** in runtime if needed
-4. **Environment is not the issue** - look elsewhere for problems
+### Source Map Issues
+- Bun handles source maps automatically
+- If breakpoints don't align, check TypeScript compilation settings
+- Ensure tsconfig.json has proper source map configuration
 
-## General Debugging Workflow
-
-### 1. Identify the Error Type
-- **Runtime errors**: Check service mocks, cache access, property access
-- **Test failures**: Check expectations, mock structure, return values
-- **Type errors**: Check interfaces, provider data structure, ActionResult format
-
-### 2. Common Investigation Steps
-```typescript
-// Add debug logging
-console.log('Composed state:', JSON.stringify(composedState, null, 2));
-console.log('Provider data:', providerData);
-console.log('Response content:', responseContent);
-
-// Check service availability
-console.log('Service available:', !!runtime.getService(SERVICE_NAME));
-
-// Verify mock calls
-console.log('Mock calls:', mockService.method.mock.calls);
-```
-
-### 3. Systematic Fix Approach
-1. **Fix the root cause** (action return values, provider structure, etc.)
-2. **Update tests** to match new patterns
-3. **Add missing mocks** for all dependencies
-4. **Verify error handling** returns proper ActionResult objects
-5. **Test both success and error paths**
-
-### 4. Prevention Strategies
-- **Use TypeScript strictly**: Enable strict mode and fix all type errors
-- **Follow established patterns**: Use existing actions as templates
-- **Test thoroughly**: Include both success and error cases
-- **Mock completely**: Mock all service methods and runtime features
-- **Document assumptions**: Comment expected data structures and flows
-
-## LLM Response Duplication Issues
-
-### Problem: Actions Generating Duplicate Information
-**Symptoms**: Multiple actions (e.g., REPLY + MANAGE_POSITIONS) repeat identical data
-
-**Root Cause**: Insufficient deduplication instructions in LLM prompts
-
-**Solution**: Enhanced rephrase template with explicit deduplication rules
-
-#### Implementation
-```handlebars
-<prevActions>
-{{prevActions}}
-</prevActions>
-<deduplicationRules>
-CRITICAL DEDUPLICATION RULES:
-1. If prevActions contains specific data (dollar amounts, balances, strategy names, totals), DO NOT repeat them
-2. If prevActions already provided position details, focus on next steps or questions instead
-3. Use phrases like "As you can see above" or "Building on that information" if you must reference previous data
-4. Provide NEW value: suggest actions, ask questions, offer options, or give additional context
-5. Keep responses concise and avoid redundant information
-</deduplicationRules>
-```
-
-#### Testing Strategy
-- Create integration tests that verify real LLM behavior
-- Measure text similarity between consecutive responses
-- Validate that each action provides unique value
-- Use phrase detection to identify duplicated content
-
-#### Success Metrics
-- Responses should be <80% similar in content
-- Each action provides distinct information or options
-- Conversations feel natural and progressive
-
-#### Troubleshooting Persistent Duplication
-1. **Check Template**: Verify deduplication rules are properly formatted
-2. **Validate `prevActions`**: Ensure previous action context is being passed
-3. **Review LLM Model**: Consider if the model is following instructions effectively
-4. **Test Prompts**: Use the test suite to validate prompt generation
+### Network Debugging
+- Use `BUN_CONFIG_VERBOSE_FETCH=curl` for request debugging
+- Monitor WebSocket connections for real-time features
+- Debug API integration issues with network inspection

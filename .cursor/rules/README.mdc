@@ -1,116 +1,68 @@
 ---
-description: Cursor Rules Organization and Cross-References
-globs: [".cursor/rules/**/*.mdc"]
+description: Index of all available Cursor rules for the ElizaOS Levva Agent project
+globs: []
 alwaysApply: false
 ---
 
-# Cursor Rules Organization
+# Cursor Rules Organization and Cross-References
 
-## 📋 Master Reference Files
-These files contain the complete patterns and examples:
+This directory contains workspace-specific rules and patterns for the ElizaOS Levva Agent project. These rules provide guidance on architecture, patterns, and best practices specific to this codebase.
 
-### `action-patterns.mdc` 🎯
-**Master reference for all action-related patterns**
-- Complete ActionResult structure and examples
-- Provider data patterns and access methods
-- Transaction handling with createCalldata
-- Comprehensive test setup examples
-- Handler function templates
+## Available Rules
 
-### `service-organization.mdc` 🏗️
-**Master reference for service architecture**
-- Service class vs helper module organization
-- Caching patterns and method binding
-- ABI imports and transaction encoding
+- **cursor-rules-structure**: Correct Cursor rules directory structure and format requirements
+- **debugging-patterns**: Debugging patterns and troubleshooting guidelines (includes Bun debugging with debug.bun.sh)
+- **elizaos-patterns**: ElizaOS framework patterns and conventions (includes useModel patterns and validation anti-patterns)
+- **error-handling**: Error handling patterns and security considerations
+- **intent-based-actions**: Intent-based action resolution system for complex multi-step operations
+- **levva-business-logic**: Levva protocol specific business logic and patterns
+- **position-management**: Position management patterns and API integration
+- **testing-patterns**: Testing patterns and best practices
 
-### `suggestion-system.mdc` 💡
-**Master reference for suggestion system architecture**
-- Complete suggestion flow and component interaction
-- Async handler patterns and synchronous prompt helpers
-- LLM selection logic and prompt structure templates
-- Integration examples and testing strategies
+## Key Insights and Anti-Patterns
 
-## 📚 Framework-Specific Files
-These files focus on specific aspects with cross-references:
+### Critical Anti-Patterns to Avoid
 
-### `elizaos-patterns.mdc` 🔧
-Core ElizaOS framework patterns with cross-references to specialized files
+1. **State Composition in Validators** (elizaos-patterns.mdc)
+   - NEVER call `useModel` or state-changing operations in validator functions
+   - This creates infinite loops and breaks the validation system
+   - Keep validators as pure functions that only examine existing state
 
-### `intent-based-actions.mdc` 🎯
-**Complete intent-based action resolution system**
-- Persistent intent tracking and hierarchy management
-- Parent-child intent relationships and cross-domain isolation
-- Conflict resolution and data inheritance patterns
-- Migration strategies and implementation examples
+2. **Improper Model Usage** (elizaos-patterns.mdc)
+   - Use `runtime.useModel(ModelType.OBJECT_SMALL, { prompt })` for structured object generation
+   - Choose appropriate model types for the complexity of the task
+   - Always await model calls as they are async operations
 
-### `testing-patterns.mdc` 🧪
-Testing strategies with cross-references to action-patterns.mdc
+3. **Debug Script Issues** (debugging-patterns.mdc)
+   - Use `bun --inspect-brk` for debugging with https://debug.bun.sh/
+   - Implement graceful shutdown handling for debug scripts
+   - Distinguish debugger-induced interruptions from actual errors
 
-### `test-organization.mdc` 📁
-Test file organization, cleanup patterns, and maintenance guidelines
+4. **Wrong Rules Directory** (cursor-rules-structure.mdc)
+   - Use `.cursor/rules/` directory, NOT `.cursorrules/`
+   - Use `.mdc` format with YAML frontmatter for structured rules
+   - Follow proper rule types and scoping patterns
 
-### `error-handling.mdc` ⚠️
-Error handling with cross-references to action-patterns.mdc
+## Cross-References
 
-### `debugging-patterns.mdc` 🐛
-Troubleshooting guide with cross-references to master files
+### ElizaOS Framework
+- Core patterns: elizaos-patterns.mdc
+- Testing approaches: testing-patterns.mdc
+- Error handling: error-handling.mdc
 
-## 🎯 Domain-Specific Files
-These files contain domain-specific knowledge:
+### Blockchain & DeFi
+- Integration patterns: blockchain-integration.mdc
+- Business logic: levva-business-logic.mdc
+- Position management: position-management.mdc
 
-### `levva-business-logic.mdc` 💼
-Levva protocol specific patterns and business rules
+### Development Workflow
+- Database operations: database-patterns.mdc
+- Debugging techniques: debugging-patterns.mdc
+- Intent resolution: intent-based-actions.mdc
+- Rules structure: cursor-rules-structure.mdc
 
-### `blockchain-integration.mdc` ⛓️
-Blockchain interaction patterns and best practices
+## Usage
 
-### `database-patterns.mdc` 🗄️
-Database schema and ORM patterns using Drizzle
+These rules are automatically available to the AI assistant when working in this workspace. Reference them by name when asking for guidance on specific patterns or when implementing new features.
 
-## 🛠️ Development Files
-These files contain development workflow patterns:
-
-### `package-management.mdc` 📦
-Bun package management guidelines
-
-### `code-style.mdc` 🎨
-Code style and formatting rules
-
-### `prompt-consistency.mdc` 📝
-LLM prompt patterns and consistency guidelines
-
-### `llm-prompt-limitations.mdc` 🚫
-LLM prompt engineering limitations and architectural solutions for reliable behavior
-
-## 📖 How to Use These Rules
-
-### When Writing Actions
-1. **Start with** `action-patterns.mdc` for complete templates
-2. **Reference** `elizaos-patterns.mdc` for framework context
-3. **Check** `error-handling.mdc` for error scenarios
-4. **Use** `testing-patterns.mdc` for test setup
-5. **Add suggestions** using `suggestion-system.mdc` patterns
-
-### When Debugging Issues
-1. **Start with** `debugging-patterns.mdc` for common issues
-2. **Reference** `action-patterns.mdc` for correct patterns
-3. **Check** `testing-patterns.mdc` for test fixes
-
-### When Organizing Services
-1. **Follow** `service-organization.mdc` for architecture
-2. **Use** `caching-patterns.mdc` for cache implementation
-3. **Reference** `elizaos-patterns.mdc` for framework integration
-
-### When Working with Suggestions
-1. **Start with** `suggestion-system.mdc` for complete architecture
-2. **Follow** async handler + sync prompt pattern
-3. **Test with** the provided testing script
-4. **Debug using** the analysis tools in suggestion-system.mdc
-
-## 🔄 Cross-Reference System
-Files use this notation for cross-references:
-- **📋 See `filename.mdc`** - Points to master reference
-- **📚 Also see `filename.mdc`** - Points to related information
-- **🔗 Cross-reference: `filename.mdc`** - Points to detailed examples
-
-This system prevents duplication while maintaining easy navigation between related concepts.
+Example: "Follow the elizaos-patterns rule for implementing this provider" or "Apply debugging-patterns for setting up the debug environment".
