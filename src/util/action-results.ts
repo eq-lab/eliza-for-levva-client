@@ -12,7 +12,10 @@ export interface ActionResult {
 
 export interface ActionResultsCache {
   values: { actionResults: ActionResult[] };
-  data: { actionResults: ActionResult[]; actionPlan?: any };
+  data: {
+    actionResults: ActionResult[];
+    actionPlan?: { totalSteps: number; steps: { status: string } };
+  };
   text: string;
 }
 

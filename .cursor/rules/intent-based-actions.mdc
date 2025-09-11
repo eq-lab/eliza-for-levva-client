@@ -1,6 +1,6 @@
 ---
 description: Intent-based action resolution system for complex multi-step operations
-globs: ["**/actions/**/*.ts", "**/services/intent-manager.ts", "**/providers/intent-context.ts"]
+globs: ["**/actions/**/*.ts", "**/services/intent-manager.ts", "**/providers/position-params.ts"]
 alwaysApply: false
 ---
 
@@ -414,10 +414,11 @@ childIntent.returnData = {
 ```
 
 ## Implementation Files
-- `src/services/intent-manager.ts` - Core IntentManager class
-- `src/providers/intent-context.ts` - Intent context provider
-- `src/actions/position-management.ts` - Unified position management action
-- `src/actions/modules.ts` - Updated action module registration
+- `src/services/intent-manager.ts` - Core IntentManager class with registration and execution
+- `src/actions/position.ts` - Position management action with intent registration
+- `src/actions/intents/withdraw.ts` - Withdraw intent handler implementation
+- `src/actions/intents/index.ts` - Intent handler exports (no auto-registration)
+- `src/providers/position-params.ts` - Position parameters provider with intent context
 
 ## Intent Creation Best Practices
 
@@ -456,6 +457,81 @@ validate: async (runtime: IAgentRuntime, message: Memory) => {
   // return detectedIntent !== "UNKNOWN"; // Wrong!
 }
 ```
+
+## Current Intent System Architecture
+
+### Directory Structure
+```
+src/actions/
+├── intents/
+│   ├── index.ts          # Exports intent handlers (no auto-registration)
+│   └── withdraw.ts       # Withdraw intent handler implementation
+├── position.ts           # Registers and uses withdraw intent
+├── swap.ts              # Other actions
+└── modules.ts           # Action module exports
+```
+
+### Intent Registration Pattern
+Intent registration is done explicitly in action files, not through auto-imports:
+
+```typescript
+// ✅ CORRECT: In src/actions/position.ts
+import { handleWithdrawIntent } from "./intents/withdraw";
+
+// Register the withdraw intent
+IntentManager.registerIntent({
+  type: INTENT_TYPE.WITHDRAW,
+  domain: LEVVA_ACTIONS.MANAGE_POSITIONS,
+  keywords: ["withdraw", "redeem", "cash out", "exit", "claim"],
+  handler: handleWithdrawIntent,
+  description: "Handle withdrawal requests with multi-step process support",
+});
+```
+
+### Intent Handler Implementation
+Intent handlers are pure functions that contain the business logic:
+
+```typescript
+// ✅ CORRECT: In src/actions/intents/withdraw.ts
+export const handleWithdrawIntent: IntentHandler = async (
+  runtime: IAgentRuntime,
+  message: Memory,
+  state: State,
+  callback: HandlerCallback,
+  intentContext: IntentContext,
+  prevActions?: any
+): Promise<ActionResult> => {
+  // Pure intent handling logic
+  // No registration code here
+};
+```
+
+### Key Principles
+
+1. **Explicit Registration**: Actions explicitly register the intents they use
+2. **Pure Handlers**: Intent handlers contain only business logic, no registration
+3. **Clear Ownership**: Each action owns and registers its intents
+4. **No Auto-Registration**: No side-effect imports or automatic registration
+5. **Organized Structure**: Intent handlers are organized under `actions/intents/`
+
+### Benefits of Current Architecture
+
+- **Clear Ownership**: Actions control which intents they register and when
+- **Better Testing**: Intent handlers can be tested independently
+- **No Magic**: No hidden side-effects from imports
+- **Maintainable**: Easy to see which actions use which intents
+- **Scalable**: Easy to add new intent handlers without affecting existing ones
+
+### Migration Notes (September 2025)
+
+**Intent System Refactoring**: Moved intent handlers from `src/intents/` to `src/actions/intents/` for better organization:
+
+1. **Directory Change**: `src/intents/` → `src/actions/intents/`
+2. **Registration Location**: Moved `IntentManager.registerIntent()` from intent handlers to action files
+3. **Import Updates**: Updated all import paths to reflect new structure
+4. **Removed Auto-Registration**: Removed automatic intent registration through plugin imports
+
+**Rationale**: Intent handlers are closely related to actions and should be organized under the actions directory. Registration should be explicit and controlled by the actions that use the intents.
 
 ## Related Patterns
 - **📋 See `action-patterns.mdc`** for ActionResult return value patterns

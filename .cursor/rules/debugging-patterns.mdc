@@ -86,3 +86,46 @@ Use Bun's built-in debugger with the `--inspect-brk` flag for debugging ElizaOS 
 - Use `BUN_CONFIG_VERBOSE_FETCH=curl` for request debugging
 - Monitor WebSocket connections for real-time features
 - Debug API integration issues with network inspection
+
+## Response Quality Issues
+
+### Rephrase Prompt Deduplication Problems
+
+**Problem**: Overly aggressive deduplication filtering out legitimate user-requested data
+
+**Symptoms**:
+- User asks "show me my positions" but gets generic response instead of position data
+- LLM responds with "You have several management options" instead of actual position summary
+- Structured data (## headers, dollar amounts, balances) being suppressed
+
+**Root Cause**: Deduplication logic treating user-requested data as "duplicate information"
+
+**Solution Pattern**:
+```typescript
+// ❌ WRONG: Too aggressive deduplication
+"CRITICAL: Avoid duplicating information from previous actions. If prevActions contain data, provide complementary information instead of repeating the same data."
+
+// ✅ CORRECT: Smart deduplication that preserves user requests
+"SMART DEDUPLICATION (Only apply when truly redundant):
+1. If prevActions contain IDENTICAL structured data (same dollar amounts, same strategy names, same format), then provide complementary management options instead
+2. If prevActions contain different data or no structured data, provide the requested information normally  
+3. If user explicitly requested specific information (positions, balances, strategies), always provide that information regardless of prevActions
+4. Only avoid duplication when the EXACT SAME information was already provided in the EXACT SAME format"
+```
+
+**Key Principles**:
+- **Preserve user-requested data**: Never filter out information the user explicitly asked for
+- **Distinguish between redundant vs. requested**: User asking "show positions" is NOT redundant
+- **IDENTICAL data check**: Only suppress when exact same format and values were already shown
+- **Format preservation**: Keep structured data (## headers) vs conversational responses separate
+
+### Testing Response Quality Issues
+- Use integration tests with real LLM interactions to catch response quality problems
+- Unit tests alone won't catch rephrase/deduplication issues
+- Test with `__tests__/chat/*.integration.test.ts` for end-to-end validation
+
+### Debugging Rephrase Issues
+1. **Check rephrase prompt**: Look at `src/prompts/rephrase.ts` for overly aggressive deduplication rules
+2. **Validate prevActions**: Ensure previous context isn't incorrectly flagged as duplicate
+3. **Test with manual prompts**: Create simple test cases to validate prompt behavior
+4. **Monitor action chaining**: Check if REPLY actions are interfering with data actions

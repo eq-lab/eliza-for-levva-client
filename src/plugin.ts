@@ -9,7 +9,7 @@ import { swapParamsProvider } from "./providers/swap-params";
 import { strategyParamsProvider } from "./providers/strategy-params";
 import { positionParamsProvider } from "./providers/position-params";
 import { suggestionsEvaluator } from "./evaluators/suggestions";
-import { transactionAcknowledgeEvaluator } from "./evaluators/transaction-acknowledge";
+import { intentAcknowledgeEvaluator } from "./evaluators/intent-acknowledge";
 import statusRoute from "./routes/status";
 import calldataRoute from "./routes/calldata";
 import levvaUserRoute from "./routes/levva-user";
@@ -106,7 +106,7 @@ const plugin: Plugin = {
     strategyParamsProvider,
     positionParamsProvider,
   ],
-  evaluators: [suggestionsEvaluator, transactionAcknowledgeEvaluator],
+  evaluators: [suggestionsEvaluator, intentAcknowledgeEvaluator],
 };
 
 export default plugin;

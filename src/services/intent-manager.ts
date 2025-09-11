@@ -212,8 +212,130 @@ export class IntentManager extends Service {
     return intent?.status === "ACTIVE" ? intent : undefined;
   }
 
-  async getActiveIntentByReply(reply: Memory) {
-    //reply.
+  async getActiveIntentByReply(reply: Memory): Promise<IntentContext | null> {
+    try {
+      const { id: messageId, roomId } = reply;
+      const room = await this.runtime.getRoom(roomId);
+
+      if (!room) {
+        throw new Error(`Room not found: ${roomId}`);
+      }
+
+      // fixme relies on room name that extected to have `User${uuid}` format
+      const userId = room.name?.startsWith("User") ? room.name.slice(4) : null;
+
+      if (!userId) {
+        throw new Error(
+          `User ID not valid(result = ${userId}, room = ${room.name})`
+        );
+      }
+
+      const channelId = room.channelId;
+
+      if (!channelId) {
+        logger.debug(`No channel ID found in room: ${roomId}`);
+        return null;
+      }
+
+      // Get recent messages from the conversation
+      const recentMessages = await this.runtime.getMemories({
+        roomId,
+        count: 20, // Look at last 20 messages
+        unique: false,
+        tableName: "messages",
+      });
+
+      if (!recentMessages || recentMessages.length === 0) {
+        logger.debug("No recent messages found");
+        return null;
+      }
+
+      // Find the current user message and previous user message
+      const currentUserMessage = reply;
+      let currentMessageIndex = -1;
+      let previousUserMessageIndex = -1;
+
+      // Find current message index
+      for (let i = 0; i < recentMessages.length; i++) {
+        if (recentMessages[i].id === currentUserMessage.id) {
+          currentMessageIndex = i;
+          break;
+        }
+      }
+
+      if (currentMessageIndex === -1) {
+        logger.debug("Current message not found in recent messages");
+        return null;
+      }
+
+      const agentResponses: Memory[] = [];
+
+      // Find previous user message (same user, but earlier)
+      for (let i = currentMessageIndex + 1; i < recentMessages.length; i++) {
+        const msg = recentMessages[i];
+        const msgRaw = (msg.metadata as any)?.raw;
+        const msgChannelId = msgRaw?.channelId;
+
+        // Check if this is a user message (not agent response) from the same channel
+        if (msgChannelId === channelId && !msg.content?.actions) {
+          previousUserMessageIndex = i;
+          break;
+        }
+
+        agentResponses.push(msg);
+      }
+
+      if (!agentResponses.length) {
+        logger.debug("No previous user message found");
+        return null;
+      }
+
+      logger.debug("Found agent responses to analyze", {
+        agentResponses,
+        currentMessageIndex,
+        previousUserMessageIndex,
+      });
+
+      // Look for intent IDs in agent response data
+      // TODO we can create a set on intent registration not to hardcode domains
+      const validDomains = [
+        "MANAGE_POSITIONS",
+        "SWAP_TOKENS",
+        "SELECT_STRATEGY",
+      ];
+
+      for (const memory of agentResponses) {
+        const actions: string[] | undefined = memory.content.actionName
+          ? ([memory.content.actionName] as string[])
+          : memory.content.actions;
+        const domain = actions?.find((name) => validDomains.includes(name));
+        if (domain) {
+          // Try to get the intent by ID
+          const intent = await this.getActiveIntentByDomain(
+            userId,
+            channelId,
+            domain as any
+          );
+
+          if (intent && intent.status === "ACTIVE") {
+            logger.info("Found active intent from agent responses", {
+              intentId: intent.id,
+              intentType: intent.type,
+              domain: intent.domain,
+              fromResponseId: messageId,
+            });
+
+            return intent;
+          }
+        }
+      }
+
+      logger.debug("No active intents found in agent responses or by domain");
+      return null;
+    } catch (error) {
+      logger.error("Error finding active intent from reply:", error);
+      return null;
+    }
   }
 
   async getIntentById(intentId: string): Promise<IntentContext | null> {
