@@ -1,3 +1,9 @@
+---
+description: ElizaOS caching patterns and correct cache API usage
+globs: ["**/services/**/*.ts", "**/providers/**/*.ts", "**/actions/**/*.ts"]
+alwaysApply: false
+---
+
 # ElizaOS Caching Patterns
 
 ## Correct Cache API Usage

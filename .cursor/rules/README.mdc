@@ -8,16 +8,38 @@ alwaysApply: false
 
 This directory contains workspace-specific rules and patterns for the ElizaOS Levva Agent project. These rules provide guidance on architecture, patterns, and best practices specific to this codebase.
 
-## Available Rules
+## Available Rules (Optimized September 2025)
 
-- **cursor-rules-structure**: Correct Cursor rules directory structure and format requirements
-- **debugging-patterns**: Debugging patterns and troubleshooting guidelines (includes Bun debugging with debug.bun.sh)
+### 🏗️ **Core Framework Rules**
 - **elizaos-patterns**: ElizaOS framework patterns and conventions (includes useModel patterns and validation anti-patterns)
+- **action-patterns**: Action handler patterns, return values, and validation best practices
+- **caching-patterns**: ElizaOS caching patterns and correct cache API usage
 - **error-handling**: Error handling patterns and security considerations
-- **intent-based-actions**: Intent-based action resolution system for complex multi-step operations
-- **levva-business-logic**: Levva protocol specific business logic and patterns
+
+### 🎯 **Intent System & Actions**
+- **intent-based-actions**: Complete intent-based action resolution system with proof of concept documentation
 - **position-management**: Position management patterns and API integration
-- **testing-patterns**: Testing patterns and best practices
+- **levva-business-logic**: Levva protocol specific business logic and patterns
+
+### 🧪 **Testing & Quality**
+- **test-organization**: Comprehensive testing patterns including chat testing framework and cleanup guidelines
+- **testing-patterns**: General testing patterns and best practices
+
+### 🔧 **Development Tools**
+- **debugging-patterns**: Debugging patterns and troubleshooting guidelines (includes Bun debugging with debug.bun.sh)
+- **llm-prompt-debugging**: Comprehensive LLM prompt debugging, limitations, and consistency guidelines
+- **code-style**: Code style standards and linting configuration
+
+### 🏛️ **Architecture & Infrastructure**
+- **blockchain-integration**: Blockchain integration patterns and best practices
+- **database-patterns**: Database schema and ORM patterns using Drizzle
+- **service-organization**: Service module organization and extraction guidelines
+- **suggestion-system**: Suggestion system patterns and implementation
+
+### 📚 **Documentation & Structure**
+- **cursor-rules-structure**: Correct Cursor rules directory structure and format requirements
+- **package-management**: Package management guidelines (Always use Bun)
+- **project-overview**: ElizaOS Levva Agent project overview and architecture
 
 ## Key Insights and Anti-Patterns
 

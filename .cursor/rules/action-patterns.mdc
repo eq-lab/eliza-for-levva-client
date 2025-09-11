@@ -1,3 +1,9 @@
+---
+description: Action handler patterns, return values, and validation best practices for ElizaOS
+globs: ["**/actions/**/*.ts", "**/evaluators/**/*.ts"]
+alwaysApply: false
+---
+
 # Action Patterns and Best Practices
 
 ## 📋 Cross-References

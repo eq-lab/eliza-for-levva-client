@@ -114,11 +114,21 @@ export const positionParamsProvider: Provider = {
         await intentService.addMemoryToIntent(intentContext, message);
       }
 
+      const strategyIdMap = strategies.reduce(
+        (acc, strategy) => {
+          acc[strategy.id] =
+            `id: ${strategy.id}, name: "${strategy.name}", type: ${strategy.type}, risk: ${strategy.risk}`;
+          return acc;
+        },
+        {} as Record<number, string>
+      );
+
       if (intentContext?.type === "WITHDRAW") {
         const prompt = extractWithdrawDataFromMessagePrompt({
           inheritedData: intentContext.inheritedData,
           returnData: intentContext.returnData,
           messages: intentContext.memories,
+          strategyIdMap,
           positions,
           withdrawals,
         });

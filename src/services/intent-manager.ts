@@ -198,6 +198,10 @@ export class IntentManager extends Service {
   }
 
   async addMemoryToIntent(intent: IntentContext, memory: Memory) {
+    if (intent.memories?.find((m) => m.id === memory.id)) {
+      return;
+    }
+
     intent.memories = [...(intent.memories || []), memory];
     await this.storeIntent(intent);
   }

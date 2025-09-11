@@ -70,7 +70,7 @@ async function handler(req: Request, res: Response, runtime: IAgentRuntime) {
       const result = actionState.actionPlan.steps[i];
       // todo check result
 
-      if (result.status !== "completed") {
+      if (result.status !== "completed" && result.status !== "failed") {
         ready = false;
         break;
       }

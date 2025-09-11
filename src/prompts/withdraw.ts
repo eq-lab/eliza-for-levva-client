@@ -38,10 +38,19 @@ export const extractWithdrawDataFromMessagePrompt = (ctx: {
   messages?: Memory[];
   positions?: UserPosition[];
   withdrawals?: WithdrawalRequest[];
+  strategyIdMap?: Record<number, string>;
 }) => {
   const currentMessage =
     ctx.messages && ctx.messages.length > 0
       ? ctx.messages[ctx.messages.length - 1]?.content?.text || ""
+      : "";
+
+  const strategyContext =
+    ctx.strategyIdMap && Object.keys(ctx.strategyIdMap).length > 0
+      ? `\n<strategy_context>
+Available strategies:
+${Object.values(ctx.strategyIdMap).join("\n")}
+</strategy_context>`
       : "";
 
   // Build context about user's positions
@@ -104,7 +113,7 @@ Consider the user's current positions, existing withdrawals, and conversation co
 </task>
 <message>
 ${currentMessage}
-</message>${positionsContext}${withdrawalsContext}${conversationContext}${inheritedContext}${returnDataContext}
+</message>${strategyContext}${positionsContext}${withdrawalsContext}${conversationContext}${inheritedContext}${returnDataContext}
 <instructions>
 Analyze the user message and extract withdrawal-related parameters using the provided context.
 

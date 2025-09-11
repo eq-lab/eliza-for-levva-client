@@ -43,10 +43,10 @@ describe("Levva API", () => {
           json: async () => mockData,
         });
 
-        const result = await getUserPositions(testAddress);
+        const result = await getUserPositions(testAddress, testChainId);
 
         expect(mockFetch).toHaveBeenCalledWith(
-          `https://levva.fi/api/v1/strategies/user-positions/${testAddress}`
+          `https://levva.fi/api/v1/strategies/user-positions/${testAddress}?PublicChainId=${testChainId}`
         );
         expect(result.success).toBe(true);
         if (result.success) {
@@ -60,7 +60,7 @@ describe("Levva API", () => {
           json: async () => [],
         });
 
-        const result = await getUserPositions(testAddress);
+        const result = await getUserPositions(testAddress, testChainId);
         expect(result.success).toBe(true);
         if (result.success) {
           expect(result.data).toEqual([]);
@@ -69,7 +69,7 @@ describe("Levva API", () => {
 
       it("should handle network errors", async () => {
         mockFetch.mockRejectedValueOnce(new Error("Network error"));
-        await expect(getUserPositions(testAddress)).rejects.toThrow(
+        await expect(getUserPositions(testAddress, testChainId)).rejects.toThrow(
           "Network error"
         );
       });

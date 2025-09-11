@@ -516,13 +516,18 @@ export class LevvaService
   // -- End of Crypto news --
 
   // -- Position Management --
-  private getUserPositionsCacheKey = (address: `0x${string}`) =>
-    `user-positions:${address}`;
+  private getUserPositionsCacheKey = (
+    address: `0x${string}`,
+    chainId?: number
+  ) => `user-positions:${address}:${chainId ? chainId : "all"}`;
+
+  invalidateUserPositionsCache = (address: `0x${string}`, chainId?: number) =>
+    this.runtime.deleteCache(this.getUserPositionsCacheKey(address, chainId));
 
   getUserPositions = this.timedCache(
     300000, // 5 minutes TTL
-    async (address: `0x${string}`) => {
-      const result = await getUserPositions(address);
+    async (address: `0x${string}`, chainId?: number) => {
+      const result = await getUserPositions(address, chainId);
       if (result.success) {
         return result.data;
       } else {
@@ -533,14 +538,22 @@ export class LevvaService
     this.getUserPositionsCacheKey
   );
 
+  invalidateWithdrawalRequestsCache = (
+    address: `0x${string}`,
+    chainId: number
+  ) =>
+    this.runtime.deleteCache(
+      this.getWithdrawalRequestsCacheKey(address, chainId)
+    );
+
   private getWithdrawalRequestsCacheKey = (
     address: `0x${string}`,
-    vaultId: number
-  ) => `withdrawal-requests:${address}:${vaultId}`;
+    chainId: number
+  ) => `withdrawal-requests:${address}:${chainId}`;
 
   getWithdrawalRequests = this.timedCache(
     300000, // 5 minutes TTL
-    async (address: `0x${string}`, chainId: number = 1) => {
+    async (address: `0x${string}`, chainId: number) => {
       const result = await getWithdrawalRequests(address, chainId);
       if (result.success) {
         return result.data;
@@ -555,9 +568,9 @@ export class LevvaService
     this.getWithdrawalRequestsCacheKey
   );
 
-  async getPositionSummary(address: `0x${string}`, chainId: number = 1) {
+  async getPositionSummary(address: `0x${string}`, chainId: number) {
     const [positions, withdrawals, strategiesResult] = await Promise.all([
-      this.getUserPositions(address),
+      this.getUserPositions(address, chainId),
       this.getWithdrawalRequests(address, chainId),
       getStrategiesApi(chainId), // Use the provided chainId
     ]);
@@ -672,9 +685,10 @@ export class LevvaService
     this.getVaultConstantsCacheKey
   );
 
-  private getStrategiesKey = (chainId: number = 1) => `strategies:${chainId}`;
+  private getStrategiesKey = (chainId?: number) =>
+    `strategies:${chainId ?? "all"}`;
 
-  getStrategies = this.permanentCache(async (chainId: number = 1) => {
+  getStrategies = this.permanentCache(async (chainId?: number) => {
     const result = await getStrategiesApi(chainId);
 
     if (!result.success) {
@@ -705,6 +719,7 @@ export class LevvaService
         contractAddress: contractAddress as `0x${string}`,
         strategy,
         description: x.description,
+        id: x.id,
       };
     });
   }, this.getStrategiesKey);

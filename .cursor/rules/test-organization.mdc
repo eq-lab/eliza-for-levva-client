@@ -1,3 +1,9 @@
+---
+description: Test organization, cleanup patterns, and chat testing guidelines for ElizaOS Levva Agent
+globs: ["**/__tests__/**/*.ts", "**/vitest.config.ts", "**/utils/test-*.ts"]
+alwaysApply: false
+---
+
 # Test Organization and Cleanup Patterns
 
 ## Test File Structure
@@ -41,6 +47,78 @@ export const ADDRESS = "0x40b88b09610487A26b18FB52DBe319D1268fCa22";
 // __tests__/api-levva.test.ts
 import { ADDRESS } from "./chat/setup";
 const testAddress = ADDRESS;
+```
+
+## Chat Testing Framework
+
+### Test Types
+
+**Unit Tests** (`chat-helper.test.ts`):
+- Fast, focused tests using the chat helper utility
+- Test individual chat operations and API integrations
+- Use mocked timeouts and controlled scenarios
+
+**Integration Tests** (`chat-instance.integration.test.ts`):
+- Full end-to-end chat testing with real socket connections
+- Test complete conversation flows
+- Verify socket event handling and message broadcasting
+
+### Chat Test Helper Usage
+
+```typescript
+import { chatTestHelper } from "./utils/chat-test-helper";
+import { DEFAULT_TEST_CONFIG } from "./utils/test-constants";
+
+// Create a chat session
+const session = await chatTestHelper.createSession(DEFAULT_TEST_CONFIG);
+
+// Send a message and wait for response
+session.sendMessage("Hello!");
+const response = await session.waitForResponse();
+
+// Test specific Levva actions
+const swapResponse = await chatTestHelper.testLevvaAction(
+  session,
+  "swap",
+  "I want to swap 100 USDC for ETH"
+);
+
+// Clean up
+session.disconnect();
+```
+
+### Conversation Flow Testing
+
+```typescript
+const flow = [
+  {
+    message: "What can you help me with?",
+    expectedKeywords: ["help", "assist", "can"],
+  },
+  {
+    message: "Tell me about DeFi",
+    expectedKeywords: ["defi", "finance", "protocol"],
+  },
+];
+
+const responses = await chatTestHelper.testConversationFlow(session, flow);
+```
+
+### Test Configuration
+
+All test configuration is centralized in `test-constants.ts`:
+
+```typescript
+export const TEST_SECRET = "0x6edf00f..."; // From example.ts
+export const TEST_ADDRESS = "0x40b88b09610487A26b18FB52DBe319D1268fCa22";
+
+export const DEFAULT_TEST_CONFIG = {
+  baseUrl: process.env.ELIZA_BASE_URL || "http://localhost:30001",
+  secret: TEST_SECRET,
+  address: TEST_ADDRESS,
+  chainId: parseInt(process.env.ELIZA_CHAIN_ID || "1"),
+  timeout: 30000,
+};
 ```
 
 ### Provider Test Updates

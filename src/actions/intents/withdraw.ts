@@ -5,8 +5,9 @@ import {
   State,
   HandlerCallback,
   ActionResult,
+  UUID,
 } from "@elizaos/core";
-import { isHex, parseUnits } from "viem";
+import { getAddress, isHex, parseUnits, TransactionReceipt } from "viem";
 import { LEVVA_ACTIONS, LEVVA_SERVICE } from "../../constants/enum";
 import { LEVVA_PROVIDER_NAME, LevvaProviderState } from "../../providers";
 import { selectProviderState } from "../../providers/util";
@@ -311,6 +312,14 @@ export const handleWithdrawIntent: IntentHandler = async (
             throw new Error(`Withdrawal not found(strategyId: ${strategyId})`);
           }
 
+          // todo invalidate before check
+          if (strategy.vault?.publicChainId) {
+            await service.invalidateWithdrawalRequestsCache(
+              address,
+              strategy.vault.publicChainId
+            );
+          }
+
           result = {
             thought: `I need to display withdrawal status`,
             text: `### Your withdrawal
@@ -398,3 +407,60 @@ NFT Address: ${withdrawal.withdrawalNftAddress}`,
     };
   }
 };
+
+// TODO oncomplete handlers
+// do not call completeIntent if resolved to false
+export async function onWithdrawSuccess(
+  runtime: IAgentRuntime,
+  intentContext: IntentContext,
+  receipt: TransactionReceipt
+): Promise<boolean> {
+  const service = runtime.getService<LevvaService>(LEVVA_SERVICE.LEVVA_COMMON);
+
+  if (!service) {
+    throw new Error("Failed to get levva service");
+  }
+
+  const { returnData, userId } = intentContext;
+  const strategyId = returnData?.strategyId;
+
+  if (!Number.isFinite(strategyId)) {
+    throw new Error("Strategy ID not found");
+  }
+
+  const strategies = await service.getStrategies();
+  const strategy = strategies.find((s) => s.id === strategyId);
+
+  if (!strategy) {
+    throw new Error(`Strategy(id=${strategyId}) not found`);
+  }
+
+  const chainId = strategy.vaultChainId;
+  const user = await service.getUserById(userId as UUID); // todo checkUUID
+  const address = user?.address;
+
+  if (!isHex(address)) {
+    throw new Error("Invalid address");
+  }
+
+  await Promise.all([
+    service.invalidateUserPositionsCache(address),
+    service.invalidateWithdrawalRequestsCache(address, chainId),
+  ]);
+
+  const request = (await service.getWithdrawalRequests(address, chainId)).find(
+    (r) => r.strategyId === strategyId
+  );
+
+  if (!request) {
+    throw new Error(`Withdrawal request not found(strategyId=${strategyId})`);
+  }
+
+  // run complete only on final step
+  const shouldComplete = receipt.contractAddress
+    ? getAddress(receipt.contractAddress) ===
+      getAddress(request.withdrawalNftAddress)
+    : false;
+
+  return shouldComplete;
+}

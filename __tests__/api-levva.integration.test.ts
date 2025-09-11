@@ -14,7 +14,7 @@ describe("Levva API Integration Tests", () => {
   // Can be skipped in CI by excluding integration test files
 
   it("should fetch user positions from real API", async () => {
-    const result = await getUserPositions(testAddress);
+    const result = await getUserPositions(testAddress, testChainId);
 
     // Log the result for debugging
     if (!result.success) {
@@ -116,8 +116,8 @@ describe("Levva API Integration Tests", () => {
     // Test that real API responses pass our Zod validation
     const [positionsResult, withdrawalsResult, strategiesResult] =
       await Promise.all([
-        getUserPositions(testAddress),
-        getWithdrawalRequests(testAddress, 1),
+        getUserPositions(testAddress, testChainId),
+        getWithdrawalRequests(testAddress, testChainId),
         getStrategies(testChainId),
       ]);
 

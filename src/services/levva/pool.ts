@@ -1,4 +1,3 @@
-import { arbitrum } from "viem/chains";
 import poolAbi from "./abi/pool.abi";
 import { getChain, getClient } from "../../util";
 import vaultAbi from "./abi/vault.abi";
@@ -21,6 +20,7 @@ export interface StrategyMapping {
 
 export interface StrategyEntry extends StrategyMapping {
   strategy: Strategy;
+  id: number;
 }
 
 export const getPoolConstants = async (

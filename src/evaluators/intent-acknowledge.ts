@@ -11,6 +11,7 @@ import { balancesTable } from "../schema/balances";
 import { hasRawMetadata } from "./utils";
 import { IntentManager, IntentContext } from "../services/intent-manager";
 import { LEVVA_SERVICE } from "../constants/enum";
+import { onWithdrawSuccess } from "src/actions/intents/withdraw";
 
 interface TransactionData {
   type: string;
@@ -127,32 +128,48 @@ async function handleTransactionConfirmation(
   });
 
   try {
-    const receipt = getTransactionReceipt(message.content.text || "");
+    const receipt = getTransactionReceipt(message.content.text || "")?.receipt;
     if (!receipt) {
       logger.debug("No valid transaction receipt found in message");
       return;
     }
 
-    if (receipt.receipt.status !== "success") {
+    if (receipt.status !== "success") {
       logger.debug("Transaction failed");
       return;
     }
 
-    // Handle cache invalidation
-    await handleCacheInvalidation(runtime, message);
+    switch (activeIntentContext.type) {
+      case "WITHDRAW": {
+        const shouldComplete = await onWithdrawSuccess(
+          runtime,
+          activeIntentContext,
+          receipt
+        );
 
-    // Handle intent completion for the specific intent
-    await handleIntentCompletion(
-      runtime,
-      message,
-      receipt,
-      activeIntentContext
-    );
+        if (shouldComplete) {
+          await handleIntentCompletion(
+            runtime,
+            message,
+            receipt,
+            activeIntentContext
+          );
+        }
+        break;
+      }
+      default:
+        throw new Error("Invalid intent type");
+      // TODO complete proper onComplete checks
+      // when implementing 'SWAP' you can use handleCacheInvalidation(runtime, message);
+    }
   } catch (error) {
     logger.error("Error handling transaction confirmation:", error);
   }
 }
 
+// TODO this should be 'SWAP' intent's onComplete handler
+// Currently unused but kept for future SWAP intent implementation
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 async function handleCacheInvalidation(
   runtime: IAgentRuntime,
   message: Memory
@@ -202,7 +219,7 @@ async function handleCacheInvalidation(
 async function handleIntentCompletion(
   runtime: IAgentRuntime,
   message: Memory,
-  receipt: TransactionData,
+  receipt: TransactionReceipt,
   activeIntentContext: IntentContext
 ) {
   try {
@@ -228,7 +245,7 @@ async function handleIntentCompletion(
         intentId: activeIntentContext.id,
         intentType: activeIntentContext.type,
         domain: activeIntentContext.domain,
-        transactionHash: receipt.hash,
+        transactionHash: receipt.transactionHash,
       });
     } else {
       logger.debug("Intent is not transaction-related or not active", {
