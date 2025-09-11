@@ -4,14 +4,11 @@ import {
   type Evaluator,
   logger,
 } from "@elizaos/core";
-import { isHex, getAddress, TransactionReceipt } from "viem";
-import { and, eq } from "drizzle-orm";
-import { getLevvaUser, getDb } from "../util/db";
-import { balancesTable } from "../schema/balances";
-import { hasRawMetadata } from "./utils";
+import { isHex, TransactionReceipt } from "viem";
 import { IntentManager, IntentContext } from "../services/intent-manager";
 import { LEVVA_SERVICE } from "../constants/enum";
 import { onWithdrawSuccess } from "src/actions/intents/withdraw";
+import { onSwapSuccess } from "src/actions/intents/swap";
 
 interface TransactionData {
   type: string;
@@ -157,62 +154,39 @@ async function handleTransactionConfirmation(
         }
         break;
       }
+      case "SWAP": {
+        const shouldComplete = await onSwapSuccess(
+          runtime,
+          activeIntentContext,
+          receipt
+        );
+
+        if (shouldComplete) {
+          await handleIntentCompletion(
+            runtime,
+            message,
+            receipt,
+            activeIntentContext
+          );
+        }
+        break;
+      }
       default:
-        throw new Error("Invalid intent type");
-      // TODO complete proper onComplete checks
-      // when implementing 'SWAP' you can use handleCacheInvalidation(runtime, message);
+        logger.warn("Unknown intent type for completion handling", {
+          intentType: activeIntentContext.type,
+          intentId: activeIntentContext.id,
+        });
+        // Complete the intent anyway to avoid stuck states
+        await handleIntentCompletion(
+          runtime,
+          message,
+          receipt,
+          activeIntentContext
+        );
+        break;
     }
   } catch (error) {
     logger.error("Error handling transaction confirmation:", error);
-  }
-}
-
-// TODO this should be 'SWAP' intent's onComplete handler
-// Currently unused but kept for future SWAP intent implementation
-// eslint-disable-next-line @typescript-eslint/no-unused-vars
-async function handleCacheInvalidation(
-  runtime: IAgentRuntime,
-  message: Memory
-) {
-  try {
-    if (!hasRawMetadata(message.metadata)) {
-      return;
-    }
-
-    const rawMessage = message.metadata.raw;
-    const userAddressId = rawMessage?.metadata?.userAddressId;
-    const chainId = rawMessage?.metadata?.chainId;
-
-    if (!userAddressId || typeof chainId !== "number") {
-      logger.debug("No user address id or chain id found");
-      return;
-    }
-
-    const user = (
-      await getLevvaUser(runtime, {
-        id: userAddressId as `${string}-${string}-${string}-${string}-${string}`,
-      })
-    )[0];
-
-    if (!user) {
-      logger.warn("User not found for cache invalidation", {
-        userAddressId,
-      });
-      return;
-    }
-
-    const db = getDb(runtime);
-    await db
-      .delete(balancesTable)
-      .where(
-        and(
-          eq(balancesTable.address, getAddress(user.address)),
-          eq(balancesTable.chainId, chainId)
-        )
-      );
-    logger.info("Deleted user balances from DB for cache invalidation");
-  } catch (error) {
-    logger.error("Failed to invalidate cache:", error);
   }
 }
 

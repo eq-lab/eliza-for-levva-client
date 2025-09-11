@@ -1,25 +1,23 @@
-import { parseUnits } from "viem";
-import { type Action, type Content } from "@elizaos/core";
-import { LEVVA_ACTIONS, LEVVA_SERVICE } from "../constants/enum";
-import { LEVVA_PROVIDER_NAME, LevvaProviderState } from "../providers";
+import { type Action } from "@elizaos/core";
+import { LEVVA_ACTIONS, LEVVA_SERVICE, INTENT_TYPE } from "../constants/enum";
 import {
   SWAP_PARAMS_PROVIDER_NAME,
   SwapParamsProviderData,
 } from "../providers/swap-params";
+import { LEVVA_PROVIDER_NAME, LevvaProviderState } from "../providers";
 import { selectProviderState } from "../providers/util";
 import { LevvaService } from "../services/levva/class";
-import { CalldataWithDescription } from "../types/tx";
-import { getChain } from "../util";
 import { rephrase } from "../util/generate";
-import { formatEstimation, selectSwapRouter } from "../util/eth/swap";
 import { Suggestion } from "./types";
-import { unwrapEth, wrapEth } from "src/util/eth/weth";
 import { getPreviousReplyContext } from "../util/action-results";
 import { exchangeAmountPrompt } from "../prompts/suggest/exchange-amount";
 import { exchangePairsPrompt } from "../prompts/suggest/exchange-pairs";
+import { IntentManager } from "../services/intent-manager";
+import { handleSwapIntent } from "./intents/swap";
+import { RawMessage } from "../types/core";
 
 const description =
-  "Initiate token swap for user if all parameters are provider and ask user if lacking exchange parameters.";
+  "Handle token swap requests using intent-based system with multi-step process support including Kyber swaps and ETH wrapping/unwrapping.";
 
 export const action: Action = {
   name: LEVVA_ACTIONS.SWAP_TOKENS,
@@ -46,175 +44,132 @@ export const action: Action = {
   },
 
   handler: async (runtime, message, state, options, callback) => {
-    // Get previous action context BEFORE try block for error handling
-    const prevActions = await getPreviousReplyContext(runtime, message, state);
-
     try {
-      runtime.logger.info("SWAP_TOKENS action called");
+      runtime.logger.info(
+        "SWAP_TOKENS action called with composeState pattern"
+      );
 
+      // 1. Get required services
       const service = runtime.getService<LevvaService>(
         LEVVA_SERVICE.LEVVA_COMMON
       );
-
       if (!service) {
-        throw new Error("Failed to get levva service, disable action");
+        throw new Error(
+          "LevvaService not found - required for swap operations"
+        );
       }
 
-      if (!callback) {
-        throw new Error("Callback not found, disable action");
-      }
-
-      if (!state) {
-        throw new Error("State not found, disable action");
-      }
-
-      const lvva = selectProviderState<LevvaProviderState>(
-        LEVVA_PROVIDER_NAME,
-        state
-      );
-
-      if (!lvva?.user) {
-        throw new Error("User address ID is required");
-      }
-
-      const params = selectProviderState<SwapParamsProviderData>(
+      // 2. Compose state and get provider data
+      const composedState = await runtime.composeState(message, [
         SWAP_PARAMS_PROVIDER_NAME,
-        state
-      );
+      ]);
 
-      if (!params) {
+      const providerResult =
+        composedState.data?.providers?.[SWAP_PARAMS_PROVIDER_NAME];
+      const providerData = providerResult?.data as SwapParamsProviderData;
+
+      if (!providerData) {
         throw new Error(
           `Failed to get provider(${SWAP_PARAMS_PROVIDER_NAME}) results`
         );
       }
 
-      if (
-        !params.type ||
-        !params.tokenIn ||
-        !params.tokenOut ||
-        !params.amount
-      ) {
-        if (!state.values.swap) {
-          throw new Error("Failed to get swap parameters");
-        }
+      // 3. Get previous actions context
+      const prevActions = await getPreviousReplyContext(
+        runtime,
+        message,
+        composedState
+      );
 
-        const content: Content = {
-          thought: "Need to ask user for missing parameters",
-          text: state.values.swap,
-          actions: ["SWAP_TOKENS"],
-          source: message.content.source,
-        };
+      // 4. Get user info from lvva provider
+      const lvva = selectProviderState<LevvaProviderState>(
+        LEVVA_PROVIDER_NAME,
+        composedState
+      );
 
-        const responseContent = await rephrase({
-          runtime,
-          content,
-          state,
-          prevActions,
-        });
-        await callback(responseContent);
-
-        return {
-          text: `Generated text: ${responseContent?.text}`,
-          values: {
-            success: true,
-            responded: true,
-            lastReply: responseContent.text,
-            lastReplyTime: Date.now(),
-            thoughtProcess: responseContent?.thought,
-          },
-          data: {
-            actionName: LEVVA_ACTIONS.SWAP_TOKENS,
-            response: responseContent,
-            thought: responseContent?.thought,
-            initialReply: content.text,
-            initialThought: content.thought,
-            messageGenerated: true,
-          },
-          success: true,
-        };
+      if (!lvva?.user) {
+        throw new Error("User address is required");
       }
 
-      const { tokenIn, tokenOut, amount, type } = params;
-      const amountUnits = parseUnits(amount, tokenIn.decimals);
-      const chain = getChain(lvva.chainId);
-      let calldata: CalldataWithDescription[];
-      let thought: string;
-      let text: string;
+      // 5. Check if we have intent context from provider
+      if (providerData.intentContext) {
+        runtime.logger.info("Using intent context from provider", {
+          intentId: providerData.intentContext.id,
+          type: providerData.intentContext.type,
+        });
 
-      switch (type) {
-        case "kyber": {
-          // todo remove selectSwapRouter
-          const swap = selectSwapRouter(tokenIn, tokenOut);
+        // Use intent handler with context from provider
+        return await handleSwapIntent(
+          runtime,
+          message,
+          composedState,
+          callback!,
+          providerData.intentContext,
+          prevActions
+        );
+      }
 
-          const { calls, estimation } = await swap(runtime, {
-            address: lvva.user.address,
-            amountIn: amountUnits,
-            chain,
-            decimals: tokenIn.decimals,
+      // 6. If no intent context but we have swap parameters, handle as direct swap request
+      if (
+        providerData.type &&
+        providerData.tokenIn &&
+        providerData.tokenOut &&
+        providerData.amount
+      ) {
+        runtime.logger.info(
+          "Processing direct swap request without intent context"
+        );
+
+        // Create a minimal intent context for the swap handler
+        const intentManager = runtime.getService<IntentManager>(
+          LEVVA_SERVICE.INTENT_MANAGER
+        );
+        if (intentManager) {
+          const intentContext = await intentManager.createIntent({
+            type: INTENT_TYPE.SWAP,
+            domain: LEVVA_ACTIONS.SWAP_TOKENS,
+            userId: (message as any).userId || "unknown",
+            channelId: message.roomId,
+            metadata: {
+              userAddress: lvva.user.address,
+              chainId: lvva.chainId,
+              directSwap: true,
+            },
           });
 
-          calldata = calls;
-          const description =
-            calls.length > 1
-              ? `### Transaction steps\n${calls.map((c, i) => `${i + 1}. ${c.description}`).join("\n")}`
-              : `${calls[0].description}\n\n${formatEstimation(estimation)}`;
-          thought = `Prepared transaction to swap ${amount} ${tokenIn.symbol} to ${tokenOut.symbol}, display confirmation`;
-          text = `${description}\n\nPlease approve transactions in your wallet.`;
-          break;
+          return await handleSwapIntent(
+            runtime,
+            message,
+            composedState,
+            callback!,
+            intentContext,
+            prevActions
+          );
         }
-        case "wrap": {
-          calldata = [
-            wrapEth(amountUnits, {
-              address: tokenOut.address!,
-              decimals: tokenOut.decimals,
-            }),
-          ];
-
-          thought = `Prepared transaction to wrap ${amount} ${tokenIn.symbol} to ${tokenOut.symbol}, display confirmation`;
-          text = `Wrapping ${amount} ${tokenIn.symbol} to ${tokenOut.symbol}\n\nPlease approve transactions in your wallet.`;
-          break;
-        }
-        case "unwrap": {
-          calldata = [
-            unwrapEth(amountUnits, {
-              address: tokenIn.address!,
-              decimals: tokenIn.decimals,
-            }),
-          ];
-
-          thought = `Prepared transaction to unwrap ${amount} ${tokenIn.symbol} to ${tokenOut.symbol}, display confirmation`;
-          text = `Unwrapping ${amount} ${tokenIn.symbol} to ${tokenOut.symbol}\n\nPlease approve transactions in your wallet.`;
-          break;
-        }
-        default:
-          throw new Error(`Unknown swap type: ${params.type}`);
       }
 
-      const hash = await service.createCalldata(calldata);
-
-      const json = {
-        id: "calls.json",
-        url: `/api/calldata?hash=${hash}`,
-      };
-
-      const content: Content = {
-        thought,
-        text,
-        actions: ["SWAP_TOKENS"],
-        source: message.content.source,
-        attachments: [json],
-      };
+      // 7. If no clear swap parameters, provide helpful guidance
+      const thought =
+        "User message doesn't contain clear swap parameters. I should ask for clarification.";
+      const text =
+        "I'd be happy to help you swap tokens! Please specify which tokens you'd like to swap and the amount. For example: 'Swap 100 USDC to ETH' or 'Exchange 0.5 ETH for USDT'.";
 
       const responseContent = await rephrase({
         runtime,
-        content,
-        state,
+        content: {
+          text,
+          thought,
+          actions: ["SWAP_TOKENS"],
+          source: message.content.source,
+        },
+        state: composedState,
         prevActions,
       });
-      await callback(responseContent);
+
+      await callback!(responseContent);
 
       return {
-        text: `Generated calldata accessible at ${json.url}, generated text: ${responseContent?.text}`,
+        text: `Generated ${LEVVA_ACTIONS.SWAP_TOKENS}: ${responseContent?.text}`,
         values: {
           success: true,
           responded: true,
@@ -225,9 +180,6 @@ export const action: Action = {
         data: {
           actionName: LEVVA_ACTIONS.SWAP_TOKENS,
           response: responseContent,
-          thought: responseContent?.thought,
-          initialReply: content.text,
-          initialThought: content.thought,
           messageGenerated: true,
         },
         success: true,
@@ -236,7 +188,14 @@ export const action: Action = {
       runtime.logger.error("Error in SWAP_TOKENS action:", error);
       const errorMessage = (error as Error).message ?? "unknown error";
       const thought = `Action failed with error: ${errorMessage}. I should tell the user about the error.`;
-      const text = `Failed to swap, reason: ${errorMessage}. Please try again.`;
+      const text = `Failed to process swap request, reason: ${errorMessage}. Please try again.`;
+
+      // Get previous actions context for error handling
+      const prevActions = await getPreviousReplyContext(
+        runtime,
+        message,
+        state
+      );
 
       const responseContent = await rephrase({
         runtime,
@@ -246,14 +205,14 @@ export const action: Action = {
           actions: ["SWAP_TOKENS"],
           source: message.content.source,
         },
-        state: state!,
+        state: state || ({} as any),
         prevActions,
       });
 
       await callback?.(responseContent);
 
       return {
-        text: `Error generating transaction: ${errorMessage}.`,
+        text: `Error processing swap request: ${errorMessage}.`,
         values: {
           success: false,
           responded: true,
@@ -320,14 +279,38 @@ export const action: Action = {
   ],
 };
 
+// Register the swap intent
+IntentManager.registerIntent({
+  type: INTENT_TYPE.SWAP,
+  domain: LEVVA_ACTIONS.SWAP_TOKENS,
+  keywords: [
+    "swap",
+    "exchange",
+    "trade",
+    "convert",
+    "change",
+    "swap tokens",
+    "exchange tokens",
+    "trade tokens",
+    "convert tokens",
+    "wrap",
+    "unwrap",
+    "bridge",
+  ],
+  handler: handleSwapIntent,
+  description:
+    "Handle token swap requests with multi-step process support including Kyber swaps and ETH wrapping/unwrapping",
+});
+
 export const suggest: Suggestion[] = [
   {
     name: "exchange-amount",
     description:
-      "Use if user wants to swap tokens, and the agent knows what token to swap but the amount is not specified, suggest how much to swap based on user's portfolio, eg: known includes 'tokenIn' and 'tokenOut' and unknown includes 'amountIn'",
+      "Use if user wants to swap tokens, and the agent knows what token to swap but the amount is not specified, suggest how much to swap based on user's portfolio and active intent context",
     getPrompt: async (
       runtime,
-      { address, chainId, conversation, decision }
+      { address, chainId, conversation, decision },
+      message?
     ) => {
       const service = runtime.getService<LevvaService>(
         LEVVA_SERVICE.LEVVA_COMMON
@@ -336,24 +319,74 @@ export const suggest: Suggestion[] = [
         throw new Error("Failed to get levva service");
       }
 
+      // Get intent context for enhanced suggestions when message is available
+      const intentManager = runtime.getService<IntentManager>(
+        LEVVA_SERVICE.INTENT_MANAGER
+      );
+
+      let intentContext;
+      let swapParams;
+
+      if (intentManager && message) {
+        try {
+          // Extract user info for intent management
+          const raw = (message.metadata as unknown as { raw: RawMessage }).raw;
+          const userId = raw?.senderId || "unknown";
+          const channelId = raw?.channelId || message.roomId;
+
+          // Check for active swap intent
+          intentContext = await intentManager.getActiveIntentByDomain(
+            userId,
+            channelId,
+            LEVVA_ACTIONS.SWAP_TOKENS
+          );
+
+          // Get swap parameters from provider if available
+          if (intentContext) {
+            try {
+              const composedState = await runtime.composeState(message, [
+                SWAP_PARAMS_PROVIDER_NAME,
+              ]);
+              swapParams =
+                composedState.data?.providers?.[SWAP_PARAMS_PROVIDER_NAME]
+                  ?.data;
+            } catch (error) {
+              runtime.logger.warn(
+                "Failed to get swap params for suggestions:",
+                error
+              );
+            }
+          }
+        } catch (error) {
+          runtime.logger.warn(
+            "Failed to get intent context for suggestions:",
+            error
+          );
+        }
+      }
+
       const assets = await service.getWalletAssets({ address, chainId });
       const available = await service.getAvailableTokens({ chainId });
 
+      // Enhanced suggestions with intent context when available
       return exchangeAmountPrompt({
         conversation,
         decision,
         walletAssetsFormatted: service.formatWalletAssets(assets),
         availableTokens: available,
+        intentContext,
+        swapParams,
       });
     },
   },
   {
     name: "exchange-pairs",
     description:
-      "Use if the user wants to swap tokens, and the agent does not know which ones, suggest preferred exchange pairs, eg. unknown includes 'tokenIn' and 'tokenOut'; also choose this suggestion if an agent does not recognize the token",
+      "Use if the user wants to swap tokens, and the agent does not know which ones, suggest preferred exchange pairs based on portfolio and intent history",
     getPrompt: async (
       runtime,
-      { address, chainId, conversation, decision }
+      { address, chainId, conversation, decision },
+      message?
     ) => {
       const service = runtime.getService<LevvaService>(
         LEVVA_SERVICE.LEVVA_COMMON
@@ -362,15 +395,162 @@ export const suggest: Suggestion[] = [
         throw new Error("Failed to get levva service");
       }
 
+      // Get intent context for enhanced suggestions when message is available
+      const intentManager = runtime.getService<IntentManager>(
+        LEVVA_SERVICE.INTENT_MANAGER
+      );
+
+      let intentContext;
+      let recentIntents: any[] = [];
+
+      if (intentManager && message) {
+        try {
+          // Extract user info for intent management
+          const raw = (message.metadata as unknown as { raw: RawMessage }).raw;
+          const userId = raw?.senderId || "unknown";
+          const channelId = raw?.channelId || message.roomId;
+
+          // Check for active swap intent
+          intentContext = await intentManager.getActiveIntentByDomain(
+            userId,
+            channelId,
+            LEVVA_ACTIONS.SWAP_TOKENS
+          );
+
+          // Get recent swap intents for better suggestions
+          // Note: This would require a method to get intents by user
+          // For now, we'll work with just the active intent
+          if (intentContext) {
+            recentIntents = [intentContext];
+          }
+        } catch (error) {
+          runtime.logger.warn(
+            "Failed to get intent context for suggestions:",
+            error
+          );
+        }
+      }
+
       const assets = await service.getWalletAssets({ address, chainId });
       const available = await service.getAvailableTokens({ chainId });
 
+      // Enhanced suggestions with intent context when available
       return exchangePairsPrompt({
         conversation,
         decision,
         walletAssetsFormatted: service.formatWalletAssets(assets),
         availableTokens: available,
+        intentContext,
+        recentIntents,
       });
+    },
+  },
+  {
+    name: "swap-continuation",
+    description:
+      "Use when there's an active swap intent that needs continuation or completion, suggest next steps based on intent state",
+    getPrompt: async (
+      runtime,
+      { address, chainId, conversation, decision: _decision },
+      message?
+    ) => {
+      if (!message) {
+        return "No message context available for swap continuation suggestions.";
+      }
+
+      const intentManager = runtime.getService<IntentManager>(
+        LEVVA_SERVICE.INTENT_MANAGER
+      );
+
+      if (!intentManager) {
+        return "Intent manager not available for swap continuation suggestions.";
+      }
+
+      // Extract user info for intent management
+      const raw = (message.metadata as unknown as { raw: RawMessage }).raw;
+      const userId = raw?.senderId || "unknown";
+      const channelId = raw?.channelId || message.roomId;
+
+      // Get active swap intent
+      const intentContext = await intentManager.getActiveIntentByDomain(
+        userId,
+        channelId,
+        LEVVA_ACTIONS.SWAP_TOKENS
+      );
+
+      if (!intentContext) {
+        return "No active swap intent found for continuation suggestions.";
+      }
+
+      const service = runtime.getService<LevvaService>(
+        LEVVA_SERVICE.LEVVA_COMMON
+      );
+      if (!service) {
+        throw new Error("Failed to get levva service");
+      }
+
+      // Get current swap parameters
+      let swapParams;
+      try {
+        const composedState = await runtime.composeState(message, [
+          SWAP_PARAMS_PROVIDER_NAME,
+        ]);
+        swapParams =
+          composedState.data?.providers?.[SWAP_PARAMS_PROVIDER_NAME]?.data;
+      } catch (error) {
+        runtime.logger.warn(
+          "Failed to get swap params for continuation:",
+          error
+        );
+      }
+
+      const assets = await service.getWalletAssets({ address, chainId });
+
+      return `<task>Generate suggestions for continuing an active swap intent</task>
+<intentContext>
+Intent ID: ${intentContext.id}
+Intent Type: ${intentContext.type}
+Intent Status: ${intentContext.status}
+Intent Data: ${JSON.stringify(intentContext.returnData || {})}
+Created: ${intentContext.createdAt}
+Memories: ${intentContext.memories?.length || 0} messages
+</intentContext>
+<swapParams>
+${swapParams ? JSON.stringify(swapParams) : "No swap parameters available"}
+</swapParams>
+<portfolio>
+${service.formatWalletAssets(assets)}
+</portfolio>
+<conversation>
+${conversation}
+</conversation>
+<instructions>
+Based on the active intent context and current parameters, generate 3-4 suggestions for continuing the swap process:
+
+1. **Missing Token Information**: If tokens aren't specified, suggest specific token pairs from portfolio
+2. **Missing Amount**: If amount isn't specified, suggest percentage-based amounts (10%, 25%, 50%, 95%)
+3. **Complete Parameters**: If all parameters are available, suggest proceeding with the swap
+4. **Issues/Alternatives**: If there are problems (insufficient balance, etc.), suggest alternatives
+
+**Smart Suggestions:**
+- Prioritize tokens with sufficient balances
+- Consider gas costs (suggest 95% not 100% for native tokens)
+- Use intent memory context to understand user preferences
+- Suggest realistic amounts based on portfolio
+
+Each suggestion should help move the intent forward toward completion.
+</instructions>
+<output>
+{
+  "thought": "Analysis of current intent state and next steps needed",
+  "suggestions": [
+    {
+      "label": "Short descriptive label",
+      "text": "Natural user message to continue the intent"
+    }
+  ]
+}
+</output>`;
     },
   },
 ];

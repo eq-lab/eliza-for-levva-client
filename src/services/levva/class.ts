@@ -3,11 +3,13 @@ import EventEmitter from "node:events";
 import {
   encodeFunctionData,
   formatUnits,
+  getAddress,
   isHex,
   parseUnits,
   sha256,
   toHex,
 } from "viem";
+import { and, eq } from "drizzle-orm";
 import {
   Content,
   Entity,
@@ -23,6 +25,8 @@ import { getActiveMarkets, PendleActiveMarkets } from "../../api/market/pendle";
 import { CacheEntry } from "../../types/core";
 import { ILevvaService } from "../../types/service";
 import { CalldataWithDescription } from "../../types/tx";
+import { balancesTable } from "../../schema/balances";
+import { getDb } from "../../util/db";
 import {
   extractTokenData,
   getAllowance,
@@ -444,6 +448,32 @@ export class LevvaService
     }, balances);
 
     return result;
+  }
+
+  /**
+   * Invalidate user balance cache by deleting balance entries from database
+   * This forces fresh balance queries on next request
+   */
+  async invalidateUserBalanceCache(address: `0x${string}`, chainId: number) {
+    try {
+      const db = getDb(this.runtime);
+      await db
+        .delete(balancesTable)
+        .where(
+          and(
+            eq(balancesTable.address, getAddress(address)),
+            eq(balancesTable.chainId, chainId)
+          )
+        );
+
+      logger.info("Invalidated user balance cache", {
+        address,
+        chainId,
+      });
+    } catch (error) {
+      logger.error("Failed to invalidate user balance cache:", error);
+      throw error;
+    }
   }
 
   formatWalletAssets(

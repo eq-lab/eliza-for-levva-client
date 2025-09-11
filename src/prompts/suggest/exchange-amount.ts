@@ -6,6 +6,8 @@ export interface ExchangeAmountParams {
     symbol: string;
     address?: string;
   }>;
+  intentContext?: any;
+  swapParams?: any;
 }
 
 export const exchangeAmountPrompt = ({
@@ -13,8 +15,10 @@ export const exchangeAmountPrompt = ({
   decision,
   walletAssetsFormatted,
   availableTokens,
+  intentContext,
+  swapParams,
 }: ExchangeAmountParams): string => {
-  return `<task>Generate suggestions for exchange amount or alternative swap pairs, given user's portfolio and previous conversation
+  return `<task>Generate suggestions for exchange amount or alternative swap pairs, given user's portfolio, intent context, and previous conversation
 </task>
 <decision>
 ${JSON.stringify(decision)}
@@ -27,25 +31,57 @@ ${walletAssetsFormatted}
 Tokens known to agent:
 ${availableTokens.map((token) => `${token.symbol} - ${token.address ?? "Native token"}`).join(", ")}
 </availableTokens>
+${
+  intentContext
+    ? `<intentContext>
+Active Intent ID: ${intentContext.id}
+Intent Type: ${intentContext.type}
+Intent Status: ${intentContext.status}
+Intent Data: ${JSON.stringify(intentContext.returnData || {})}
+Intent Memories: ${intentContext.memories?.length || 0} messages
+</intentContext>`
+    : ""
+}
+${
+  swapParams
+    ? `<currentSwapParams>
+Token In: ${swapParams.tokenIn?.symbol || "Unknown"}
+Token Out: ${swapParams.tokenOut?.symbol || "Unknown"}
+Amount: ${swapParams.amount || "Not specified"}
+Type: ${swapParams.type || "Unknown"}
+</currentSwapParams>`
+    : ""
+}
 <conversation>
 ${conversation}
 </conversation>
 <instructions>
-User can either have the input token available or not, so consider cases:
+Generate smart amount suggestions based on portfolio, intent context, and conversation:
 
+**Intent-Aware Logic:**
+- If active intent exists with partial data, build upon it
+- If current swap params specify tokens, focus on amount suggestions
+- If recent intents show patterns, suggest similar amounts
+
+**Portfolio-Based Suggestions:**
 1. When input token NOT in portfolio:
-  - Generate 4 suggestions for another input token available in portfolio without token amount.
-  - Input token should NOT be the same as the output token, so "Swap ETH -> USDT" is CORRECT, but "Swap ETH -> ETH" is WRONG.
-  - Acknowledge missing input token in label, eg. "No {{tokenIn}}, swap {{availableToken}} -> {{tokenOut}}".
-  - Text should NOT include amount, eg. "I want to swap {{availableToken}} to {{tokenOut}}" is CORRECT, but "I want to swap 0.123456789987654321 {{availableToken}} to {{tokenOut}}" is WRONG.
+  - Generate 4 suggestions for alternative input tokens from portfolio
+  - Input token ≠ output token (no self-swaps)
+  - Acknowledge missing token: "No {{tokenIn}}, swap {{availableToken}} -> {{tokenOut}}"
+  - Text without amounts: "I want to swap {{availableToken}} to {{tokenOut}}"
 
 2. When input token IS in portfolio:
-  - Generate 4 suggestions for exchange amount, that corresponds to 100%(or 95% instead for native token or deduced value if present), 50%, 25%, 10% of the input token balance.
-  - User should be able to see trimmed swap amount in suggestion label, but not the percentage, eg. NOT "100% {{tokenIn}}", but "0.12 {{tokenIn}}".
-  - Trim amount in label to 6 decimal places if the value is less than 1. Use 2 decimal places otherwise, eg. "0.12 {{tokenIn}}".
-  - Do not trim amount in text, eg. "I want to swap 0.123456789987654321 {{tokenIn}}".
+  - Generate 4 amount suggestions: 100% (or 95% for native), 50%, 25%, 10% of balance
+  - Show trimmed amounts in labels: "0.12 {{tokenIn}}" (6 decimals if <1, 2 decimals if ≥1)
+  - Use full precision in text: "I want to swap 0.123456789987654321 {{tokenIn}}"
 
-Determine if user has input token available in portfolio and use appropriate case.
+**Smart Enhancements:**
+- Consider gas costs for native token (suggest 95% not 100%)
+- Factor in recent successful swap amounts
+- Prioritize tokens with higher balances
+- Include popular round numbers when appropriate
+
+Use intent context and swap params to make contextually relevant suggestions.
 </instructions>
 <keys>
 - "thought" should be a short description of what the agent is thinking about and planning.

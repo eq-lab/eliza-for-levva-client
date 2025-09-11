@@ -1,6 +1,7 @@
 import {
   type Action,
   type IAgentRuntime,
+  type Memory,
   type ModelTypeName,
 } from "@elizaos/core";
 
@@ -20,7 +21,11 @@ interface PromptParams {
 export interface Suggestion {
   name: string;
   description: string;
-  getPrompt: (runtime: IAgentRuntime, key: PromptParams) => Promise<string>;
+  getPrompt: (
+    runtime: IAgentRuntime, 
+    key: PromptParams, 
+    message?: Memory
+  ) => Promise<string>;
   model?: ModelTypeName;
 }
 

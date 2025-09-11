@@ -533,46 +533,390 @@ export const handleWithdrawIntent: IntentHandler = async (
 
 **Rationale**: Intent handlers are closely related to actions and should be organized under the actions directory. Registration should be explicit and controlled by the actions that use the intents.
 
-## Proof of Concept Implementation (September 2025)
+## Production Implementation (September 2025)
 
 ### ✅ Completed Features
 
-The intent system proof of concept has been successfully implemented with the following features:
+The intent system has been successfully implemented in production with the following comprehensive features:
 
 #### 1. **IntentManager Service** (`src/services/intent-manager.ts`)
-- **Intent Registration**: `registerIntent()` method for explicit intent registration
-- **Intent Detection**: `detectIntentWithLLM()` using AI for intent classification
-- **Intent Lifecycle**: Create, store, retrieve, cancel, and complete intents
-- **Conversation Analysis**: `getActiveIntentByReply()` finds active intents from conversation history
-- **Conflict Resolution**: Automatic cancellation of conflicting intents in same domain
-- **Caching System**: Efficient intent storage using runtime cache with TTL
+- **Intent Registration**: `registerIntent()` method for explicit intent registration with keywords, descriptions, and handlers
+- **Intent Detection**: `detectIntentWithLLM()` using AI for intent classification with confidence scoring
+- **Intent Lifecycle**: Create, store, retrieve, cancel, and complete intents with full state management
+- **Conversation Analysis**: `getActiveIntentByReply()` finds active intents from conversation history between user messages
+- **Conflict Resolution**: Automatic cancellation of conflicting intents in same domain with proper cleanup
+- **Caching System**: Efficient intent storage using runtime cache with TTL and proper invalidation
+- **Parent-Child Relationships**: Support for hierarchical intent structures with data inheritance
 
-#### 2. **Intent-Based Action System** (`src/actions/position.ts`)
-- **Unified Action**: Single `MANAGE_POSITIONS` action handles multiple intent types
-- **Intent Registration**: Explicit registration of withdraw intent with keywords and handler
-- **Smart Validation**: Works with or without active intents for maximum flexibility
-- **Intent Routing**: Routes to specific handlers based on detected intent type
+#### 2. **Intent-Based Action System** 
+- **Unified Actions**: Actions like `MANAGE_POSITIONS` and `SWAP_TOKENS` handle multiple intent types through single entry points
+- **Intent Registration**: Explicit registration at action level with comprehensive keyword sets and descriptions
+- **Smart Validation**: Works with or without active intents for maximum flexibility and backward compatibility
+- **Intent Routing**: Routes to specific handlers based on detected intent type with fallback mechanisms
+- **Provider Integration**: Deep integration with providers for intent-aware data extraction and context building
 
 #### 3. **Intent Handlers** (`src/actions/intents/`)
-- **Withdraw Handler**: Complete multi-step withdrawal process implementation
-- **Pure Functions**: Intent handlers contain only business logic, no registration
-- **Context Preservation**: Maintains intent context across conversation turns
-- **Transaction Integration**: Links transactions to specific intents for better tracking
+- **Withdraw Handler**: Complete multi-step withdrawal process (request → check → claim) with state persistence
+- **Swap Handler**: Comprehensive token swapping with Kyber integration, ETH wrapping/unwrapping, and parameter validation
+- **Pure Functions**: Intent handlers contain only business logic, no registration or framework concerns
+- **Context Preservation**: Maintains intent context across conversation turns with metadata and return data
+- **Transaction Integration**: Links transactions to specific intents for better tracking and completion handling
+- **Error Recovery**: Graceful handling of missing parameters with user guidance and context preservation
 
 #### 4. **Intent-Aware Evaluators** (`src/evaluators/intent-acknowledge.ts`)
-- **Transaction Acknowledgment**: Automatically detects and processes transaction confirmations
+- **Transaction Acknowledgment**: Automatically detects and processes transaction confirmations with intent completion
+- **Intent Cancellation**: Handles user cancellation requests with proper cleanup and state management
+- **Conversation Context**: Finds active intents from conversation history for accurate intent-transaction matching
+- **Multi-Intent Support**: Handles different intent types (WITHDRAW, SWAP) with specialized completion logic
+- **Cache Management**: Proper cache invalidation after successful transactions (e.g., balance updates after swaps)
+
+#### 5. **Provider Integration** (`src/providers/`)
+- **Intent Detection**: Providers automatically detect and create intents based on user messages
+- **Context Enrichment**: Providers add intent context to their data for downstream consumption
+- **Memory Management**: Automatic addition of messages to intent memory for context preservation
+- **Parameter Extraction**: Intent-aware parameter extraction using conversation history and context
+- **State Synchronization**: Proper synchronization between intent state and provider data
 - **Cancellation Support**: Handles user cancellation requests for active intents
 - **Conversation Context**: Finds active intents from recent agent responses
 - **Smart Filtering**: Only analyzes agent messages between current and previous user messages
 - **Intent Completion**: Properly completes intents when transactions succeed
 
-#### 5. **Provider Integration** (`src/providers/position-params.ts`)
-- **Intent Context**: Provides active intent information to actions
-- **LLM Detection**: Uses AI to detect intent types with confidence scoring
-- **Flexible Creation**: Only creates intents for specific actions, not default viewing
+### 🎯 **Key Architectural Patterns Discovered**
+
+#### **1. Intent Registration Pattern**
+```typescript
+// ✅ BEST PRACTICE: Register intents at action level
+IntentManager.registerIntent({
+  type: INTENT_TYPE.SWAP,
+  domain: LEVVA_ACTIONS.SWAP_TOKENS,
+  keywords: ["swap", "exchange", "trade", "convert", "wrap", "unwrap"],
+  handler: handleSwapIntent,
+  description: "Handle token swap requests with multi-step process support"
+});
+```
+
+**Key Insights:**
+- **Action-Level Registration**: Intents are registered in action files, not in a central registry
+- **Comprehensive Keywords**: Include all possible user expressions for the intent
+- **Domain Scoping**: Each action domain has its own intent namespace
+- **Handler Separation**: Intent handlers are pure functions in separate files
+
+#### **2. Provider-Intent Integration Pattern**
+```typescript
+// ✅ PATTERN: Providers detect, create, and enrich intents
+export const swapParamsProvider: Provider = {
+  async get(runtime, message, state) {
+    // 1. Extract user context
+    const raw = (message.metadata as unknown as { raw: RawMessage }).raw;
+    const userId = raw.senderId;
+    const channelId = raw.channelId;
+    
+    // 2. Get or create intent
+    let intentContext = await intentService.getActiveIntentByDomain(
+      userId, channelId, LEVVA_ACTIONS.SWAP_TOKENS
+    );
+    
+    // 3. Detect new intent if needed
+    const detect = await intentService.detectIntentWithLLM(message, domain);
+    if (detect.confidence > 0.6 && detect.intentType === INTENT_TYPE.SWAP) {
+      intentContext = await intentService.createIntent({...});
+    }
+    
+    // 4. Add message to intent memory
+    if (intentContext) {
+      await intentService.addMemoryToIntent(intentContext, message);
+    }
+    
+    // 5. Return data with intent context
+    return { ...extractedData, intentContext };
+  }
+};
+```
+
+**Key Insights:**
+- **Automatic Intent Detection**: Providers automatically detect intents from user messages
+- **Context Enrichment**: Providers add intent context to their return data
+- **Memory Management**: Messages are automatically added to intent memory
+- **Type Safety**: Use proper `RawMessage` type instead of `any` for metadata access
+
+#### **3. Action-Intent Routing Pattern**
+```typescript
+// ✅ PATTERN: Actions route to intent handlers when context exists
+export const action: Action = {
+  handler: async (runtime, message, state, options, callback) => {
+    // 1. Compose state with providers
+    const composedState = await runtime.composeState(message, [PROVIDER_NAME]);
+    const providerData = composedState.data?.providers?.[PROVIDER_NAME]?.data;
+    
+    // 2. Route to intent handler if context exists
+    if (providerData.intentContext) {
+      return await handleIntentFunction(
+        runtime, message, composedState, callback!, 
+        providerData.intentContext, prevActions
+      );
+    }
+    
+    // 3. Create minimal intent for direct requests
+    if (hasDirectParameters(providerData)) {
+      const intentContext = await intentManager.createIntent({...});
+      return await handleIntentFunction(..., intentContext, ...);
+    }
+    
+    // 4. Provide guidance if no clear intent
+    return { text: "Please specify what you'd like to do..." };
+  }
+};
+```
+
+**Key Insights:**
+- **Provider-First Approach**: Actions rely on providers for intent detection and context
+- **Flexible Routing**: Support both intent-based and direct parameter flows
+- **Graceful Fallbacks**: Provide helpful guidance when intent is unclear
+- **State Composition**: Use `runtime.composeState` to gather provider data
+
+#### **4. Intent Handler Structure Pattern**
+```typescript
+// ✅ PATTERN: Intent handlers are pure business logic functions
+export const handleSwapIntent: IntentHandler = async (
+  runtime, message, state, callback, intentContext, prevActions
+): Promise<ActionResult> => {
+  // 1. Extract data from composed state
+  const lvva = state.data?.providers?.[LEVVA_PROVIDER_NAME]?.data;
+  const params = state.data?.providers?.[SWAP_PARAMS_PROVIDER_NAME]?.data;
+  
+  // 2. Validate required data
+  if (!params.type || !params.tokenIn || !params.amount) {
+    return await handleMissingParameters(...);
+  }
+  
+  // 3. Execute business logic
+  return await executeTransaction(...);
+};
+```
+
+**Key Insights:**
+- **Pure Functions**: Intent handlers contain only business logic, no framework concerns
+- **State Access**: Access provider data through composed state structure
+- **Parameter Validation**: Graceful handling of missing or invalid parameters
+- **Consistent Interface**: All intent handlers follow the same signature pattern
+
+#### **5. Evaluator Integration Pattern**
+```typescript
+// ✅ PATTERN: Evaluators handle intent completion and cleanup
+export const evaluator: Evaluator = {
+  handler: async (runtime, message) => {
+    // 1. Find active intent from conversation
+    const intentContext = await intentManager.getActiveIntentByReply(message);
+    
+    // 2. Handle transaction confirmation
+    if (isTransactionConfirmation(message)) {
+      switch (intentContext.type) {
+        case "SWAP":
+          await onSwapSuccess(runtime, intentContext);
+          await intentManager.completeIntent(intentContext);
+          break;
+        case "WITHDRAW":
+          await onWithdrawSuccess(runtime, intentContext);
+          break;
+      }
+    }
+    
+    // 3. Handle cancellation requests
+    if (isCancellationRequest(message)) {
+      await intentManager.cancelIntent(intentContext);
+    }
+  }
+};
+```
+
+**Key Insights:**
+- **Conversation Analysis**: Evaluators find active intents from conversation history
+- **Type-Specific Handling**: Different intent types have specialized completion logic
+- **Cache Management**: Proper cache invalidation after successful operations
+- **Cancellation Support**: Handle user cancellation requests gracefully
+
+### 🔧 **Implementation Best Practices**
+
+#### **Type Safety**
+```typescript
+// ✅ DO: Use proper types
+const raw = (message.metadata as unknown as { raw: RawMessage }).raw;
+const userId = raw.senderId;
+const channelId = raw.channelId;
+
+// ❌ DON'T: Use any types
+const raw: any = (message.metadata as unknown as { raw: any }).raw;
+```
+
+#### **Error Handling**
+```typescript
+// ✅ DO: Graceful parameter handling
+if (!params.type || !params.tokenIn || !params.amount) {
+  return await handleMissingParameters(...);
+}
+
+// ❌ DON'T: Throw errors for missing user input
+if (!params.amount) {
+  throw new Error("Amount is required");
+}
+```
+
+#### **State Management**
+```typescript
+// ✅ DO: Use composed state pattern
+const composedState = await runtime.composeState(message, [PROVIDER_NAME]);
+const data = composedState.data?.providers?.[PROVIDER_NAME]?.data;
+
+// ❌ DON'T: Manual provider selection
+const data = selectProviderState(PROVIDER_NAME, state);
+```
+
+#### **Intent Context Access**
+```typescript
+// ✅ DO: Access through provider data
+if (providerData.intentContext) {
+  return await handleIntent(..., providerData.intentContext);
+}
+
+// ❌ DON'T: Manual intent retrieval in actions
+const intent = await intentManager.getActiveIntentByDomain(...);
+```
+
+#### **Suggestion System Integration**
+```typescript
+// ✅ PATTERN: Intent-aware suggestions with optional message parameter
+export interface Suggestion {
+  name: string;
+  description: string;
+  getPrompt: (
+    runtime: IAgentRuntime,
+    params: PromptParams,
+    message?: Memory  // Optional for intent-aware suggestions
+  ) => Promise<string>;
+}
+
+// ✅ USAGE: Leverage intent context in suggestions
+const suggestion: Suggestion = {
+  getPrompt: async (runtime, { address, chainId }, message?) => {
+    if (!message) return basicPrompt;
+    
+    // Extract proper user context
+    const raw = (message.metadata as unknown as { raw: RawMessage }).raw;
+    const userId = raw?.senderId || "unknown";
+    const channelId = raw?.channelId || message.roomId;
+    
+    // Get active intent for context
+    const intentContext = await intentManager.getActiveIntentByDomain(
+      userId, channelId, LEVVA_ACTIONS.SWAP_TOKENS
+    );
+    
+    // Generate context-aware suggestions
+    return intentAwarePrompt({ intentContext, ...params });
+  }
+};
+```
+
+**Key Insights:**
+- **Optional Message Parameter**: Suggestions can optionally receive message context for intent awareness
+- **Backward Compatibility**: Suggestions work with or without message parameter
+- **Context Extraction**: Proper extraction of `userId` and `channelId` from message metadata
+- **Intent-Aware Prompts**: Suggestions can leverage active intent context for better relevance
+
+### 🚀 **Scaling Patterns for New Intents**
+
+#### **Adding a New Intent Type**
+1. **Define Intent Type**: Add to `INTENT_TYPE` enum
+2. **Create Handler**: Implement `IntentHandler` in `src/actions/intents/`
+3. **Register Intent**: Add registration call in relevant action file
+4. **Provider Integration**: Update relevant provider to detect and manage the intent
+5. **Evaluator Support**: Add completion logic to `intent-acknowledge` evaluator
+6. **Suggestion Integration**: Update suggestions to leverage intent context
+
+#### **Multi-Domain Intent Support**
+```typescript
+// ✅ PATTERN: Cross-domain intent relationships
+const childIntent = await intentManager.createIntent({
+  type: INTENT_TYPE.SWAP,
+  domain: LEVVA_ACTIONS.SWAP_TOKENS,
+  parentIntentId: parentIntent.id,  // Link to parent
+  inheritedData: parentIntent.returnData,  // Inherit data
+  // ...
+});
+```
+
+**Key Insights:**
+- **Parent-Child Relationships**: Support hierarchical intent structures
+- **Data Inheritance**: Child intents can inherit data from parents
+- **Cross-Domain Coordination**: Intents can span multiple action domains
+- **Conflict Resolution**: Same-domain intents cancel each other, cross-domain intents coexist
 - **Context Inheritance**: Maintains intent context across provider calls
 
-### 🔧 Technical Implementation Details
+### 📚 **Lessons Learned from Production Implementation**
+
+#### **What Worked Well**
+1. **Provider-First Architecture**: Having providers detect and manage intents proved highly effective
+2. **Explicit Registration**: Action-level intent registration provides clear ownership and control
+3. **Pure Handler Functions**: Separating business logic from framework concerns improved testability
+4. **Conversation Context**: Using conversation history for intent discovery works reliably
+5. **Type Safety**: Proper TypeScript types prevent runtime errors and improve developer experience
+6. **Graceful Degradation**: System works well with or without active intents
+
+#### **Key Challenges Solved**
+1. **Action Resolution Conflicts**: Unified actions with intent routing eliminated competing validations
+2. **Context Preservation**: Intent memory system maintains conversation context across turns
+3. **Parameter Extraction**: Intent-aware prompts significantly improve LLM parameter extraction
+4. **Transaction Linking**: Evaluators successfully link transactions to specific intents
+5. **Cache Management**: Proper cache invalidation after intent completion prevents stale data
+6. **User Experience**: Multi-step workflows feel natural and conversational
+
+#### **Performance Insights**
+1. **Caching Strategy**: Intent detection results are cached to avoid redundant LLM calls
+2. **Provider Efficiency**: Providers are called multiple times, so caching is crucial
+3. **Memory Management**: Intent memories are pruned to prevent unbounded growth
+4. **LLM Usage**: Confidence thresholds (>0.6) prevent false positive intent creation
+5. **State Composition**: `composeState` pattern is more efficient than manual provider selection
+
+#### **Future Considerations**
+1. **Intent Persistence**: Consider database storage for long-lived intents
+2. **Cross-Session Intents**: Support intents that span multiple conversation sessions
+3. **Intent Analytics**: Track intent success rates and user satisfaction
+4. **Advanced Relationships**: More complex parent-child intent hierarchies
+5. **Intent Scheduling**: Support for delayed or scheduled intent execution
+6. **Multi-User Intents**: Collaborative intents involving multiple users
+
+### 🎯 **Migration Guide for Existing Actions**
+
+#### **Step 1: Identify Intent Types**
+- Analyze user interactions to identify distinct intent patterns
+- Define clear intent types in `INTENT_TYPE` enum
+- Map existing action logic to specific intent handlers
+
+#### **Step 2: Create Intent Handlers**
+- Extract business logic into pure `IntentHandler` functions
+- Implement parameter validation and error handling
+- Add transaction preparation and execution logic
+
+#### **Step 3: Update Providers**
+- Add intent detection and creation logic
+- Integrate intent context into provider return data
+- Implement memory management for intent conversations
+
+#### **Step 4: Modify Actions**
+- Add intent registration calls
+- Implement intent routing in action handlers
+- Use `composeState` pattern for provider data access
+
+#### **Step 5: Update Evaluators**
+- Add intent completion logic for new intent types
+- Implement proper cache invalidation
+- Handle cancellation requests gracefully
+
+#### **Step 6: Enhance Suggestions**
+- Update suggestion interfaces to accept optional message parameter
+- Implement intent-aware prompt generation
+- Leverage active intent context for better relevance
+
+### 🔧 **Technical Implementation Details**
 
 #### Intent Context Structure
 ```typescript
