@@ -123,9 +123,10 @@ export const positionParamsProvider: Provider = {
         );
 
         if (result) {
-          // TODO proper typing for returnData
-          intentContext.returnData = { ...intentContext.returnData, ...result };
-          await intentService.storeIntent(intentContext);
+          intentContext = await intentService.updateIntent(
+            intentContext,
+            result
+          );
         }
       } else if (intentContext?.type === "DEPOSIT") {
         // Get additional data needed for deposit context
@@ -137,7 +138,7 @@ export const positionParamsProvider: Provider = {
         const availableStrategiesText = strategies
           .map(
             (s) =>
-              `${s.name} (ID: ${s.id}, Risk: ${s.risk}, Type: ${s.type}) - ${s.shortDescription}`
+              `${s.name} (ID: ${s.id}, Risk: ${s.risk}, Type: ${s.type}, Address: ${s.vault?.address}) - ${s.shortDescription}`
           )
           .join("\n");
 
@@ -168,9 +169,10 @@ export const positionParamsProvider: Provider = {
         );
 
         if (result) {
-          // TODO proper typing for returnData
-          intentContext.returnData = { ...intentContext.returnData, ...result };
-          await intentService.storeIntent(intentContext);
+          intentContext = await intentService.updateIntent(
+            intentContext,
+            result
+          );
         }
       }
 

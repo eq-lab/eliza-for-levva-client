@@ -289,12 +289,17 @@ export class IntentManager extends Service {
       id: `${intentData.type.toLowerCase()}_${Date.now()}_${randomUUID().slice(0, 8)}`,
       createdAt: Date.now(),
       status: "ACTIVE",
-      parentIntentId: parentIntent?.id,
-      inheritedData: parentIntent?.returnData || {},
     };
 
     // Update parent intent if this is a child
-    if (parentIntent) {
+    if (
+      parentIntent &&
+      parentIntent.status === "ACTIVE" &&
+      parentIntent.type !== intentData.type
+    ) {
+      intent.parentIntentId = parentIntent?.id;
+      intent.inheritedData = parentIntent?.returnData || {};
+
       parentIntent.childIntentIds = [
         ...(parentIntent.childIntentIds || []),
         intent.id,
@@ -460,6 +465,21 @@ export class IntentManager extends Service {
     return cached;
   }
 
+  async updateIntent(intent: IntentContext, values: Record<string, any>) {
+    const returnValues = Object.entries(values).reduce((acc, [k, v]) => {
+      if (v) {
+        return { ...acc, [k]: v };
+      } else if (acc[k]) {
+        return acc;
+      }
+
+      return { ...acc, [k]: v };
+    }, intent.returnData || {});
+    const updatedIntent = { ...intent, returnData: returnValues };
+    await this.storeIntent(updatedIntent);
+    return updatedIntent;
+  }
+
   /** @deprecated not the most efficient way to store intents, consider implementing dedicated schema */
   async storeIntent(intent: IntentContext) {
     // Store by domain for conflict detection
@@ -532,7 +552,10 @@ export class IntentManager extends Service {
       const conversationContext = recentMessages
         .slice(-5) // Last 5 messages
         .map((msg) => {
-          const isAgent = msg.content.actions && msg.content.actions.length > 0;
+          // Check if message is from the agent by comparing senderId with agentId
+          const raw = (msg.metadata as any)?.raw;
+          const senderId = raw?.senderId;
+          const isAgent = senderId === this.runtime.agentId;
           return `${isAgent ? "Agent" : "User"}: ${msg.content.text}`;
         })
         .join("\n");

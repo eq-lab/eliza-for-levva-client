@@ -42,6 +42,8 @@ PRIORITY INSTRUCTIONS for Intent-Based Extraction:
 2. Use returnData from previous intent interactions to fill missing parameters
 3. Consider the full conversation history within this intent for context
 4. If parameters were partially specified in previous messages within this intent, complete them
+5. RETRY HANDLING: If user says "retry", "try again", "please retry", or similar, and there are complete swap parameters in returnData, use those exact parameters
+6. CONTINUATION: If user provides minimal input like "yes", "ok", "proceed", "continue" and there are complete parameters in returnData, use those parameters
 
 GENERAL INSTRUCTIONS:
 `

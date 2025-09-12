@@ -8,7 +8,7 @@ import { rephrase } from "../util/generate";
 import { Suggestion } from "./types";
 import { getPreviousReplyContext } from "../util/action-results";
 import { ETH_NULL_ADDR } from "../constants/eth";
-import { IntentManager, IntentContext } from "../services/intent-manager";
+import { IntentManager } from "../services/intent-manager";
 import { handleSendIntent } from "./intents";
 
 // Register the send intent
@@ -16,11 +16,8 @@ IntentManager.registerIntent({
   type: INTENT_TYPE.SEND,
   domain: LEVVA_ACTIONS.ANALYZE_WALLET,
   keywords: ["send", "transfer", "pay", "move", "give", "donate"],
-  handler: async (runtime, message, state) => {
-    // Convert state to IntentContext - this is a type compatibility layer
-    const intentContext = state as any as IntentContext;
-    return await handleSendIntent(runtime, message, intentContext);
-  },
+  handler: handleSendIntent,
+  description: "Handle token transfer requests with multi-step process support",
 });
 
 export const action: Action = {
@@ -103,7 +100,14 @@ export const action: Action = {
 
         // If we have a SEND intent, handle it
         if (intentContext?.type === INTENT_TYPE.SEND) {
-          return await handleSendIntent(runtime, message, intentContext);
+          return await handleSendIntent(
+            runtime,
+            message,
+            composedState,
+            callback!,
+            intentContext,
+            prevActions
+          );
         }
       }
 
@@ -192,13 +196,15 @@ export const action: Action = {
       runtime.logger.info("Strategy filtering debug:", {
         totalStrategies: strategies.length,
         filteredStrategies: recommendedStrategies.length,
-        firstRawStrategy: strategies[0] ? {
-          id: strategies[0].id,
-          name: strategies[0].name,
-          risk: strategies[0].risk,
-          category: strategies[0].category,
-          description: strategies[0].description?.substring(0, 100),
-        } : null,
+        firstRawStrategy: strategies[0]
+          ? {
+              id: strategies[0].id,
+              name: strategies[0].name,
+              risk: strategies[0].risk,
+              category: strategies[0].category,
+              description: strategies[0].description?.substring(0, 100),
+            }
+          : null,
       });
 
       if (recommendedStrategies.length > 0) {

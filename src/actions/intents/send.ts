@@ -1,7 +1,7 @@
 import { Memory, IAgentRuntime, State, HandlerCallback } from "@elizaos/core";
 import { UUID } from "crypto";
 import { isAddress, parseUnits, encodeFunctionData } from "viem";
-import { IntentContext } from "../../services/intent-manager";
+import { IntentContext, IntentHandler } from "../../services/intent-manager";
 import { LevvaService } from "../../services/levva/class";
 import { LEVVA_SERVICE } from "../../constants/enum";
 import { ActionResult } from "../../util/action-results";
@@ -33,7 +33,7 @@ export interface ExtractedDataForSend {
   thought: string;
 }
 
-export const handleSendIntent = async (
+export const handleSendIntent: IntentHandler = async (
   runtime: IAgentRuntime,
   message: Memory,
   state: State,

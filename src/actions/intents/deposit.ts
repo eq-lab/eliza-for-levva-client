@@ -198,8 +198,8 @@ async function handleMissingDepositParameters(
   // Get service and provider state for strategy lookup
   const service = runtime.getService<LevvaService>(LEVVA_SERVICE.toString());
   const lvva = selectProviderState<LevvaProviderState>(
-    state,
-    LEVVA_PROVIDER_NAME
+    LEVVA_PROVIDER_NAME,
+    state
   );
 
   // Build context-aware response based on what we already know

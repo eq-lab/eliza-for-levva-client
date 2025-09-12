@@ -1,49 +1,11 @@
+import { StrategyEntry } from "./pool";
+
 // Position-related interfaces
 export interface UserPosition {
   strategyId: number;
   balance: number;
   balanceUsd: number;
   hasPendingWithdrawals: boolean;
-}
-
-export interface Strategy {
-  id: number;
-  name: string;
-  description: string;
-  shortDescription: string;
-  backgroundColor: string | null;
-  type: string;
-  category: string;
-  risk: string;
-  minimumEfficientDeposit: number;
-  liquidityAvailability: string;
-  vault?: {
-    id: number;
-    publicChainId: number;
-    address: string;
-    name: string | null;
-    underlyingToken: {
-      address: string;
-      symbol: string;
-      name: string;
-      decimals: number;
-      priceUsd: number;
-    };
-    lpToken: {
-      address: string;
-      symbol: string;
-      name: string;
-      decimals: number;
-      priceUsd: number;
-    };
-    lpTotalSupply: number;
-    performanceFee: number;
-    managementFee: number;
-    totalAssets: number;
-    currentApy: number;
-    minDeposit: number;
-    createdAt: string;
-  };
 }
 
 export interface WithdrawalRequest {
@@ -71,7 +33,7 @@ export interface PositionSummary {
  */
 export const formatPositionsSummary = (
   positions: UserPosition[],
-  strategies: Strategy[] = [],
+  strategies: StrategyEntry[] = [],
   withdrawals: WithdrawalRequest[] = []
 ): string => {
   if (positions.length === 0) {
@@ -95,7 +57,7 @@ export const formatPositionsSummary = (
       );
       const pendingNote = hasPendingWithdrawals ? " - Pending withdrawals" : "";
 
-      return `${strategyName}: $${pos.balanceUsd.toFixed(2)} (Balance: ${balanceDisplay})${pendingNote}`;
+      return `${strategy?.strategy} ${strategyName}: $${pos.balanceUsd.toFixed(2)} (Balance: ${balanceDisplay})${pendingNote}`;
     })
     .join("\n");
 };
@@ -140,7 +102,7 @@ export const formatWithdrawalsSummary = (
 export const createPositionSummary = (
   positions: UserPosition[],
   withdrawals: WithdrawalRequest[],
-  strategies: Strategy[] = []
+  strategies: StrategyEntry[] = []
 ): PositionSummary => {
   const hasPositions = positions.length > 0;
 

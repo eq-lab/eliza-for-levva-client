@@ -2,6 +2,7 @@ import poolAbi from "./abi/pool.abi";
 import { getChain, getClient } from "../../util";
 import vaultAbi from "./abi/vault.abi";
 import { logger } from "@elizaos/core";
+import { StrategiesResponse } from "src/api/levva/schema";
 
 // fixme rename module to strategy?
 
@@ -14,6 +15,7 @@ export interface StrategyMapping {
   description: string;
   contractAddress: `0x${string}`;
   vaultChainId: number;
+  // values below needed for pendle pools
   type: StrategyType;
   bundler?: `0x${string}`;
 }
@@ -34,47 +36,7 @@ export interface StrategyEntry extends StrategyMapping {
     amountType?: string;
     amount: number;
   }>;
-  vault?: {
-    id: number;
-    publicChainId: number;
-    address: string;
-    name: string | null;
-    underlyingToken: {
-      address: string;
-      symbol: string;
-      name: string;
-      decimals: number;
-      priceUsd: number;
-      protocol?: string;
-      bonuses?: Array<{
-        bonusTypeId?: number;
-        bonusType: string;
-        amount: number;
-        amountType?: string;
-      }>;
-    };
-    lpToken: {
-      address: string;
-      symbol: string;
-      name: string;
-      decimals: number;
-      priceUsd: number;
-      protocol?: string;
-      bonuses?: Array<{
-        bonusTypeId?: number;
-        bonusType: string;
-        amount: number;
-        amountType?: string;
-      }>;
-    };
-    lpTotalSupply: number;
-    performanceFee: number;
-    managementFee: number;
-    totalAssets: number;
-    currentApy: number;
-    minDeposit: number;
-    createdAt: string;
-  };
+  vault?: StrategiesResponse[number]["vault"];
 }
 
 export const getPoolConstants = async (
