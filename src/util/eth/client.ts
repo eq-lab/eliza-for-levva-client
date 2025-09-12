@@ -13,11 +13,11 @@ import { mainnet, base, arbitrum } from "viem/chains";
 
 // todo refactor
 export const blockexplorers = new Map<number, string>([
-  [1, 'https://etherscan.io'],
-  [137, 'https://polygonscan.com'],
-  [8453, 'https://basescan.org'],
-  [10, 'https://optimistic.etherscan.io'],
-  [42161, 'https://arbiscan.io'],
+  [1, "https://etherscan.io"],
+  [137, "https://polygonscan.com"],
+  [8453, "https://basescan.org"],
+  [10, "https://optimistic.etherscan.io"],
+  [42161, "https://arbiscan.io"],
 ]);
 
 const clients: Record<number, PublicClient<Transport, Chain, undefined>> = {};

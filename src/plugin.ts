@@ -1,5 +1,5 @@
-import type { Plugin } from "@elizaos/core";
-import { EventType, logger } from "@elizaos/core";
+import { EventType, logger, type Plugin } from "@elizaos/core";
+
 import { CancelRunSignal } from "@elizaos/plugin-bootstrap";
 import { z } from "zod";
 import { modules } from "./actions/modules";
@@ -7,8 +7,9 @@ import { levvaProvider } from "./providers";
 import { newsProvider } from "./providers/news";
 import { swapParamsProvider } from "./providers/swap-params";
 import { strategyParamsProvider } from "./providers/strategy-params";
+import { positionParamsProvider } from "./providers/position-params";
 import { suggestionsEvaluator } from "./evaluators/suggestions";
-import { transactionAcknowledgeEvaluator } from "./evaluators/transaction-acknowledge";
+import { intentAcknowledgeEvaluator } from "./evaluators/intent-acknowledge";
 import statusRoute from "./routes/status";
 import calldataRoute from "./routes/calldata";
 import levvaUserRoute from "./routes/levva-user";
@@ -16,6 +17,7 @@ import suggestRoute from "./routes/suggest";
 import clearSuggestRoute from "./routes/clear-suggest";
 import { BrowserService } from "./services/browser";
 import { LevvaService } from "./services/levva/class";
+import { IntentManager } from "./services/intent-manager";
 
 /**
  * Define the configuration schema for the plugin with the following properties:
@@ -30,7 +32,7 @@ const configSchema = z.object({
     .optional()
     .transform((val) => {
       if (!val) {
-        console.warn("Warning: Kyberswap client id is not provided");
+        logger.warn("Warning: Kyberswap client id is not provided");
       }
 
       return val;
@@ -39,7 +41,8 @@ const configSchema = z.object({
 
 const plugin: Plugin = {
   name: "levva",
-  description: "Levva plugin for Eliza",
+  description:
+    "Advanced DeFi portfolio management and investment assistant powered by the Levva protocol. Provides intelligent, context-aware investment strategies with multi-step intent-based actions for seamless user experiences. Core capabilities include: comprehensive portfolio analysis and optimization, automated deposit/withdrawal management with risk assessment, cross-chain token swapping via Kyber and Pendle with ETH/WETH conversion, personalized strategy recommendations (ultra-safe to brave risk profiles), real-time market intelligence and news aggregation, persistent transaction flows with smart parameter extraction, and multi-chain support across Ethereum, Arbitrum, and Base. Features advanced intent system for complex operations, yield farming optimization, leverage management, and transaction calldata generation for institutional-grade DeFi operations.",
   priority: -1,
   dependencies: ["bootstrap"], // ensure that bootstrap is loaded first
   config: {
@@ -72,7 +75,7 @@ const plugin: Plugin = {
   ],
   events: {
     [EventType.RUN_STARTED]: [
-      async ({ runtime, runId, entityId, messageId }) => {
+      async ({ runtime, runId, entityId }) => {
         const service = runtime.getService<LevvaService>(
           LevvaService.serviceType
         );
@@ -94,15 +97,16 @@ const plugin: Plugin = {
       },
     ],
   },
-  services: [BrowserService, LevvaService],
+  services: [BrowserService, LevvaService, IntentManager],
   actions: modules.map((m) => m.action),
   providers: [
     levvaProvider,
     newsProvider,
     swapParamsProvider,
     strategyParamsProvider,
+    positionParamsProvider,
   ],
-  evaluators: [suggestionsEvaluator, transactionAcknowledgeEvaluator],
+  evaluators: [suggestionsEvaluator, intentAcknowledgeEvaluator],
 };
 
 export default plugin;

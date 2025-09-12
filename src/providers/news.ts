@@ -20,7 +20,9 @@ export const newsProvider: Provider = {
     }
 
     const news = await service.getCryptoNews(20);
-    const newsEntries = news.map((v) => `Title: ${v.title}\nDescription: ${v.description}\nLink: ${v.link}`);
+    const newsEntries = news.map(
+      (v) => `Title: ${v.title}\nDescription: ${v.description}\nLink: ${v.link}`
+    );
 
     return {
       text: `Latest crypto news:\n${newsEntries.join("\n")}`,

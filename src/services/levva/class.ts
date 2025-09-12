@@ -3,11 +3,13 @@ import EventEmitter from "node:events";
 import {
   encodeFunctionData,
   formatUnits,
+  getAddress,
   isHex,
   parseUnits,
   sha256,
   toHex,
 } from "viem";
+import { and, eq } from "drizzle-orm";
 import {
   Content,
   Entity,
@@ -23,6 +25,8 @@ import { getActiveMarkets, PendleActiveMarkets } from "../../api/market/pendle";
 import { CacheEntry } from "../../types/core";
 import { ILevvaService } from "../../types/service";
 import { CalldataWithDescription } from "../../types/tx";
+import { balancesTable } from "../../schema/balances";
+import { getDb } from "../../util/db";
 import {
   extractTokenData,
   getAllowance,
@@ -51,7 +55,6 @@ import {
   PoolConstants,
   Strategy,
   StrategyEntry,
-  StrategyMapping,
   StrategyType,
   VaultConstants,
   getPoolConstants,
@@ -73,8 +76,14 @@ import { getPendleSwap } from "src/api/swap/pendle";
 import { bundlerEnter } from "./tx";
 import poolAbi from "./abi/pool.abi";
 import vaultAbi from "./abi/vault.abi";
+import withdrawalNftAbi from "./abi/vault.withdrawal-nft.abi";
 import { getMessages } from "./messages";
-import { getStrategies as getStrategiesApi } from "../../api/levva";
+import {
+  getStrategies as getStrategiesApi,
+  getUserPositions,
+  getWithdrawalRequests,
+} from "../../api/levva";
+import { createPositionSummary } from "./positions";
 import { checkSecret } from "./secrets";
 
 const REQUIRED_PLUGINS = ["levva"];
@@ -83,8 +92,6 @@ function checkPlugins(runtime: IAgentRuntime) {
   const set = new Set(runtime.plugins.map((plugin) => plugin.name));
   return REQUIRED_PLUGINS.every((plugin) => set.has(plugin));
 }
-
-async function series<T>(promises: Promise<T>[]) {}
 
 // todo config
 const MAX_WAIT_TIME = 15000; // time after which put promise in background
@@ -443,6 +450,32 @@ export class LevvaService
     return result;
   }
 
+  /**
+   * Invalidate user balance cache by deleting balance entries from database
+   * This forces fresh balance queries on next request
+   */
+  async invalidateUserBalanceCache(address: `0x${string}`, chainId: number) {
+    try {
+      const db = getDb(this.runtime);
+      await db
+        .delete(balancesTable)
+        .where(
+          and(
+            eq(balancesTable.address, getAddress(address)),
+            eq(balancesTable.chainId, chainId)
+          )
+        );
+
+      logger.info("Invalidated user balance cache", {
+        address,
+        chainId,
+      });
+    } catch (error) {
+      logger.error("Failed to invalidate user balance cache:", error);
+      throw error;
+    }
+  }
+
   formatWalletAssets(
     _assets: Omit<BalanceEntry, "id">[],
     hideZero?: boolean
@@ -488,7 +521,7 @@ export class LevvaService
       const items = await getFeed(this.runtime, url);
 
       await Promise.all(
-        items.map((item, i) => {
+        items.map((item) => {
           const id = getFeedItemId(item.link);
 
           return this.inBackground(
@@ -511,6 +544,76 @@ export class LevvaService
     return getLatestNews(this.runtime, limit);
   }
   // -- End of Crypto news --
+
+  // -- Position Management --
+  private getUserPositionsCacheKey = (
+    address: `0x${string}`,
+    chainId?: number
+  ) => `user-positions:${address}:${chainId ? chainId : "all"}`;
+
+  invalidateUserPositionsCache = (address: `0x${string}`, chainId?: number) =>
+    this.runtime.deleteCache(this.getUserPositionsCacheKey(address, chainId));
+
+  getUserPositions = this.timedCache(
+    300000, // 5 minutes TTL
+    async (address: `0x${string}`, chainId?: number) => {
+      const result = await getUserPositions(address, chainId);
+      if (result.success) {
+        return result.data;
+      } else {
+        logger.warn("Failed to parse user positions response:", result.error);
+        return [];
+      }
+    },
+    this.getUserPositionsCacheKey
+  );
+
+  invalidateWithdrawalRequestsCache = (
+    address: `0x${string}`,
+    chainId: number
+  ) =>
+    this.runtime.deleteCache(
+      this.getWithdrawalRequestsCacheKey(address, chainId)
+    );
+
+  private getWithdrawalRequestsCacheKey = (
+    address: `0x${string}`,
+    chainId: number
+  ) => `withdrawal-requests:${address}:${chainId}`;
+
+  getWithdrawalRequests = this.timedCache(
+    300000, // 5 minutes TTL
+    async (address: `0x${string}`, chainId: number) => {
+      const result = await getWithdrawalRequests(address, chainId);
+      if (result.success) {
+        return result.data;
+      } else {
+        logger.warn(
+          "Failed to parse withdrawal requests response:",
+          result.error
+        );
+        return [];
+      }
+    },
+    this.getWithdrawalRequestsCacheKey
+  );
+
+  async getPositionSummary(address: `0x${string}`, chainId: number) {
+    const [positions, withdrawals, strategies] = await Promise.all([
+      this.getUserPositions(address, chainId),
+      this.getWithdrawalRequests(address, chainId),
+      this.getStrategies(chainId), // Use processed StrategyEntry[] instead of raw API
+    ]);
+
+    return {
+      summary: createPositionSummary(positions, withdrawals, strategies),
+      positions,
+      withdrawals,
+      strategies,
+    };
+  }
+
+  // -- End of Position Management --
   private getPendleMarketsCacheKey = (
     chainId: number,
     {
@@ -538,7 +641,7 @@ export class LevvaService
     const markets = await getActiveMarkets(params.chainId);
 
     if (!markets.success) {
-      console.error("Failed to get pendle markets", markets.error);
+      this.runtime.logger.error("Failed to get pendle markets", markets.error);
       throw new Error("Failed to get pendle markets");
     }
 
@@ -610,23 +713,10 @@ export class LevvaService
     this.getVaultConstantsCacheKey
   );
 
-  private getStrategiesKey = (chainId: number = 1) => `strategies:${chainId}`;
+  private getStrategiesKey = (chainId?: number) =>
+    `strategies:${chainId ?? "all"}`;
 
-  getStrategies = this.permanentCache(async (chainId: number = 1) => {
-    /*const result = (
-      Object.entries(strategyVaultMapping) as [Strategy, StrategyMapping[]][]
-    ).reduce((acc, [strategy, mappings]) => {
-      const filtered = mappings
-        .filter(({ vaultChainId }) => vaultChainId === chainId)
-        .map((mapping) => ({
-          ...mapping,
-          strategy,
-        }));
-
-      return [...acc, ...filtered];
-    }, [] as StrategyEntry[]);
-    */
-
+  getStrategies = this.permanentCache(async (chainId?: number) => {
     const result = await getStrategiesApi(chainId);
 
     if (!result.success) {
@@ -634,30 +724,70 @@ export class LevvaService
       throw new Error("Failed to get strategies");
     }
 
-    return result.data.map<StrategyEntry>((x) => {
-      const type: StrategyType = "vault";
-      const strategy: Strategy =
-        x.type === "UltraSafe"
-          ? "ultra-safe"
-          : x.type === "Safe"
-            ? "safe"
-            : x.type === "Brave"
-              ? "brave"
-              : "custom";
+    logger.debug("Raw strategies data:", {
+      count: result.data.length,
+      firstStrategy: result.data[0],
+    });
 
-      const contractAddress = x.vault?.address;
+    return result.data.map<StrategyEntry>((x, index) => {
+      try {
+        logger.debug(`Processing strategy ${index}:`, {
+          id: x.id,
+          name: x.name,
+          type: x.type,
+          risk: x.risk,
+          category: x.category,
+        });
 
-      if (!isHex(contractAddress)) {
-        throw new Error(`Invalid contract address: ${contractAddress}`);
+        const type: StrategyType = "vault";
+        const strategy: Strategy =
+          x.type === "UltraSafe"
+            ? "ultra-safe"
+            : x.type === "Safe"
+              ? "safe"
+              : x.type === "Brave"
+                ? "brave"
+                : "custom";
+
+        const contractAddress = x.vault?.address;
+
+        if (!isHex(contractAddress)) {
+          throw new Error(
+            `Invalid contract address: ${contractAddress} for strategy ${x.id}`
+          );
+        }
+
+        const strategyEntry: StrategyEntry = {
+          type,
+          vaultChainId: x.vault?.publicChainId ?? 1,
+          contractAddress: contractAddress as `0x${string}`,
+          strategy,
+          description: x.description,
+          id: x.id,
+          name: x.name,
+          risk: x.risk,
+          category: x.category,
+          shortDescription: x.shortDescription,
+          backgroundColor: x.backgroundColor,
+          minimumEfficientDeposit: x.minimumEfficientDeposit,
+          apy: x.apy,
+          liquidityAvailability: x.liquidityAvailability,
+          bonuses: x.bonuses,
+          vault: x.vault,
+        };
+
+        logger.debug(
+          `Successfully processed strategy ${index}:`,
+          strategyEntry
+        );
+        return strategyEntry;
+      } catch (error) {
+        logger.error(`Error processing strategy ${index}:`, {
+          error,
+          strategy: x,
+        });
+        throw error;
       }
-
-      return {
-        type,
-        vaultChainId: x.vault?.publicChainId ?? 1,
-        contractAddress: contractAddress as `0x${string}`,
-        strategy,
-        description: x.description,
-      };
     });
   }, this.getStrategiesKey);
 
@@ -959,7 +1089,7 @@ export class LevvaService
       to: address,
       data: calldata,
       title: `Deposit ${amount} ${tokenIn.symbol}`,
-      description: `Depositing ${amountIn.toString()} ${tokenIn.symbol} to vault ${address}`,
+      description: `Depositing ${amount} ${tokenIn.symbol} to vault ${address}`,
     });
 
     return calls;
@@ -1003,5 +1133,30 @@ export class LevvaService
     };
 
     return { result: false, reason: content };
+  }
+
+  /**
+   * Encode requestRedeem transaction data for vault withdrawals
+   */
+  encodeRequestRedeem(shares: bigint): `0x${string}` {
+    return encodeFunctionData({
+      abi: vaultAbi,
+      functionName: "requestRedeem",
+      args: [shares],
+    });
+  }
+
+  /**
+   * Encode claimWithdrawal transaction data for withdrawal NFT
+   */
+  encodeClaimWithdrawal(
+    requestId: number,
+    receiver: `0x${string}`
+  ): `0x${string}` {
+    return encodeFunctionData({
+      abi: withdrawalNftAbi,
+      functionName: "claimWithdrawal",
+      args: [BigInt(requestId), receiver],
+    });
   }
 }

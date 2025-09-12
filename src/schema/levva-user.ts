@@ -10,7 +10,9 @@ export const levvaUserTable = pgTable(
       .primaryKey()
       .default(sql`gen_random_uuid()`),
     address: text("address").unique().notNull(),
-    creatorId: uuid("creator_id").references(() => secretsTable.id).notNull(),
+    creatorId: uuid("creator_id")
+      .references(() => secretsTable.id)
+      .notNull(),
   },
   (table) => [uniqueIndex("userAddressIndex").on(lower(table.address))]
 );

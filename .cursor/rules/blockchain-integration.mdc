@@ -1,0 +1,62 @@
+---
+description: Blockchain integration patterns and best practices
+globs: ["**/util/eth/**/*.ts", "**/api/**/*.ts", "**/services/levva/**/*.ts"]
+alwaysApply: false
+---
+
+# Blockchain Integration Guidelines
+
+## Viem Integration
+- Use Viem for all blockchain interactions
+- Support multiple chains (Ethereum mainnet, Arbitrum, Base)
+- Handle native tokens with `ETH_NULL_ADDR` constant
+- Use proper decimal handling with `parseUnits`/`formatUnits`
+- **Always validate addresses with `isHex`** - this is critical for security
+
+## Token Handling
+- Support both ERC20 tokens and native ETH
+- Use token maps for efficient lookups
+- Handle WETH wrapping/unwrapping
+- Validate token addresses and symbols
+- Cache token data permanently
+
+## Transaction Building
+- Generate calldata for complex DeFi operations
+- Handle approval transactions properly
+- Calculate gas estimates
+- Provide transaction previews
+- Use proper slippage tolerance (5% default)
+
+## Multi-Chain Support
+```typescript
+const CHAIN_ID_MAP: Record<number, string> = {
+  1: "ethereum",
+  42161: "arbitrum", 
+  8453: "base"
+};
+```
+
+## Address Validation
+**CRITICAL**: Always validate Ethereum addresses before using them in API calls or blockchain operations.
+
+```typescript
+import { isHex } from "viem";
+
+// In providers, actions, and services
+if (!isHex(userAddress)) {
+  throw new Error(`Invalid Ethereum address format: ${userAddress}`);
+}
+```
+
+**When to validate addresses:**
+- Before making API calls to external services
+- Before blockchain transactions
+- In providers that handle user addresses
+- When processing user input
+- Before database operations with addresses
+
+## Error Handling
+- Handle blockchain errors gracefully
+- Validate inputs with proper types
+- Use meaningful error messages
+- Implement retry logic for network issues

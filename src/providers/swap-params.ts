@@ -1,12 +1,13 @@
 import { parseUnits } from "viem";
 import { ModelType, Provider } from "@elizaos/core";
-import { LEVVA_SERVICE } from "../constants/enum";
+import { LEVVA_SERVICE, LEVVA_ACTIONS } from "../constants/enum";
 import { ETH_NULL_ADDR } from "../constants/eth";
 import { LevvaService } from "../services/levva/class";
 import { selectSwapDataFromMessagesPrompt } from "../prompts/swap";
 import { LEVVA_PROVIDER_NAME, LevvaProviderState } from "./index";
 import { EMPTY_RESULT, selectProviderState } from "./util";
 import { TokenDataWithInfo } from "../types/token";
+import { IntentManager, IntentContext } from "../services/intent-manager";
 
 export type SwapType = "kyber" | "wrap" | "unwrap";
 
@@ -17,6 +18,7 @@ export interface SwapParamsProviderData {
   tokenOut?: TokenDataWithInfo;
   amount?: string;
   type?: SwapType;
+  intentContext?: IntentContext;
 }
 
 export const SWAP_PARAMS_PROVIDER_NAME = "SWAP_PARAMS";
@@ -57,16 +59,82 @@ export const swapParamsProvider: Provider = {
     }
     const { user, chainId, tokens } = lvva;
 
+    // Extract user info for intent management
+    const raw: any = (message.metadata as unknown as { raw: any }).raw;
+    const userId = raw.senderId;
+    const channelId = raw.channelId;
+
+    // Handle intent management
+    const intentService = runtime.getService<IntentManager>(
+      LEVVA_SERVICE.INTENT_MANAGER
+    );
+
+    let intentContext: IntentContext | undefined;
+
+    if (intentService) {
+      try {
+        // Check for existing active intent
+        intentContext = await intentService.getActiveIntentByDomain(
+          userId,
+          channelId,
+          LEVVA_ACTIONS.SWAP_TOKENS
+        );
+
+        // Use helper function to handle intent detection and creation
+        intentContext = await intentService.handleIntentDetectionAndCreation(
+          message,
+          LEVVA_ACTIONS.SWAP_TOKENS,
+          userId,
+          channelId,
+          intentContext
+        );
+
+        // Add swap-specific metadata if intent was created
+        if (
+          intentContext &&
+          intentContext.metadata &&
+          !intentContext.metadata.userAddress
+        ) {
+          intentContext.metadata.userAddress = user.address;
+          intentContext.metadata.chainId = chainId;
+          await intentService.storeIntent(intentContext);
+        }
+
+        // Add current message to intent memory
+        if (intentContext) {
+          await intentService.addMemoryToIntent(intentContext, message);
+        }
+      } catch (error) {
+        runtime.logger.warn("Error in swap intent management:", error);
+        // Continue without intent context if there's an error
+      }
+    }
+
     // according to logs provider can be called multiple times for the same message, so cache llm call
     const cacheKey = `swap-params-${message.id}`;
     let params = await runtime.getCache<ExtractedSwapParams>(cacheKey);
 
     if (!params) {
+      // Use intent context if available for better parameter extraction
+      const promptContext = intentContext
+        ? {
+            recentMessages: state.values.recentMessages,
+            tokens: tokens?.map(service.formatToken).join("\n") ?? "",
+            intentContext: {
+              type: intentContext.type,
+              returnData: intentContext.returnData,
+              memories:
+                intentContext.memories?.map((m) => m.content.text).join("\n") ??
+                "",
+            },
+          }
+        : {
+            recentMessages: state.values.recentMessages,
+            tokens: tokens?.map(service.formatToken).join("\n") ?? "",
+          };
+
       params = await runtime.useModel(ModelType.OBJECT_SMALL, {
-        prompt: selectSwapDataFromMessagesPrompt({
-          recentMessages: state.values.recentMessages,
-          tokens: tokens?.map(service.formatToken).join("\n") ?? "",
-        }),
+        prompt: selectSwapDataFromMessagesPrompt(promptContext),
       });
 
       await runtime.setCache(cacheKey, params);
@@ -85,7 +153,7 @@ export const swapParamsProvider: Provider = {
     if (!fromToken) {
       return {
         ...EMPTY_RESULT,
-        data,
+        data: { ...data, intentContext },
         values: {
           swap: "Unknown 'from' token, ask user for it.",
         },
@@ -98,7 +166,7 @@ export const swapParamsProvider: Provider = {
     if (!toToken) {
       return {
         ...EMPTY_RESULT,
-        data,
+        data: { ...data, intentContext },
         values: {
           swap: "Unknown 'to' token, ask user for it.",
         },
@@ -111,7 +179,7 @@ export const swapParamsProvider: Provider = {
     if (!amount) {
       return {
         ...EMPTY_RESULT,
-        data,
+        data: { ...data, intentContext },
         values: {
           swap: "Unknown amount to swap",
         },
@@ -128,7 +196,7 @@ export const swapParamsProvider: Provider = {
     if (!tokenIn) {
       return {
         ...EMPTY_RESULT,
-        data,
+        data: { ...data, intentContext },
         values: {
           swap: `Unknown 'from' token ${fromToken}, ask user for token address.`,
         },
@@ -146,7 +214,7 @@ export const swapParamsProvider: Provider = {
     if (!tokenOut) {
       return {
         ...EMPTY_RESULT,
-        data,
+        data: { ...data, intentContext },
         values: {
           swap: `Unknown 'to' token ${toToken}, ask user for token address.`,
         },
@@ -167,7 +235,7 @@ export const swapParamsProvider: Provider = {
     if ((balance?.amount ?? 0n) < amountUnits) {
       return {
         ...EMPTY_RESULT,
-        data,
+        data: { ...data, intentContext },
         values: {
           swap: `Insufficient balance for ${fromToken}`,
         },
@@ -189,9 +257,30 @@ export const swapParamsProvider: Provider = {
       text = `User wants to swap ${data.amount} ${fromToken} to ${toToken} on KyberSwap.`;
     }
 
+    // Update intent context with extracted parameters if available
+    if (intentContext && intentService) {
+      try {
+        intentContext.returnData = {
+          ...intentContext.returnData,
+          fromToken,
+          toToken,
+          amount,
+          tokenIn: tokenIn.symbol,
+          tokenOut: tokenOut.symbol,
+          swapType: data.type,
+        };
+        await intentService.storeIntent(intentContext);
+      } catch (error) {
+        runtime.logger.warn(
+          "Error updating intent context with swap parameters:",
+          error
+        );
+      }
+    }
+
     return {
       ...EMPTY_RESULT,
-      data,
+      data: { ...data, intentContext },
       values: {
         swap: text,
       },

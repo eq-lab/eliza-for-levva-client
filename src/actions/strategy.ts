@@ -1,5 +1,4 @@
-import { Action, Content, logger } from "@elizaos/core";
-import { ETH_NULL_ADDR } from "../constants/eth";
+import { Action, Content } from "@elizaos/core";
 
 import { LEVVA_ACTIONS, LEVVA_SERVICE } from "../constants/enum";
 import {
@@ -16,11 +15,12 @@ import {
 import { selectProviderState } from "../providers/util";
 import { LevvaService } from "../services/levva/class";
 import { Suggestion } from "./types";
-import { CalldataWithDescription } from "../types/tx";
 import { rephrase } from "../util/generate";
+import { getPreviousReplyContext } from "../util/action-results";
+import { ETH_NULL_ADDR } from "../constants/eth";
 
 const description =
-  "Select and manage earning strategy for user and ask for lacking parameters to build a transaction.";
+  "Provide investment strategy recommendations and suggestions. Transaction creation is handled by the DEPOSIT intent in MANAGE_POSITIONS domain.";
 
 export const action: Action = {
   name: LEVVA_ACTIONS.SELECT_STRATEGY,
@@ -32,7 +32,7 @@ export const action: Action = {
     "suggest strategy",
     "strategy",
     "earning strategy",
-    "farming strategy"
+    "farming strategy",
   ],
 
   validate: async () => {
@@ -40,18 +40,22 @@ export const action: Action = {
   },
 
   handler: async (runtime, message, state, options, callback) => {
+    // Get previous action context BEFORE try block for error handling
+    const prevActions = await getPreviousReplyContext(runtime, message, state);
+
+    // Compose state with required providers
+    const composedState = await runtime.composeState(message, [
+      STRATEGY_PARAMS_PROVIDER_NAME,
+    ]);
+
     try {
       if (!callback) {
         throw new Error("Callback not found, disable action");
       }
 
-      if (!state) {
-        throw new Error("State not found, disable action");
-      }
-
       const lvva = selectProviderState<LevvaProviderState>(
         LEVVA_PROVIDER_NAME,
-        state
+        composedState
       );
 
       if (!lvva) {
@@ -62,7 +66,8 @@ export const action: Action = {
         throw new Error("Failed to get current user, please connect wallet");
       }
 
-      const address = lvva.user.address;
+      // User address available for future use
+      // const address = lvva.user.address;
 
       const service = runtime.getService<LevvaService>(
         LEVVA_SERVICE.LEVVA_COMMON
@@ -72,10 +77,9 @@ export const action: Action = {
         throw new Error("Failed to get levva service, disable action");
       }
 
-      // should we use runtime.composeState?
       const params = selectProviderState<StrategyParamsProviderData>(
         STRATEGY_PARAMS_PROVIDER_NAME,
-        state
+        composedState
       );
 
       if (!params) {
@@ -84,188 +88,50 @@ export const action: Action = {
         );
       }
 
-      logger.debug(`Strategy selection, known data: ${JSON.stringify(params)}`);
+      runtime.logger.debug(
+        `Strategy selection, known data: ${JSON.stringify(params)}`
+      );
 
-      if (!params.strategy) {
-        const content = {
-          text: `###Known strategies\n${state.values.strategies}\n\nPlease select desired strategy`,
-          thought:
-            "Since user didn't choose risk profile, give him summary and display options.",
-          actions: ["SELECT_STRATEGY"],
-        };
+      // Since parameter extraction is now handled by the deposit intent,
+      // this action focuses on providing strategy recommendations and guidance
+      const thought = `User is asking about investment strategies. I should provide comprehensive strategy information and guide them to use the deposit intent for actual transactions.`;
 
-        const result = await rephrase({
-          runtime,
-          state,
-          content,
-        });
+      let text = `### Investment Strategy Recommendations\n\n`;
+      text += `**Available Strategies:** ${params.strategies.length} strategies across different risk profiles\n\n`;
+      text += `**Your Portfolio:**\n${params.portfolioText}\n\n`;
+      text += `**Available Strategies:**\n${params.strategiesText}\n\n`;
 
-        await callback(result);
+      text += `### How to Invest\n\n`;
+      text += `To invest in any of these strategies, simply tell me:\n`;
+      text += `- "I want to deposit [amount] [token] into [strategy name]"\n`;
+      text += `- "I want to invest in ultra-safe strategy"\n`;
+      text += `- "Deposit 100 USDC into safe strategy"\n\n`;
 
-        return {
-          text: `Generated text: ${result?.text}`,
-          values: {
-            success: true,
-            responded: true,
-            lastReply: result.text,
-            lastReplyTime: Date.now(),
-            thoughtProcess: result?.thought,
-          },
-          data: {
-            actionName: LEVVA_ACTIONS.SELECT_STRATEGY,
-            response: result,
-            thought: result?.thought,
-            initialReply: content.text,
-            initialThought: content.thought,
-            messageGenerated: true,
-          },
-          success: true,
-        };
-      }
+      text += `I'll help you with the complete investment process, including:\n`;
+      text += `- Strategy selection and validation\n`;
+      text += `- Token compatibility and conversion (ETH ↔ WETH)\n`;
+      text += `- Amount validation and balance checking\n`;
+      text += `- Transaction preparation and execution\n\n`;
 
-      const strategy = params.strategy;
-
-      if (!params.tokenIn) {
-        const content = {
-          text: `### Strategy: ${state.values.strategy}\n### Portfolio\n${state.values.portfolio}\n\n${state.values.tokenIn}`,
-          thought:
-            "Since user didn't choose token, give him summary and display options.",
-          actions: ["SELECT_STRATEGY"],
-        };
-
-        const result = await rephrase({
-          runtime,
-          state,
-          content,
-        });
-
-        await callback(result);
-
-        return {
-          text: `Generated text: ${result?.text}`,
-          values: {
-            success: true,
-            responded: true,
-            lastReply: result.text,
-            lastReplyTime: Date.now(),
-            thoughtProcess: result?.thought,
-          },
-          data: {
-            actionName: LEVVA_ACTIONS.SELECT_STRATEGY,
-            response: result,
-            thought: result?.thought,
-            initialReply: content.text,
-            initialThought: content.thought,
-            messageGenerated: true,
-          },
-          success: true,
-        };
-      }
-
-      const tokenIn = params.tokenIn;
-
-      if (!params.amount) {
-        const content = {
-          text: `Strategy: ${state.values.strategy}\n\nSelected token: ${state.values.tokenIn}\n\nPortfolio: ${state.values.portfolio}\n\n${state.values.amountIn}`,
-          thought:
-            "Since user didn't choose amount, give him summary and display options.",
-          actions: ["SELECT_STRATEGY"],
-        };
-
-        const result = await rephrase({
-          runtime,
-          state,
-          content,
-        });
-
-        await callback(result);
-
-        return {
-          text: `Generated text: ${result?.text}`,
-          values: {
-            success: true,
-            responded: true,
-            lastReply: result.text,
-            lastReplyTime: Date.now(),
-            thoughtProcess: result?.thought,
-          },
-          data: {
-            actionName: LEVVA_ACTIONS.SELECT_STRATEGY,
-            response: result,
-            thought: result?.thought,
-            initialReply: content.text,
-            initialThought: content.thought,
-            messageGenerated: true,
-          },
-          success: true,
-        };
-      }
-
-      const amount = params.amount;
-      const leverage = params.leverage;
-      let calldata: CalldataWithDescription[] | undefined;
-      let thought: string | undefined;
-      let text: string | undefined;
-
-      if (strategy.type === "pool") {
-        calldata = await service.handlePoolStrategy(
-          strategy,
-          address,
-          tokenIn.address ?? ETH_NULL_ADDR,
-          amount,
-          leverage
-        );
-
-        thought = `Prepared transaction to deposit ${amount} ${tokenIn.symbol} to pool ${strategy.contractAddress} with x${leverage} leverage, need to display confirmation`;
-
-        const detailedSteps = calldata
-          .map((c, i) => `${i + 1}. ${c.description}`)
-          .join("\n");
-
-        text = `Strategy: ${service.formatStrategy(strategy)}\n\nToken: ${service.formatToken(tokenIn)}\n\nAmount: ${amount}\n\nLeverage: x${leverage}\n\n### Transaction steps:\n${detailedSteps}`;
-      } else if (strategy.type === "vault") {
-        calldata = await service.handleVaultStrategy(
-          strategy,
-          address,
-          amount
-          // todo decide when to wrap tokens
-        );
-
-        thought = `Prepared transaction to deposit ${amount} ${tokenIn.symbol} to vault ${strategy.contractAddress}, need to display confirmation`;
-
-        const detailedSteps = calldata
-          .map((c, i) => `${i + 1}. ${c.description}`)
-          .join("\n");
-
-        text = `Strategy: ${service.formatStrategy(strategy)}\n\nToken: ${service.formatToken(tokenIn)}\n\nAmount: ${amount}\n\n### Transaction steps:\n${detailedSteps}`;
-      }
-
-      if (!calldata || !thought || !text) {
-        throw new Error(
-          `Failed to prepare calldata for strategy(${service.formatStrategy(strategy)})`
-        );
-      }
-
-      const hash = await service.createCalldata(calldata);
-
-      const json = {
-        id: "calls.json",
-        url: `/api/calldata?hash=${hash}`,
-      };
+      text += `**Need help choosing?** Ask me about specific risk levels or strategy types!`;
 
       const content: Content = {
         thought,
         text,
         actions: ["SELECT_STRATEGY"],
         source: message.content.source,
-        attachments: [json],
       };
 
-      const responseContent = await rephrase({ runtime, content, state });
+      const responseContent = await rephrase({
+        runtime,
+        content,
+        state: composedState,
+        prevActions,
+      });
       await callback(responseContent);
 
       return {
-        text: `Generated calldata accessible at ${json.url}, generated text: ${responseContent?.text}`,
+        text: "Strategy recommendations provided successfully",
         values: {
           success: true,
           responded: true,
@@ -275,16 +141,14 @@ export const action: Action = {
         },
         data: {
           actionName: LEVVA_ACTIONS.SELECT_STRATEGY,
-          response: responseContent,
-          thought: responseContent?.thought,
-          initialReply: content.text,
-          initialThought: content.thought,
-          messageGenerated: true,
+          recommendation: true,
+          strategiesCount: params.strategies.length,
+          guidanceProvided: true,
         },
         success: true,
       };
     } catch (error) {
-      logger.error("Error in SELECT_STRATEGY action:", error);
+      runtime.logger.error("Error in SELECT_STRATEGY action:", error);
       const errorMessage = (error as Error).message ?? "unknown error";
       const thought = `Action failed with error: ${errorMessage}. I should tell the user about the error.`;
       const text = `Failed to select strategy, reason: ${errorMessage}. Please try again.`;
@@ -297,7 +161,8 @@ export const action: Action = {
           actions: ["SELECT_STRATEGY"],
           source: message.content.source,
         },
-        state: state!,
+        state: composedState,
+        prevActions,
       });
 
       await callback?.(responseContent);
@@ -521,11 +386,23 @@ export const suggest: Suggestion[] = [
         }),
       ]);
 
+      // Check for ETH in portfolio for WETH conversion awareness
+      const ethBalance = assets.find(
+        (asset) =>
+          asset.token === ETH_NULL_ADDR ||
+          asset.address === ETH_NULL_ADDR
+      );
+
+      const hasEth = ethBalance && ethBalance.amount > 0n;
+      const ethConversionNote = hasEth
+        ? `\n\nNOTE: User has ETH available. ETH can be wrapped to WETH for DeFi strategies that require WETH. Suggest both ETH and WETH options when relevant.`
+        : "";
+
       return suggestStrategyAssetPrompt({
         pools: strategies.join("\n"),
         decision: params.decision,
         conversation: params.conversation,
-        portfolio: service.formatWalletAssets(assets, true),
+        portfolio: service.formatWalletAssets(assets, true) + ethConversionNote,
         availableTokens: availableTokens
           .map((token) => `${token.symbol}(${token.address})`)
           .join(", "),
@@ -569,15 +446,28 @@ export const suggest: Suggestion[] = [
         }),
       ]);
 
+      // Check for ETH in portfolio for WETH conversion awareness
+      const ethBalance = portfolio.find(
+        (asset) =>
+          asset.token === ETH_NULL_ADDR ||
+          asset.address === ETH_NULL_ADDR
+      );
+
+      const hasEth = ethBalance && ethBalance.amount > 0n;
+      const ethConversionNote = hasEth
+        ? `\n\nNOTE: User has ETH available. ETH can be wrapped to WETH (1:1 ratio) for strategies requiring WETH. Consider both ETH and WETH amounts when suggesting deposit amounts.`
+        : "";
+
       return suggestStrategyAmountPrompt({
         decision: params.decision,
         conversation: params.conversation,
         strategies: strategies.join("\n"),
-        portfolio: service.formatWalletAssets(portfolio, true),
+        portfolio:
+          service.formatWalletAssets(portfolio, true) + ethConversionNote,
         availableTokens: tokens
           .map(
             (token) =>
-              `${token.symbol}(${token.address === "0x0000000000000000000000000000000000000000" ? "Native token" : token.address})`
+              `${token.symbol}(${token.address === ETH_NULL_ADDR ? "Native token" : token.address})`
           )
           .join(", "),
       });

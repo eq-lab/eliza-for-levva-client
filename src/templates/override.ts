@@ -9,6 +9,14 @@ These are the available valid actions:
 {{actionNames}}
 </actionNames>
 
+Current Available Actions:
+- **ANALYZE_WALLET**: Comprehensive wallet/portfolio analysis, asset breakdown, risk assessment, and token transfers
+- **SWAP_TOKENS**: Token swapping with intent-based multi-step flows via Kyber and Pendle
+- **SELECT_STRATEGY**: Investment strategy recommendations based on risk tolerance and portfolio analysis  
+- **MANAGE_POSITIONS**: Position management including deposits, withdrawals, and portfolio monitoring
+- **REPLY**: Conversational responses and acknowledgments
+- **IGNORE**: Skip response (use sparingly)
+
 <instructions>
 Write a thought and plan for {{agentName}} and decide what actions to take. Also include the providers that {{agentName}} will use to have the right context for responding and acting, if any.
 
@@ -23,16 +31,27 @@ IMPORTANT ACTION ORDERING RULES:
 - Follow-up actions execute the actual tasks after acknowledgment
 - Use IGNORE only when you should not respond at all
 
+CRITICAL REPLY ACTION BEHAVIOR:
+- When multiple actions are triggered, REPLY should provide brief acknowledgment, NOT detailed data
+- Use REPLY for conversational responses like "Let me check your positions" or "I'll analyze that for you"
+- Avoid providing specific data (dollar amounts, balances, strategy details) in REPLY if specialized actions will provide it
+- REPLY sets expectations, specialized actions deliver the information
+
 IMPORTANT PROVIDER SELECTION RULES:
-- If the message mentions images, photos, pictures, attachments(except calls.json attachment), or visual content, OR if you see "(Attachments:" in the conversation, you MUST include "ATTACHMENTS" in your providers list
-- If the message asks about crypto news, include "CRYPTO_NEWS" in your providers list
-- If the message asks about or references specific people, include "ENTITIES" in your providers list  
-- If the message asks about relationships or connections between people, include "RELATIONSHIPS" in your providers list
-- If the message asks about facts or specific information, include "FACTS" in your providers list
-- If the message asks about the environment or world context, include "WORLD" in your providers list
-- If the message is part of SWAP transaction flow, include "SWAP_PARAMS" in your providers list
-- If the message is part of STRATEGY transaction flow, include "STRATEGY_PARAMS" in your providers list
-- If you need external knowledge, information, or context beyond the current conversation to provide a helpful response, include "KNOWLEDGE" in your providers list
+- **Core Provider**: "levva" is automatically included for all Levva-related operations (provides user info, chain data, tokens)
+- **News & Market Data**: If the message asks about crypto news, market updates, or DeFi trends, include "CRYPTO_NEWS" in your providers list
+- **Transaction Flows**: 
+  - For SWAP operations (token swapping): include "SWAP_PARAMS" (detects SWAP intents, extracts swap parameters)
+  - For STRATEGY operations (investment recommendations): include "STRATEGY_PARAMS" (provides available strategies and portfolio data)
+  - For POSITION_MANAGEMENT (deposits, withdrawals, portfolio): include "POSITION_PARAMS" (detects DEPOSIT/WITHDRAW intents, provides position data)
+- **Intent-Aware Providers**: Position and swap params providers automatically detect active intents and provide contextual data
+- **Provider Capabilities**:
+  - "SWAP_PARAMS": Intent detection, token validation, swap parameter extraction
+  - "STRATEGY_PARAMS": Strategy data, portfolio analysis, risk assessment
+  - "POSITION_PARAMS": Position tracking, withdrawal status, deposit intent handling
+  - "CRYPTO_NEWS": Market news, DeFi trends, protocol updates
+- **External Context**: If you need information beyond the current conversation, include "KNOWLEDGE"
+- **Legacy Providers** (if available): "ATTACHMENTS", "ENTITIES", "RELATIONSHIPS", "FACTS", "WORLD" - only use if explicitly needed
 
 First, think about what you want to do next and plan your actions. Then, write the next message and include the actions you plan to take.
 </instructions>
@@ -41,7 +60,7 @@ First, think about what you want to do next and plan your actions. Then, write t
 "thought" should be a short description of what the agent is thinking about and planning.
 "actions" should be a comma-separated list of the actions {{agentName}} plans to take based on the thought, IN THE ORDER THEY SHOULD BE EXECUTED (if none, use IGNORE, if simply responding with text, use REPLY)
 "providers" should be a comma-separated list of the providers that {{agentName}} will use to have the right context for responding and acting (NEVER use "IGNORE" as a provider - use specific provider names like ATTACHMENTS, ENTITIES, FACTS, KNOWLEDGE, etc.)
-"evaluators" should be an optional comma-separated list of the evaluators that {{agentName}} will use to evaluate the conversation after responding (available: SUGGESTIONS_GENERATOR, TRANSACTION_ACKNOWLEDGE)
+"evaluators" should be an optional comma-separated list of the evaluators that {{agentName}} will use to evaluate the conversation after responding (available: SUGGESTIONS_GENERATOR, INTENT_ACKNOWLEDGE)
 "text" should be the text of the next message for {{agentName}} which they will send to the conversation.
 </keys>
 
@@ -54,7 +73,7 @@ Respond using XML format like this:
     <thought>Your thought here</thought>
     <actions>ACTION1,ACTION2</actions>
     <providers>PROVIDER1,PROVIDER2</providers>
-    <evaluators>SUGGESTIONS_GENERATOR,TRANSACTION_ACKNOWLEDGE</evaluators>
+    <evaluators>SUGGESTIONS_GENERATOR,INTENT_ACKNOWLEDGE</evaluators>
     <text>Your response text here</text>
 </response>
 

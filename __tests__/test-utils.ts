@@ -1,14 +1,14 @@
-import { vi } from 'vitest';
-import { Content, IAgentRuntime, Memory, State, logger } from '@elizaos/core';
+import { vi } from "vitest";
+import { Content, IAgentRuntime, Memory, State, logger } from "@elizaos/core";
 import {
   createMockRuntime as createCoreMockRuntime,
   createMockMessage as createCoreMockMessage,
   createMockState as createCoreMockState,
   documentTestResult,
   runCoreActionTests,
-} from './utils/core-test-utils';
-import { character } from '../src/index';
-import plugin from '../src/plugin';
+} from "./utils/core-test-utils";
+import { character } from "../src/index";
+import plugin from "../src/plugin";
 
 /**
  * Creates an enhanced mock runtime for testing that includes the project's
@@ -17,7 +17,9 @@ import plugin from '../src/plugin';
  * @param overrides - Optional overrides for the default mock methods and properties
  * @returns A mock runtime for testing
  */
-export function createMockRuntime(overrides: Partial<IAgentRuntime> = {}): IAgentRuntime {
+export function createMockRuntime(
+  overrides: Partial<IAgentRuntime> = {}
+): IAgentRuntime {
   // Create base mock runtime with default core utilities
   const baseRuntime = createCoreMockRuntime();
 
@@ -30,7 +32,7 @@ export function createMockRuntime(overrides: Partial<IAgentRuntime> = {}): IAgen
     initialize: vi.fn(),
     getService: vi.fn(),
     getSetting: vi.fn().mockReturnValue(null),
-    useModel: vi.fn().mockResolvedValue('Test model response'),
+    useModel: vi.fn().mockResolvedValue("Test model response"),
     getProviderResults: vi.fn().mockResolvedValue([]),
     evaluateProviders: vi.fn().mockResolvedValue([]),
     evaluate: vi.fn().mockResolvedValue([]),
@@ -47,7 +49,10 @@ export function createMockRuntime(overrides: Partial<IAgentRuntime> = {}): IAgen
  * @param overrides - Optional overrides for the default memory properties
  * @returns A mock memory object
  */
-export function createMockMessage(text: string, overrides: Partial<Memory> = {}): Memory {
+export function createMockMessage(
+  text: string,
+  overrides: Partial<Memory> = {}
+): Memory {
   const baseMessage = createCoreMockMessage(text);
   return {
     ...baseMessage,
@@ -88,7 +93,7 @@ export function setupTest(
 
   // Create a message
   const mockMessage = createMockMessage(
-    options.messageText || 'Test message',
+    options.messageText || "Test message",
     options.messageOverrides || {}
   );
 
@@ -111,10 +116,10 @@ export { documentTestResult, runCoreActionTests };
 
 // Add spy on logger for common usage in tests
 export function setupLoggerSpies() {
-  vi.spyOn(logger, 'info').mockImplementation(() => {});
-  vi.spyOn(logger, 'error').mockImplementation(() => {});
-  vi.spyOn(logger, 'warn').mockImplementation(() => {});
-  vi.spyOn(logger, 'debug').mockImplementation(() => {});
+  vi.spyOn(logger, "info").mockImplementation(() => {});
+  vi.spyOn(logger, "error").mockImplementation(() => {});
+  vi.spyOn(logger, "warn").mockImplementation(() => {});
+  vi.spyOn(logger, "debug").mockImplementation(() => {});
 
   // allow tests to restore originals
   return () => vi.restoreAllMocks();

@@ -19,10 +19,7 @@ export const formatOutput = <T extends {}>(desc: DataDescription<T>) => {
   return `Respond using JSON format like this:
 {
 ${(Object.entries(desc) as [string, DataDescription<T>[keyof T]][])
-  .map(
-    ([key, value]) =>
-      `  "${key}": ${value.type} | null`
-  )
+  .map(([key, value]) => `  "${key}": ${value.type} | null`)
   .join(",\n")}
 }`;
 };

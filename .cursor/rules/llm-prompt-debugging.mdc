@@ -1,0 +1,549 @@
+---
+description: Comprehensive LLM prompt debugging patterns, limitations, and consistency guidelines
+globs: ["**/prompts/**/*.ts", "**/util/generate.ts", "**/templates/**/*.ts"]
+alwaysApply: false
+---
+
+# LLM Prompt Debugging and Optimization Patterns
+
+## 📋 Cross-References
+This file consolidates LLM prompt patterns from multiple sources:
+- Debugging methodology and examples from `dev-docs/debugging/llm-prompt-debugging.md`
+- Prompt consistency patterns for standardized structure
+- Known limitations and workarounds for common issues
+
+## Overview
+
+When LLM responses have quality issues (duplication, inconsistency, hallucination), use systematic prompt engineering to fix them.
+
+## Quick Reference Patterns
+
+### Context Injection Pattern
+For issues where LLM lacks awareness of previous responses:
+
+```typescript
+const template = `
+{{#if prevActions}}
+<previousContext>{{prevActions}}</previousContext>
+<contextRules>
+CRITICAL: Above context shows information already provided.
+- DO NOT repeat specific data from previousContext
+- Provide NEW value: next steps, questions, additional context
+</contextRules>
+{{/if}}
+
+<task>{{taskDescription}}</task>
+`;
+```
+
+### Constraint Pattern
+For hallucination or off-topic responses:
+
+```typescript
+const template = `
+<constraints>
+- ONLY use data from provided context
+- DO NOT make assumptions about user preferences
+- ONLY suggest actions available in the system
+</constraints>
+
+<task>{{taskDescription}}</task>
+`;
+```
+
+## Fundamental LLM Limitations
+
+### 1. Inconsistent Deduplication
+**Problem**: LLM-based deduplication is unreliable across runs.
+
+**Evidence**: 
+- Same prompt with identical inputs produces different outputs
+- Deduplication rules work ~60% of the time, fail ~40% of the time
+- More specific rules help but don't eliminate inconsistency
+
+**Example**:
+```typescript
+// Same rephrase call, different results:
+// Run 1: Successfully removes duplicated position data
+// Run 2: Keeps duplicated position data despite identical prompt
+```
+
+### 2. Context Window Limitations
+**Problem**: `prevActions` context may be truncated or incomplete.
+
+**Impact**:
+- LLM may not see all previous responses for deduplication analysis
+- Context ordering affects interpretation
+- Large conversations may lose early context
+
+### 3. Generalization vs Specificity Trade-off
+**Problem**: Rules specific enough to work reliably are too narrow for general use.
+
+**Examples**:
+```typescript
+// ❌ Too specific - only works for position management
+"If prevActions contain 'Strategy 1' or '$3.36', remove position summary"
+
+// ❌ Too general - doesn't prevent duplication reliably  
+"Avoid repeating information from prevActions"
+
+// ❌ Complex rules - inconsistent LLM interpretation
+"Analyze prevActions for semantic overlap and transform response accordingly"
+```
+
+## Successful Patterns
+
+### 1. Format Preservation
+**Works Well**: Instructing LLM to preserve original format style.
+```typescript
+// ✅ Reliable pattern
+"Keep the original tone and format exactly as provided"
+"Do NOT add conversational explanations to structured summaries"
+```
+
+### 2. Simple Transformations
+**Works Well**: Basic text improvements without complex logic.
+```typescript
+// ✅ Reliable pattern  
+"Improve clarity and grammar while preserving all information"
+"Fix any formatting issues but keep the same structure"
+```
+
+### 3. Context-Free Operations
+**Works Well**: Operations that don't depend on analyzing previous actions.
+```typescript
+// ✅ Reliable pattern
+"Ensure proper markdown formatting"
+"Add appropriate emojis if the tone is casual"
+```
+
+## Anti-Patterns to Avoid
+
+### 1. Complex Conditional Logic
+```typescript
+// ❌ Unreliable - too complex for consistent LLM execution
+"IF prevActions contain X THEN remove Y ELSE transform Z"
+```
+
+### 2. Semantic Deduplication
+```typescript
+// ❌ Unreliable - semantic analysis is inconsistent
+"Remove information that semantically overlaps with prevActions"
+```
+
+### 3. Multi-Step Analysis
+```typescript
+// ❌ Unreliable - multi-step reasoning often fails
+"Step 1: Analyze prevActions, Step 2: Identify overlaps, Step 3: Transform response"
+```
+
+## Architectural Solutions
+
+### 1. Action-Level Responsibility Separation
+Instead of post-processing deduplication, design actions with distinct purposes:
+
+```typescript
+// ✅ Good architecture
+REPLY: "I'll analyze your positions" (acknowledgment only)
+MANAGE_POSITIONS: Complete structured data (primary data source)
+
+// ❌ Bad architecture  
+REPLY: "Strategy 1: $3.36, Safe yield: $1.00" (data presentation)
+MANAGE_POSITIONS: "Strategy 1: $3.36, Safe yield: $1.00" (duplicate data)
+```
+
+### 2. Single Source of Truth Pattern
+```typescript
+// ✅ Designate one action as the authoritative data source
+const primaryAction = 'MANAGE_POSITIONS'; // Provides complete data
+const supportingActions = ['REPLY']; // Provide acknowledgment/context only
+```
+
+### 3. Progressive Enhancement
+```typescript
+// ✅ Each action adds value without duplication
+REPLY: Basic acknowledgment + user guidance
+MANAGE_POSITIONS: Structured data + management options  
+SUGGEST_STRATEGY: Additional strategies + selection criteria
+```
+
+## Prompt Consistency Guidelines
+
+### File Organization
+- **Location**: All prompts go in `src/prompts/[domain].ts`
+- **Naming**: Use descriptive function names like `extract[Domain]DataFromMessagePrompt`
+- **Exports**: Export both the interface and the prompt function
+
+### Prompt Format Template
+```typescript
+import { DataDescription, formatKeys, formatOutput } from "./util";
+
+/** Extracted [domain] parameters from user messages */
+export interface ExtractedDataFor[Domain] {
+  param1?: type;
+  param2?: type;
+  // ... other parameters
+}
+
+const dataDescription: DataDescription<ExtractedDataFor[Domain]> = {
+  param1: {
+    type: "string" | "number" | "boolean" | "object" | "array",
+    description: "Clear description with examples",
+    default?: "default_value", // Optional
+  },
+  param2: {
+    type: "string" | "number" | "boolean" | "object" | "array", 
+    description: "Clear description with examples",
+  },
+  // ... other parameters
+};
+
+export const extract[Domain]DataFromMessagePrompt = (
+  message: string,
+  context?: string
+) => `
+Extract [domain] parameters from the user message.
+
+${context ? `<context>${context}</context>` : ""}
+
+<userMessage>${message}</userMessage>
+
+<dataToExtract>
+${formatKeys(dataDescription)}
+</dataToExtract>
+
+${formatOutput(dataDescription)}
+`;
+```
+
+### Standard Prompt Sections
+
+#### 1. Context Section (Optional)
+```typescript
+${context ? `<context>${context}</context>` : ""}
+```
+
+#### 2. Input Section
+```typescript
+<userMessage>${message}</userMessage>
+```
+
+#### 3. Schema Section
+```typescript
+<dataToExtract>
+${formatKeys(dataDescription)}
+</dataToExtract>
+```
+
+#### 4. Output Format Section
+```typescript
+${formatOutput(dataDescription)}
+```
+
+### Constraint Pattern
+For hallucination or off-topic responses:
+
+```typescript
+const template = `
+<constraints>
+- ONLY use data from {{dataSource}}
+- DO NOT generate fictional information
+- MUST stay within topic: {{topicScope}}
+- Format: {{requiredFormat}}
+</constraints>
+
+<data>{{contextData}}</data>
+<instructions>{{specificInstructions}}</instructions>
+`;
+```
+
+### Format Enforcement Pattern
+For inconsistent formatting:
+
+```typescript
+const template = `
+<responseFormat>
+Use this EXACT format:
+
+**{{title}}**
+{{#each items}}
+- **{{name}}**: ${{value}} ({{details}})
+{{/each}}
+Total: ${{total}}
+</responseFormat>
+
+<example>
+**Your Positions**
+- **Strategy 1**: $100.00 (0.1 ETH)
+Total: $100.00
+</example>
+`;
+```
+
+## Testing Strategy
+
+### Quality Metrics
+```typescript
+// Test response quality quantitatively
+it("should meet quality standards", async () => {
+  const response = await generateResponse(input);
+  
+  expect(response.text.length).toBeGreaterThan(100);
+  expect(calculateSimilarity(response, previousResponse)).toBeLessThan(0.3);
+  expect(response.text).toMatch(/expected-pattern/);
+});
+```
+
+### A/B Testing
+```typescript
+// Compare old vs new prompts
+describe("Prompt Enhancement", () => {
+  const testCases = [
+    { input: "test input", expectedKeywords: ["keyword1", "keyword2"] }
+  ];
+  
+  testCases.forEach(testCase => {
+    it(`should handle "${testCase.input}"`, async () => {
+      const response = await generateWithNewPrompt(testCase.input);
+      testCase.expectedKeywords.forEach(keyword => {
+        expect(response.toLowerCase()).toContain(keyword);
+      });
+    });
+  });
+});
+```
+
+## Implementation Checklist
+
+When fixing LLM response issues:
+
+- [ ] **Identify Pattern**: What type of issue? (duplication, format, hallucination, etc.)
+- [ ] **Analyze Current Prompt**: What's missing or unclear?
+- [ ] **Apply Appropriate Pattern**: Use context injection, constraints, or format enforcement
+- [ ] **Add Explicit Rules**: Include CRITICAL instructions for the LLM
+- [ ] **Create Tests**: Write tests that fail with old prompt, pass with new
+- [ ] **Measure Quality**: Use quantitative metrics (similarity, length, pattern matching)
+- [ ] **Monitor Results**: Track response quality over time
+- [ ] **Document Solution**: Add to debugging guides for future reference
+
+## Common Fixes
+
+### Duplication → Context Injection
+```typescript
+// Pass previous action context to rephrase
+const prevActions = await getPreviousReplyContext(runtime, message);
+const response = await rephrase({ runtime, content, state, prevActions });
+```
+
+### Inconsistent Format → Template Enforcement
+```typescript
+// Use strict formatting templates with examples
+const template = `<strictFormat>MUST use exact format: {{example}}</strictFormat>`;
+```
+
+### Hallucination → Data Constraints
+```typescript
+// Limit LLM to provided data only
+const template = `<data>{{realData}}</data><rules>ONLY use data above</rules>`;
+```
+
+### Off-topic → Task Boundaries
+```typescript
+// Define clear task scope and constraints
+const template = `<task>{{specificTask}}</task><scope>{{allowedTopics}}</scope>`;
+```
+
+## Related Patterns
+
+- **ElizaOS State Composition**: Use `runtime.composeState()` for provider data
+- **Service Organization**: Keep prompt logic in service helpers when possible
+- **Testing Patterns**: Always test prompt changes with integration tests
+- **Error Handling**: Include error scenarios in prompt testing
+
+## Natural Conversation Flow Patterns
+
+### Context-Aware Parameter Handling
+**Problem**: Robotic responses that ignore conversation context and ask for already-provided information.
+
+**Solution**: Build context-aware parameter extraction and missing parameter handlers.
+
+#### ✅ Context-Aware Missing Parameter Handler
+```typescript
+// Instead of generic "Please specify token"
+async function handleMissingDepositParameters(intentContext, missingParam) {
+  const { returnData } = intentContext;
+  const { strategyName, tokenSymbol, amount } = returnData || {};
+  
+  if (missingParam === "token") {
+    if (strategyName) {
+      // Use known strategy in response
+      return `Great choice on the ${strategyName}! Which token would you like to deposit? You can use USDC, ETH, or other tokens from your portfolio.`;
+    } else {
+      return `Which token would you like to deposit? I can see your available tokens and help you choose.`;
+    }
+  }
+  
+  if (missingParam === "amount") {
+    const strategy = strategyName || 'strategy';
+    const token = tokenSymbol || 'tokens';
+    // Reference both known parameters
+    return `Perfect! How much ${token} would you like to deposit into the ${strategy}? You can specify an amount like "100 USDC" or "0.1 ETH".`;
+  }
+}
+```
+
+#### ✅ Natural Suggestion Generation
+```typescript
+// Avoid placeholder text in suggestions
+// ❌ Bad: "I want to deposit [amount] USDC into the ultra-safe strategy"
+// ✅ Good: "I want to deposit 100 USDC into the Ultra-Safe strategy"
+
+SUGGESTION_FORMATS: {
+  // Use realistic amounts users would actually type
+  amounts: ["10", "50", "100", "500", "1000"], // USDC
+  ethAmounts: ["0.01", "0.1", "0.5", "1.0"], // ETH
+  
+  // Write from user perspective, not agent perspective
+  userVoice: "I want to deposit 100 USDC into the Safe strategy",
+  agentVoice: "Please specify the amount to deposit", // ❌ Avoid
+}
+```
+
+### Conversation Context Patterns
+
+#### Context Inheritance Pattern
+```typescript
+// Extract and preserve context across conversation turns
+const conversationContext = {
+  previousMentions: {
+    strategy: extractStrategyFromHistory(conversationHistory),
+    token: extractTokenFromHistory(conversationHistory),
+    amount: extractAmountFromHistory(conversationHistory),
+  },
+  userPreferences: {
+    riskTolerance: inferRiskToleranceFromHistory(conversationHistory),
+    preferredTokens: getFrequentlyMentionedTokens(conversationHistory),
+  }
+};
+
+// Use context to avoid repetitive questions
+if (conversationContext.previousMentions.token === "USDC") {
+  // Don't ask "which token?" - build on USDC context
+  response = `How much USDC would you like to deposit?`;
+}
+```
+
+#### Smart Parameter Inference Pattern
+```typescript
+// Infer missing parameters from conversation context
+const smartInference = {
+  // If user mentioned strategy and conversation shows token discussion
+  inferTokenFromContext: (strategy, conversationHistory) => {
+    if (conversationHistory.includes("USDC") && strategy === "ultra-safe") {
+      return { tokenSymbol: "USDC", confidence: 0.8 };
+    }
+  },
+  
+  // If user has clear portfolio preferences
+  inferAmountFromPortfolio: (token, userPortfolio) => {
+    const balance = userPortfolio.find(asset => asset.symbol === token);
+    if (balance && balance.value > 1000) {
+      return { suggestedAmount: "100", confidence: 0.7 }; // Conservative 10%
+    }
+  }
+};
+```
+
+### Anti-Patterns for Natural Conversation
+
+#### ❌ Placeholder Text in Suggestions
+```typescript
+// Never generate suggestions users wouldn't actually type
+BAD_SUGGESTIONS = [
+  "I want to deposit [amount] USDC", // Users don't type [amount]
+  "Deposit [Token] into [Strategy]", // Placeholder text
+  "Please specify the amount", // Agent voice, not user voice
+];
+
+GOOD_SUGGESTIONS = [
+  "I want to deposit 100 USDC into the Ultra-Safe strategy",
+  "Let me try the Safe strategy with 50 USDC", 
+  "I'd like to invest 0.1 ETH in a brave strategy",
+];
+```
+
+#### ❌ Ignoring Conversation Context
+```typescript
+// Don't ask for information already discussed
+if (conversationHistory.includes("ultra-safe strategy")) {
+  // ❌ Bad: "Which strategy would you like to use?"
+  // ✅ Good: "Great choice on the ultra-safe strategy! Which token would you like to deposit?"
+}
+```
+
+#### ❌ Repetitive Information Requests
+```typescript
+// Track what's already been asked/answered
+const conversationState = {
+  askedForStrategy: false,
+  askedForToken: false, 
+  askedForAmount: false,
+  knownParameters: {}
+};
+
+// Only ask for truly missing information
+if (!conversationState.askedForAmount && !knownParameters.amount) {
+  askForAmount();
+}
+```
+
+### Conversation Flow Quality Metrics
+
+#### Natural Flow Indicators
+- **Context Retention**: > 90% of responses reference previous conversation elements
+- **Parameter Reuse**: < 10% of conversations ask for the same parameter twice
+- **Suggestion Realism**: 0% placeholder text in user-facing suggestions
+- **Conversation Efficiency**: Average < 3 exchanges to complete intent
+- **User Voice Consistency**: 100% of suggestions written from user perspective
+
+#### Testing Natural Conversation
+```typescript
+describe("Natural Conversation Flow", () => {
+  it("should not ask for already-provided information", async () => {
+    const conversation = [
+      { user: "I want to use the ultra-safe strategy" },
+      { agent: "Great choice! Which token would you like to deposit?" },
+      { user: "USDC" },
+    ];
+    
+    const response = await handleMissingAmount(conversation);
+    
+    // Should reference both known parameters
+    expect(response).toContain("USDC");
+    expect(response).toContain("ultra-safe");
+    expect(response).not.toContain("Which strategy"); // Don't re-ask
+    expect(response).not.toContain("Which token"); // Don't re-ask
+  });
+  
+  it("should generate realistic user suggestions", async () => {
+    const suggestions = await generateDepositSuggestions(context);
+    
+    suggestions.forEach(suggestion => {
+      expect(suggestion.text).not.toMatch(/\[.*\]/); // No placeholder text
+      expect(suggestion.text).toMatch(/\d+/); // Contains real numbers
+      expect(suggestion.text).toMatch(/^I want|^Let me|^I'd like/); // User voice
+    });
+  });
+});
+```
+
+## Success Metrics
+
+- **Duplication**: < 30% text similarity between sequential responses
+- **Consistency**: > 90% of responses match expected format
+- **Relevance**: > 95% of responses stay on topic
+- **Accuracy**: 0% hallucinated data when real data is available
+- **User Satisfaction**: Positive feedback on response quality
+- **Conversation Efficiency**: < 3 exchanges to complete typical intents
+- **Context Retention**: > 90% of responses appropriately reference conversation history
+- **Natural Language**: 0% placeholder text in user-facing suggestions
