@@ -1,4 +1,4 @@
-import { parseUnits } from "viem";
+import { parseUnits, formatUnits } from "viem";
 import { ModelType, Provider } from "@elizaos/core";
 import { LEVVA_SERVICE, LEVVA_ACTIONS } from "../constants/enum";
 import { ETH_NULL_ADDR } from "../constants/eth";
@@ -71,71 +71,77 @@ export const swapParamsProvider: Provider = {
 
     let intentContext: IntentContext | undefined;
 
-    if (intentService) {
-      try {
-        // Check for existing active intent
-        intentContext = await intentService.getActiveIntentByDomain(
-          userId,
-          channelId,
-          LEVVA_ACTIONS.SWAP_TOKENS
-        );
-
-        // Use helper function to handle intent detection and creation
-        intentContext = await intentService.handleIntentDetectionAndCreation(
-          message,
-          LEVVA_ACTIONS.SWAP_TOKENS,
-          userId,
-          channelId,
-          intentContext
-        );
-
-        // Add swap-specific metadata if intent was created
-        if (
-          intentContext &&
-          intentContext.metadata &&
-          !intentContext.metadata.userAddress
-        ) {
-          intentContext.metadata.userAddress = user.address;
-          intentContext.metadata.chainId = chainId;
-          await intentService.storeIntent(intentContext);
-        }
-
-        // Add current message to intent memory
-        if (intentContext) {
-          await intentService.addMemoryToIntent(intentContext, message);
-        }
-      } catch (error) {
-        runtime.logger.warn("Error in swap intent management:", error);
-        // Continue without intent context if there's an error
-      }
+    if (!intentService) {
+      throw new Error("Failed to get intent service");
     }
+
+    try {
+      // Check for existing active intent
+      intentContext = await intentService.getActiveIntentByDomain(
+        userId,
+        channelId,
+        LEVVA_ACTIONS.SWAP_TOKENS
+      );
+
+      // Use helper function to handle intent detection and creation
+      intentContext = await intentService.handleIntentDetectionAndCreation(
+        message,
+        LEVVA_ACTIONS.SWAP_TOKENS,
+        userId,
+        channelId,
+        intentContext
+      );
+
+      // Add swap-specific metadata if intent was created
+      if (
+        intentContext &&
+        intentContext.metadata &&
+        !intentContext.metadata.userAddress
+      ) {
+        intentContext.metadata.userAddress = user.address;
+        intentContext.metadata.chainId = chainId;
+        await intentService.storeIntent(intentContext);
+      }
+
+      // Add current message to intent memory
+      if (intentContext) {
+        await intentService.addMemoryToIntent(intentContext, message);
+      }
+    } catch (error) {
+      runtime.logger.warn("Error in swap intent management:", error);
+      // Continue without intent context if there's an error
+    }
+
+    // Use intent context if available for better parameter extraction
+    const promptContext = intentContext
+      ? {
+          recentMessages: state.values.recentMessages,
+          tokens: tokens?.map(service.formatToken).join("\n") ?? "",
+          intentContext: {
+            type: intentContext.type,
+            returnData: intentContext.returnData,
+            memories:
+              intentContext.memories?.map((m) => m.content.text).join("\n") ??
+              "",
+          },
+        }
+      : {
+          recentMessages: state.values.recentMessages,
+          tokens: tokens?.map(service.formatToken).join("\n") ?? "",
+        };
 
     // according to logs provider can be called multiple times for the same message, so cache llm call
     const cacheKey = `swap-params-${message.id}`;
     let params = await runtime.getCache<ExtractedSwapParams>(cacheKey);
 
     if (!params) {
-      // Use intent context if available for better parameter extraction
-      const promptContext = intentContext
-        ? {
-            recentMessages: state.values.recentMessages,
-            tokens: tokens?.map(service.formatToken).join("\n") ?? "",
-            intentContext: {
-              type: intentContext.type,
-              returnData: intentContext.returnData,
-              memories:
-                intentContext.memories?.map((m) => m.content.text).join("\n") ??
-                "",
-            },
-          }
-        : {
-            recentMessages: state.values.recentMessages,
-            tokens: tokens?.map(service.formatToken).join("\n") ?? "",
-          };
-
       params = await runtime.useModel(ModelType.OBJECT_SMALL, {
         prompt: selectSwapDataFromMessagesPrompt(promptContext),
       });
+
+      if (intentContext && params) {
+        await intentService.updateIntent(intentContext, params);
+      }
 
       await runtime.setCache(cacheKey, params);
     }
@@ -194,13 +200,22 @@ export const swapParamsProvider: Provider = {
     });
 
     if (!tokenIn) {
+      const unknownFromTokenText = `## ❓ Unknown Token
+
+**Token**: ${fromToken}
+**Issue**: Token not found in our database
+
+Please provide a valid token symbol (like USDC, ETH, WETH) or token address (0x...) for the token you want to swap from.`;
+
       return {
         ...EMPTY_RESULT,
         data: { ...data, intentContext },
         values: {
-          swap: `Unknown 'from' token ${fromToken}, ask user for token address.`,
+          swap: unknownFromTokenText,
+          fromToken: fromToken,
+          error: "unknown_from_token",
         },
-        text: `Failed to prepare swap: unknown token ${fromToken}. Ask user for token address.`,
+        text: unknownFromTokenText,
       };
     }
 
@@ -212,13 +227,22 @@ export const swapParamsProvider: Provider = {
     });
 
     if (!tokenOut) {
+      const unknownToTokenText = `## ❓ Unknown Token
+
+**Token**: ${toToken}
+**Issue**: Token not found in our database
+
+Please provide a valid token symbol (like USDC, ETH, WETH) or token address (0x...) for the token you want to swap to.`;
+
       return {
         ...EMPTY_RESULT,
         data: { ...data, intentContext },
         values: {
-          swap: `Unknown 'to' token ${toToken}, ask user for token address.`,
+          swap: unknownToTokenText,
+          toToken: toToken,
+          error: "unknown_to_token",
         },
-        text: `Failed to prepare swap: unknown token ${toToken}. Ask user for token address.`,
+        text: unknownToTokenText,
       };
     }
 
@@ -230,31 +254,85 @@ export const swapParamsProvider: Provider = {
       tokenIn.address ?? ETH_NULL_ADDR
     );
 
-    const amountUnits = parseUnits(data.amount!, tokenIn.decimals);
+    const amountUnits = parseUnits(String(data.amount ?? 0), tokenIn.decimals);
 
     if ((balance?.amount ?? 0n) < amountUnits) {
+      const currentBalance = formatUnits(
+        balance?.amount ?? 0n,
+        tokenIn.decimals
+      );
+      const insufficientBalanceText = `## ❌ Insufficient Balance
+
+**Token**: ${tokenIn.symbol} (${tokenIn.name})
+**Requested Amount**: ${data.amount} ${tokenIn.symbol}
+**Current Balance**: ${currentBalance} ${tokenIn.symbol}
+**Shortfall**: ${(parseFloat(data.amount!) - parseFloat(currentBalance)).toFixed(6)} ${tokenIn.symbol}
+
+You need more ${tokenIn.symbol} to complete this swap.`;
+
       return {
         ...EMPTY_RESULT,
         data: { ...data, intentContext },
         values: {
-          swap: `Insufficient balance for ${fromToken}`,
+          swap: insufficientBalanceText,
+          fromToken: `${tokenIn.symbol} (${tokenIn.name})`,
+          amount: `${data.amount} ${tokenIn.symbol}`,
+          userBalance: `${currentBalance} ${tokenIn.symbol}`,
+          error: "insufficient_balance",
         },
-        text: `Insufficient balance for ${fromToken}. Ask user to deposit more ${fromToken} to ${user.address}.`,
+        text: insufficientBalanceText,
       };
     }
 
     const weth = await service.getWETH(chainId);
+
+    // Format token information for display
+    const formatTokenInfo = (token: TokenDataWithInfo) => {
+      const isNative = !token.address || token.address === ETH_NULL_ADDR;
+      return `${token.symbol} (${token.name})${isNative ? " - Native token" : ` - ${token.address}`}`;
+    };
+
+    // Get user's current balance for the input token
+    const userBalance = formatUnits(balance?.amount ?? 0n, tokenIn.decimals);
+    const balanceInfo = `Current balance: ${userBalance} ${tokenIn.symbol}`;
+
     let text: string;
+    let swapDetails: string;
 
     if (weth.address === tokenIn.address && !tokenOut.address) {
       data.type = "unwrap";
-      text = `User wants to unwrap ${data.amount} ${fromToken} to native ETH.`;
+      swapDetails = `## Unwrap Transaction 🔄
+
+**From**: ${formatTokenInfo(tokenIn)}
+**To**: Native ETH
+**Amount**: ${data.amount} ${tokenIn.symbol}
+**${balanceInfo}**
+
+User wants to unwrap ${data.amount} ${fromToken} to native ETH.`;
+      text = swapDetails;
     } else if (weth.address === tokenOut.address && !tokenIn.address) {
       data.type = "wrap";
-      text = `User wants to wrap ${data.amount} native ETH to ${fromToken}.`;
+      swapDetails = `## Wrap Transaction 🔄
+
+**From**: Native ETH
+**To**: ${formatTokenInfo(tokenOut)}
+**Amount**: ${data.amount} ETH
+**${balanceInfo}**
+
+User wants to wrap ${data.amount} native ETH to ${toToken}.`;
+      text = swapDetails;
     } else {
       data.type = "kyber";
-      text = `User wants to swap ${data.amount} ${fromToken} to ${toToken} on KyberSwap.`;
+      swapDetails = `## Token Swap 🔄
+
+**From**: ${formatTokenInfo(tokenIn)}
+**To**: ${formatTokenInfo(tokenOut)}
+**Amount**: ${data.amount} ${tokenIn.symbol}
+**${balanceInfo}**
+**Platform**: KyberSwap
+
+User wants to swap ${data.amount} ${fromToken} to ${toToken} on KyberSwap.`;
+      text = swapDetails;
     }
 
     // Update intent context with extracted parameters if available
@@ -283,6 +361,17 @@ export const swapParamsProvider: Provider = {
       data: { ...data, intentContext },
       values: {
         swap: text,
+        fromToken: `${tokenIn.symbol} (${tokenIn.name})`,
+        toToken: `${tokenOut.symbol} (${tokenOut.name})`,
+        amount: `${data.amount} ${tokenIn.symbol}`,
+        userBalance: `${userBalance} ${tokenIn.symbol}`,
+        swapType: data.type,
+        platform:
+          data.type === "kyber"
+            ? "KyberSwap"
+            : data.type === "wrap"
+              ? "Wrap"
+              : "Unwrap",
       },
       text,
     };

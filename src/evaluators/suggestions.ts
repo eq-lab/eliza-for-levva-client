@@ -373,9 +373,20 @@ Generate amount-based suggestions for ${tokenSymbol}:
 `;
       }
     } else if (type === "SWAP") {
-      const { fromToken, toToken, amount } = returnData || {};
+      const { fromToken, toToken, amount, tokenIn, tokenOut } = returnData || {};
 
-      if (fromToken && toToken && !amount) {
+      if (fromToken && toToken && amount) {
+        // User has complete swap parameters but transaction might have failed - suggest retry options
+        contextPrompt = `
+The user wants to swap ${amount} ${fromToken} for ${toToken} but the transaction may have failed or needs retry.
+Generate retry and alternative suggestions:
+- "Please retry the swap"
+- "Try swapping ${amount} ${fromToken} to ${toToken} again"
+- "Let me retry this transaction"
+- "Proceed with the ${amount} ${fromToken} swap"
+- "Cancel and try a different amount"
+`;
+      } else if (fromToken && toToken && !amount) {
         // User selected tokens, now needs amount
         contextPrompt = `
 The user wants to swap ${fromToken} for ${toToken} and the agent is asking for swap amount.
@@ -385,6 +396,39 @@ Generate amount-based suggestions:
 - "I'd like to swap 500 ${fromToken}"
 - "Swap 25% of my ${fromToken}"
 - "I want to swap all my ${fromToken}"
+`;
+      } else if (fromToken && !toToken) {
+        // User selected from token, needs to token
+        contextPrompt = `
+The user wants to swap ${fromToken} and the agent is asking for destination token.
+Generate token pair suggestions:
+- "Swap ${fromToken} to USDC"
+- "Convert ${fromToken} to ETH"
+- "Exchange ${fromToken} for WETH"
+- "Trade ${fromToken} for DAI"
+- "Swap ${fromToken} to USDT"
+`;
+      } else if (!fromToken && toToken) {
+        // User selected to token, needs from token
+        contextPrompt = `
+The user wants to swap to ${toToken} and the agent is asking for source token.
+Generate token pair suggestions:
+- "Swap ETH to ${toToken}"
+- "Convert USDC to ${toToken}"
+- "Exchange WETH for ${toToken}"
+- "Trade DAI for ${toToken}"
+- "Swap USDT to ${toToken}"
+`;
+      } else {
+        // No tokens specified, suggest popular pairs
+        contextPrompt = `
+The user wants to swap tokens but hasn't specified which ones.
+Generate popular token pair suggestions:
+- "Swap ETH to USDC"
+- "Convert WETH to DAI"
+- "Exchange USDC for ETH"
+- "Trade ETH for WETH"
+- "Swap DAI to USDC"
 `;
       }
     } else if (type === "SEND") {
