@@ -5,9 +5,12 @@ import { UserPosition, WithdrawalRequest } from "../services/levva/positions";
 /** Extracted withdrawal parameters from user messages */
 export interface ExtractedDataForWithdraw {
   strategyId?: number;
+  strategyName?: string;
+  strategyRisk?: string;
   amount?: number | "all";
   withdrawalStep?: "request" | "check" | "claim";
   confidence?: number;
+  thought?: string;
 }
 
 const dataDescription: DataDescription<ExtractedDataForWithdraw> = {
@@ -15,6 +18,17 @@ const dataDescription: DataDescription<ExtractedDataForWithdraw> = {
     type: "number",
     description:
       "The strategy number to withdraw from (e.g., 'strategy 1', 'from position 2')",
+  },
+  strategyName: {
+    type: "string",
+    description: "Strategy name to withdraw from, if specified",
+    default: "null",
+  },
+  strategyRisk: {
+    type: "string",
+    description:
+      'Strategy risk profile: "ultra-safe", "safe", "brave", or "custom"',
+    default: "null",
   },
   amount: {
     type: "number",
@@ -29,6 +43,12 @@ const dataDescription: DataDescription<ExtractedDataForWithdraw> = {
     type: "number",
     description: "Your confidence level in the extraction accuracy (0-100)",
     default: "0",
+  },
+  thought: {
+    type: "string",
+    description:
+      "Analysis of the user's withdrawal request and parameter extraction",
+    default: "null",
   },
 };
 
@@ -118,6 +138,7 @@ ${currentMessage}
 Analyze the user message and extract withdrawal-related parameters using the provided context.
 
 CRITICAL WITHDRAWAL LOGIC:
+- **Strategy Detection**: Extract strategy by name, risk level ("ultra-safe", "safe", "brave"), or ID using available strategies mapping
 - If user wants to withdraw from a strategy that has an existing withdrawal request:
   * Check the "isFinalized" status in existing_withdrawals
   * If isFinalized = true: User can claim that withdrawal (set withdrawalStep to "claim", use existing requestId)

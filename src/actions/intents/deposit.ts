@@ -25,6 +25,130 @@ export interface DepositData extends ExtractedDataForDeposit {
   [key: string]: any;
 }
 
+export function formatDepositIntent(data: DepositData): string {
+  const {
+    strategy,
+    strategyId,
+    strategyName,
+    strategyRisk,
+    tokenSymbol,
+    tokenAddress,
+    amount,
+    leverage,
+  } = data || {};
+
+  const hasStrategyInput = Boolean(
+    strategy || strategyId || strategyName || strategyRisk
+  );
+
+  const isVault = strategy?.type === "vault";
+  const isPool = strategy?.type === "pool";
+
+  // Strategy formatting
+  let strategyLine = "[Not specified]";
+  if (strategy) {
+    const parts: string[] = [];
+    parts.push(strategy.name || "Unknown");
+    parts.push(`ID: ${strategy.id}`);
+    if (strategy.type) parts.push(`Type: ${strategy.type}`);
+    if (strategy.risk) parts.push(`Risk: ${strategy.risk}`);
+    strategyLine = `${parts.join(", ")}`;
+
+    if (isVault && strategy.vault?.underlyingToken?.symbol) {
+      strategyLine += ` - Underlying: ${strategy.vault.underlyingToken.symbol}`;
+    }
+  } else if (hasStrategyInput) {
+    const parts: string[] = [];
+    if (strategyName) parts.push(`Name: ${strategyName}`);
+    if (Number.isFinite(strategyId)) parts.push(`ID: ${strategyId}`);
+    if (strategyRisk) parts.push(`Risk: ${strategyRisk}`);
+    strategyLine = parts.length ? parts.join(", ") : strategyLine;
+  }
+
+  // Token formatting
+  let inferredVaultTokenNote = "";
+  let tokenLine = "[Not specified]";
+  if (isVault) {
+    const vaultSymbol = strategy?.vault?.underlyingToken?.symbol;
+    const vaultAddress = strategy?.vault?.underlyingToken?.address;
+    const providedSymbolOrAddress = tokenSymbol || tokenAddress;
+    const displaySymbol = providedSymbolOrAddress || vaultSymbol;
+    const displayAddress = providedSymbolOrAddress
+      ? tokenAddress
+      : vaultAddress;
+
+    if (displaySymbol || displayAddress) {
+      const symbolText = displaySymbol ?? "";
+      const addressText = displayAddress
+        ? displayAddress === ETH_NULL_ADDR
+          ? "ETH"
+          : displayAddress
+        : "";
+      tokenLine = [symbolText, addressText && `(${addressText})`]
+        .filter(Boolean)
+        .join(" ");
+    }
+
+    if (!tokenSymbol && !tokenAddress && vaultSymbol) {
+      inferredVaultTokenNote = `\n- Note: Token is derived from vault underlying token (${vaultSymbol})`;
+    }
+  } else if (isPool) {
+    if (tokenSymbol || tokenAddress) {
+      const addressText = tokenAddress
+        ? tokenAddress === ETH_NULL_ADDR
+          ? "ETH"
+          : tokenAddress
+        : "";
+      tokenLine = [tokenSymbol ?? "", addressText && `(${addressText})`]
+        .filter(Boolean)
+        .join(" ");
+    }
+  } else {
+    // Unknown strategy type or not selected yet
+    if (tokenSymbol || tokenAddress) {
+      const addressText = tokenAddress
+        ? tokenAddress === ETH_NULL_ADDR
+          ? "ETH"
+          : tokenAddress
+        : "";
+      tokenLine = [tokenSymbol ?? "", addressText && `(${addressText})`]
+        .filter(Boolean)
+        .join(" ");
+    }
+  }
+
+  // Amount formatting
+  const amountLine = amount ?? "[Not specified]";
+
+  // Leverage formatting: only meaningful for pool strategies
+  const leverageLine = isPool ? `x${leverage || 1}` : "N/A";
+
+  // Missing parameters detection
+  const missing: string[] = [];
+  if (!strategy) {
+    missing.push("strategy");
+  }
+  if (isPool && !(tokenSymbol || tokenAddress)) {
+    missing.push("token");
+  }
+  if (!amount) {
+    missing.push("amount");
+  }
+
+  const status = missing.length === 0 ? "complete" : "needsMoreInfo";
+
+  const missingLine =
+    missing.length > 0 ? `\n- Missing Parameters: ${missing.join(", ")}` : "";
+
+  return `### Deposit Intent
+
+- Strategy: ${strategyLine}
+- Token: ${tokenLine}
+- Amount: ${amountLine}
+- Leverage: ${leverageLine}
+- Status: ${status}${missingLine}${inferredVaultTokenNote}`;
+}
+
 /**
  * Deposit Intent Handler
  *
@@ -413,27 +537,6 @@ async function executeDepositTransaction(
 
     actualToken = strategy.vault.underlyingToken.symbol;
     tokenIn = strategy.vault.underlyingToken.address;
-
-    // If user specified a token, validate it matches the vault's underlyingToken
-    if (tokenSymbol || tokenAddress) {
-      const userToken = tokenAddress || tokenSymbol;
-      const isValidToken =
-        userToken?.toLowerCase() ===
-          strategy.vault.underlyingToken.symbol.toLowerCase() ||
-        userToken?.toLowerCase() ===
-          strategy.vault.underlyingToken.address.toLowerCase() ||
-        // Handle ETH/WETH aliases
-        (userToken?.toLowerCase() === "eth" &&
-          strategy.vault.underlyingToken.symbol.toLowerCase() === "weth") ||
-        (userToken?.toLowerCase() === "weth" &&
-          strategy.vault.underlyingToken.symbol.toLowerCase() === "weth");
-
-      if (!isValidToken) {
-        throw new Error(
-          `Invalid token for ${strategy.name}. This vault only accepts ${strategy.vault.underlyingToken.symbol} deposits.`
-        );
-      }
-    }
   } else if (strategy.type === "pool") {
     // Pool strategies require user to specify token
     tokenIn = tokenAddress || tokenSymbol || "";

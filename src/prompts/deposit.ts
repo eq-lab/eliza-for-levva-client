@@ -6,7 +6,7 @@ export interface ExtractedDataForDeposit {
   strategyRisk?: string;
   tokenSymbol?: string;
   tokenAddress?: string;
-  amount?: string;
+  amount?: string; // numeric string only (e.g., "100" or "0.5")
   leverage?: number;
   confidence: number;
   thought: string;
@@ -42,7 +42,7 @@ const dataDescription: DataDescription<ExtractedDataForDeposit> = {
   amount: {
     type: "string",
     description:
-      "The amount to deposit, can be numeric string, percentage, or 'all'/'max'",
+      "Numeric string amount only (e.g., '100', '0.5'). If user specifies a percentage (e.g., '30%') or keywords ('all', 'max') and the token is known, convert to a numeric string using user's token balance from <userPortfolio>. If you cannot compute (token unknown or balance missing), set amount to null and explain in thought.",
     default: "null",
   },
   leverage: {
@@ -136,7 +136,11 @@ CRITICAL DEPOSIT LOGIC:
   - For VAULT strategies: Token is automatically determined by the vault's underlyingToken - DO NOT extract tokenSymbol/tokenAddress unless user explicitly mentions a different token (for validation)
   - For POOL strategies: Extract token symbols/addresses from user input
   - Handle ETH/WETH aliases appropriately
-- **Amount Detection**: Extract numeric amounts, percentages ("50%"), or keywords ("all", "max")
+- **Amount Detection**: Return only numeric amounts as strings (e.g., "100", "0.5").
+  - If user specifies a percentage (e.g., "30%") AND the token is known (vault underlying token or explicitly provided token), compute absolute amount = percentage × user's available balance of that token from <userPortfolio>.
+  - If user says "all" or "max" AND the token is known, use the full available balance for that token from <userPortfolio> as a numeric string.
+  - If token is not known or the balance is not found in <userPortfolio>, set amount to null and explain the reason in the thought.
+  - Strip currency and token symbols from numeric inputs (e.g., "100 USDC" -> "100").
 - **Leverage Detection**: Extract leverage for pool strategies (1-10x)
 
 CONTEXT-AWARE EXTRACTION:
@@ -145,6 +149,12 @@ CONTEXT-AWARE EXTRACTION:
 - **Return Data**: Build on previously extracted parameters
 - **Smart Inference**: If user says "deposit into ultra-safe" and conversation shows USDC discussion, infer USDC
 - **Avoid Redundancy**: Don't ask for info that's already available in context
+
+RETURN FORMAT CONSTRAINTS:
+- amount MUST be a numeric string matching regex ^[0-9]+(\.[0-9]+)?$ when present.
+- Never include percent signs, currency symbols, or token symbols in amount.
+- When converting from percentage or "all"/"max", format the computed number as a plain decimal string with up to 6 fractional digits, trimming trailing zeros (e.g., "15.460000" -> "15.46").
+- If unable to compute a numeric string (e.g., token unknown or balance missing), set amount to null and explain why in thought.
 
 EXTRACTION PRIORITY:
 1. **Current Message**: Direct parameter extraction from user's latest message
@@ -174,10 +184,10 @@ TOKEN MATCHING:
 - **Strategy-Token Validation**: If both strategy and token are mentioned, ensure token is compatible with strategy type
 
 AMOUNT PARSING:
-- Numeric values: "100", "0.5", "1000"
-- Percentages: "50%", "25%", "100%"
-- Keywords: "all", "max", "everything", "full"
-- Consider portfolio balance context for validation
+- Accept numeric values: "100", "0.5", "1000"
+- Percentages: if token is known and its balance is present in <userPortfolio>, compute absolute amount (e.g., if USDC balance is 51.53 and user says "30%", return "15.459" rounded to at most 6 decimals, then trim trailing zeros → "15.459").
+- Keywords: if user says "all" or "max" and token balance is present, return the full balance as numeric string (trim trailing zeros).
+- Remove currency or token symbols (e.g., "$100 USDC" -> "100").
 </instructions>
 <keys>
 ${formatKeys(dataDescription)}
