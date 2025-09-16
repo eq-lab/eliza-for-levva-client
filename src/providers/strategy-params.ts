@@ -5,7 +5,9 @@ import { LevvaService } from "../services/levva/class";
 import { LEVVA_PROVIDER_NAME, LevvaProviderState } from ".";
 
 /** @deprecated better typing */
-type Strategies = Awaited<ReturnType<LevvaService["getStrategies"]>>;
+type Strategies = Awaited<
+  ReturnType<LevvaService["strategy"]["getStrategies"]>
+>;
 
 export interface StrategyParamsProviderData {
   strategies: Strategies;
@@ -46,14 +48,16 @@ export const strategyParamsProvider: Provider = {
 
     try {
       const [strategies, portfolio] = await Promise.all([
-        service.getStrategies(chainId),
+        service.strategy.getStrategies(chainId),
         service.getWalletAssets({
           address: user.address,
           chainId,
         }),
       ]);
 
-      const strategiesText = strategies.map(service.formatStrategy).join("\n");
+      const strategiesText = strategies
+        .map((s) => service.strategy.formatStrategy(s))
+        .join("\n");
       const portfolioText = service.formatWalletAssets(portfolio, true);
 
       const data: StrategyParamsProviderData = {

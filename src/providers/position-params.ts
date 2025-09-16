@@ -1,10 +1,11 @@
 import { ModelType, type Provider, logger } from "@elizaos/core";
 import { isHex } from "viem";
+import {
+  formatWithdrawIntent,
+  WithdrawData,
+} from "../actions/intents/withdraw";
+import { DepositData, formatDepositIntent } from "../actions/intents/deposit";
 import { LEVVA_ACTIONS, LEVVA_SERVICE } from "../constants/enum";
-import { RawMessage } from "../types/core";
-import { LevvaService } from "../services/levva/class";
-import { UserPosition, WithdrawalRequest } from "../services/levva/positions";
-import { IntentManager, IntentContext } from "../services/intent-manager";
 import {
   ExtractedDataForWithdraw,
   extractWithdrawDataFromMessagePrompt,
@@ -12,7 +13,11 @@ import {
 import {
   ExtractedDataForDeposit,
   extractDepositDataFromMessagePrompt,
-} from "src/prompts/deposit";
+} from "../prompts/deposit";
+import { RawMessage } from "../types/core";
+import { LevvaService } from "../services/levva/class";
+import { UserPosition, WithdrawalRequest } from "../services/levva/positions";
+import { IntentManager, IntentContext } from "../services/intent-manager";
 import { StrategyEntry } from "../services/levva/pool";
 
 export interface PositionParamsProviderData {
@@ -107,6 +112,8 @@ export const positionParamsProvider: Provider = {
         {} as Record<number, string>
       );
 
+      let intentText = "";
+
       if (intentContext?.type === "WITHDRAW") {
         const prompt = extractWithdrawDataFromMessagePrompt({
           inheritedData: intentContext.inheritedData,
@@ -123,12 +130,43 @@ export const positionParamsProvider: Provider = {
         );
 
         if (result) {
+          // Merge with previous and resolve strategy by id/name/risk similar to deposit
+          const previousRaw = intentContext?.returnData ?? {};
+          const previous: Partial<WithdrawData> = previousRaw;
+
+          const combined: WithdrawData = {
+            ...previous,
+            ...result,
+          } as WithdrawData;
+
+          const matched: StrategyEntry | undefined =
+            service.strategy.findStrategy(strategies, {
+              strategyId: combined.strategyId,
+              strategyName: combined.strategyName,
+              strategyRisk: combined.strategyRisk,
+            });
+
+          if (matched) {
+            combined.strategyId = matched.id;
+          }
+
           intentContext = await intentService.updateIntent(
             intentContext,
-            result
+            combined as any
           );
+
+          intentText = formatWithdrawIntent(combined);
         }
       } else if (intentContext?.type === "DEPOSIT") {
+        const strategyIdMap = strategies.reduce(
+          (acc, strategy) => {
+            acc[strategy.id] =
+              `id: ${strategy.id}, name: "${strategy.name}", type: ${strategy.type}, risk: ${strategy.risk}`;
+            return acc;
+          },
+          {} as Record<number, string>
+        );
+
         // Get additional data needed for deposit context
         const [availableTokens, walletAssets] = await Promise.all([
           service.getAvailableTokens({ chainId }),
@@ -169,10 +207,43 @@ export const positionParamsProvider: Provider = {
         );
 
         if (result) {
+          // 1) Combine values from existing returnData and newly extracted result
+          const previous = (intentContext?.returnData ||
+            {}) as Partial<DepositData>;
+
+          const combined: DepositData = {
+            ...previous,
+            ...result,
+          };
+
+          // 2) Match strategy using StrategyComponent helpers
+          const matched: StrategyEntry | undefined =
+            service.strategy.findStrategy(strategies, {
+              strategyId: combined.strategyId,
+              strategyName: combined.strategyName,
+              strategyRisk: combined.strategyRisk,
+            });
+
+          combined.strategy = matched;
+
+          // For vault strategies, auto-fill token if still missing
+          if (
+            matched?.type === "vault" &&
+            matched.vault?.underlyingToken &&
+            !combined.tokenSymbol &&
+            !combined.tokenAddress
+          ) {
+            combined.tokenSymbol = matched.vault.underlyingToken.symbol;
+            combined.tokenAddress = matched.vault.underlyingToken.address;
+          }
+
+          // 3) Only then update the current intent
           intentContext = await intentService.updateIntent(
             intentContext,
-            result
+            combined
           );
+
+          intentText = formatDepositIntent(combined);
         }
       }
 
@@ -189,15 +260,6 @@ export const positionParamsProvider: Provider = {
         strategies,
       };
 
-      const intentText = intentContext
-        ? `\n## Current Intent\nActive: ${intentContext.type} (${intentContext.id})\nStatus: ${intentContext.status}${
-            intentContext.returnData &&
-            Object.keys(intentContext.returnData).length > 0
-              ? `\nExtracted Data: ${JSON.stringify(intentContext.returnData, null, 2)}`
-              : ""
-          }`
-        : "";
-
       // Generate context-specific text based on intent type
       let contextSpecificText = "";
       if (intentContext?.type === "DEPOSIT") {
@@ -213,9 +275,6 @@ export const positionParamsProvider: Provider = {
 ${summary.positionsSummary}
 
 Total Portfolio Value: $${summary.totalPositionValue.toFixed(2)}
-
-## Withdrawal Status
-${summary.withdrawalsSummary}
 Overall Pending Withdrawals: ${summary.hasPendingWithdrawals ? "Yes" : "No"}${contextSpecificText}${intentText}`;
 
       return {

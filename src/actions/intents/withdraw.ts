@@ -23,6 +23,68 @@ import { WithdrawalRequest } from "../../api/levva/schema";
 import { StrategyEntry } from "../../services/levva/pool";
 import { CalldataWithDescription } from "../../types/tx";
 
+export interface WithdrawData extends ExtractedDataForWithdraw {
+  [key: string]: any;
+}
+
+export function formatWithdrawIntent(data: WithdrawData): string {
+  const {
+    strategyId,
+    strategyName,
+    strategyRisk,
+    amount,
+    withdrawalStep,
+    confidence,
+    thought,
+  } = data || {};
+
+  // Strategy formatting
+  let strategyLine = "[Not specified]";
+  const parts: string[] = [];
+  if (Number.isFinite(strategyId)) parts.push(`ID: ${strategyId}`);
+  if (strategyName) parts.push(`Name: ${strategyName}`);
+  if (strategyRisk) parts.push(`Risk: ${strategyRisk}`);
+  if (parts.length) strategyLine = parts.join(", ");
+
+  // Amount formatting
+  const amountLine =
+    typeof amount === "number" || amount === "all"
+      ? String(amount)
+      : "[Not specified]";
+
+  // Step formatting
+  const stepLine = withdrawalStep ?? "[Not specified]";
+
+  // Missing parameters detection (contextual by step)
+  const missing: string[] = [];
+  if (!Number.isFinite(strategyId) && !strategyName && !strategyRisk) {
+    missing.push("strategy");
+  }
+  if (
+    (withdrawalStep === "request" || withdrawalStep === undefined) &&
+    amount === undefined
+  ) {
+    missing.push("amount");
+  }
+
+  const status = missing.length === 0 ? "complete" : "needsMoreInfo";
+  const missingLine =
+    missing.length > 0 ? `\n- Missing Parameters: ${missing.join(", ")}` : "";
+
+  const confidenceLine =
+    typeof confidence === "number"
+      ? `\n- Confidence: ${(confidence * 100).toFixed(0)}%`
+      : "";
+  const thoughtLine = thought ? `\n- Note: ${thought}` : "";
+
+  return `### Withdraw Intent
+
+- Strategy: ${strategyLine}
+- Amount: ${amountLine}
+- Step: ${stepLine}
+- Status: ${status}${missingLine}${confidenceLine}${thoughtLine}`;
+}
+
 async function handleRequestRedeem(
   runtime: IAgentRuntime,
   address: `0x${string}`,
@@ -191,7 +253,7 @@ export const handleWithdrawIntent: IntentHandler = async (
   }
 
   // todo proper typing
-  const withdrawParams = intentContext.returnData as ExtractedDataForWithdraw;
+  const withdrawParams = intentContext.returnData as WithdrawData;
 
   if (!withdrawParams) {
     const errorContent = await rephrase({
@@ -224,9 +286,9 @@ export const handleWithdrawIntent: IntentHandler = async (
     };
   }
 
-  const { strategyId, amount, withdrawalStep } = withdrawParams;
+  const { strategy, strategyId, amount, withdrawalStep } = withdrawParams;
 
-  if (!strategyId) {
+  if (!strategyId || !strategy) {
     const errorContent = await rephrase({
       runtime,
       content: {
@@ -257,8 +319,7 @@ export const handleWithdrawIntent: IntentHandler = async (
     };
   }
 
-  const strategy = params?.strategies.find((s) => s.id === strategyId);
-
+  // should not happen because matched in provider
   if (!strategy) {
     throw new Error(`Strategy not found(id: ${strategyId})`);
   }
@@ -429,7 +490,7 @@ export async function onWithdrawSuccess(
     throw new Error("Strategy ID not found");
   }
 
-  const strategies = await service.getStrategies();
+  const strategies = await service.strategy.getStrategies();
   const strategy = strategies.find((s) => s.id === strategyId);
 
   if (!strategy) {

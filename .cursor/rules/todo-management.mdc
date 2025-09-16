@@ -1,0 +1,250 @@
+---
+description: TODO comment management and prioritization guide for systematic technical debt resolution
+alwaysApply: true
+---
+
+# TODO Management and Technical Debt Resolution
+
+## 🎯 **Current TODO Status Overview**
+
+**Total Items**: 53 TODO/FIXME/HACK comments across the codebase
+**Last Updated**: 2025-01-13
+
+### Priority Breakdown
+- 🔴 **Critical (7 items)**: Core functionality blockers
+- 🟡 **High (15 items)**: Performance and architecture improvements  
+- 🟢 **Medium (31 items)**: Code quality and maintenance
+
+---
+
+## 🔴 **CRITICAL PRIORITY - Address Immediately**
+
+### Strategy & Deposit System
+```typescript
+// src/actions/intents/deposit.ts:103
+// TODO match strategy
+// IMPACT: Core deposit functionality incomplete
+// ACTION: Implement strategy matching logic for vault vs pool strategies
+```
+
+```typescript
+// src/actions/intents/deposit.ts:107  
+// todo pass matched strategy to handleMissingDepositParameters
+// IMPACT: Parameter handling incomplete
+// ACTION: Update function signature to accept strategy parameter
+```
+
+### Withdrawal System
+```typescript
+// src/actions/intents/withdraw.ts:412
+// TODO oncomplete handlers
+// IMPACT: Withdrawal completion not properly handled
+// ACTION: Implement onWithdrawSuccess completion handlers
+```
+
+```typescript
+// src/actions/intents/withdraw.ts:193
+// todo proper typing
+// IMPACT: Type safety issues in withdrawal flow
+// ACTION: Add proper TypeScript interfaces for withdrawal parameters
+```
+
+### Intent Management
+```typescript
+// src/services/intent-manager.ts:421
+// TODO we can create a set on intent registration not to hardcode domains
+// IMPACT: Hardcoded domain logic, not scalable
+// ACTION: Implement dynamic domain registration system
+```
+
+### Service Architecture Refactoring
+```typescript
+// src/services/levva/class.ts:1-1163 (entire file)
+// TODO: Decompose LevvaService using class composition pattern
+// IMPACT: Monolithic service class (1163 lines) is difficult to maintain, test, and extend
+// ACTION: Refactor into composed components:
+//   - class LevvaService extends Service {
+//       public message: MessageComponent;
+//       public news: NewsComponent; 
+//       public strategy: StrategyComponent;
+//       public wallet: WalletComponent;
+//       public position: PositionComponent;
+//       public transaction: TransactionComponent;
+//     }
+// ESTIMATE: 8-12 hours
+// BENEFITS: Better separation of concerns, easier testing, improved maintainability
+```
+
+---
+
+## 🟡 **HIGH PRIORITY - Next Sprint**
+
+### Caching & Performance
+```typescript
+// src/services/levva/class.ts:1123
+// fixme use cache+invalidate?
+// ACTION: Implement proper cache invalidation strategy
+
+// src/services/levva/wallet.ts:115  
+// todo replace cache with balances table
+// ACTION: Migrate from memory cache to database-backed caching
+
+// src/actions/strategy.ts:320,368,428 (3 instances)
+// fixme implement WHERE ID IN (arr) for cache entries
+// ACTION: Implement batch cache operations for better performance
+```
+
+### Service Architecture
+```typescript
+// src/services/levva/class.ts:189
+// fixme handler invocations should have same call signature
+// ACTION: Standardize handler method signatures across services
+
+// src/services/levva/pool.ts:7
+// fixme rename module to strategy?
+// ACTION: Rename pool.ts to strategy.ts for clarity
+```
+
+### Token & Balance Management
+```typescript
+// src/services/levva/class.ts:387
+// todo maybe always use 0x00..00 address for native token?
+// ACTION: Standardize on ETH_NULL_ADDR constant usage
+
+// src/services/levva/class.ts:397,497 (2 instances)
+// todo add prices  
+// ACTION: Integrate price data from external APIs
+
+// src/services/levva/class.ts:410
+// fixme update balances in db in another method
+// ACTION: Extract balance updates to dedicated service method
+```
+
+---
+
+## 🟢 **MEDIUM PRIORITY - Technical Debt**
+
+### Type Safety Improvements
+- `src/services/levva/class.ts:325,430` - Add proper TypeScript types
+- `src/services/levva/tx.ts:98,217` - Implement Zod schema validation
+- `src/util/eth/token.ts:98` - Add input validation
+- `src/providers/index.ts:100` - Fix provider type definitions
+
+### Gas & Transaction Optimization
+- `src/util/eth/swap.ts:210,247,269` - Fix gas estimation and allowance calculations
+- `src/services/levva/class.ts:860` - Improve native token handling in swaps
+
+### Code Organization
+- `src/providers/index.ts:1` - Rename to `core.ts`
+- `src/util/db/erc20.ts:1` - Move DB helpers to service layer
+- `src/util/db/levva-user.ts:7` - Relocate to `services/levva`
+
+### Configuration Management
+- `src/services/levva/class.ts:96` - Centralize configuration
+- `src/api/levva/index.ts:8` - Add API configuration
+- `src/services/browser.ts:305` - Make delays configurable
+
+---
+
+## 📋 **TODO Resolution Workflow**
+
+### Before Starting Work
+1. **Check Priority**: Focus on Critical → High → Medium
+2. **Estimate Impact**: Consider user-facing vs internal improvements
+3. **Plan Dependencies**: Some TODOs depend on others being resolved first
+
+### When Adding New TODOs
+```typescript
+// ✅ GOOD: Descriptive with context
+// TODO: Implement retry logic for failed API calls - affects user experience
+// IMPACT: Users see errors without retry attempts
+// ESTIMATE: 2-3 hours
+
+// ❌ BAD: Vague without context  
+// TODO: fix this
+```
+
+### TODO Comment Standards
+```typescript
+// Format: TODO: [Description] - [Impact/Context]
+// Optional: IMPACT: [Business/Technical impact]
+// Optional: ESTIMATE: [Time estimate]
+// Optional: DEPENDS: [Other TODOs that must be resolved first]
+```
+
+---
+
+## 🔄 **Maintenance Schedule**
+
+### Weekly Review
+- Review new TODOs added during the week
+- Prioritize based on current sprint goals
+- Update this rule if priority shifts
+
+### Monthly Cleanup
+- Remove completed TODOs
+- Re-evaluate priorities based on product roadmap
+- Update statistics in this rule
+
+### Quarterly Assessment
+- Analyze TODO trends and patterns
+- Identify systemic issues causing technical debt
+- Plan architectural improvements to reduce future TODOs
+
+---
+
+## 🎯 **Success Metrics**
+
+### Target Reduction Goals
+- **Q1 2025**: Resolve all Critical (7) and 50% of High priority (8/15)
+- **Q2 2025**: Resolve remaining High priority and 50% of Medium (16/31)
+- **Q3 2025**: Complete remaining Medium priority items
+
+### Quality Gates
+- No new Critical TODOs without immediate resolution plan
+- High priority TODOs must have owner and timeline
+- All new features require TODO impact assessment
+
+---
+
+## 🛠️ **Tools and Automation**
+
+### Recommended VS Code Extensions
+- **TODO Highlight**: Highlights TODO comments in code
+- **TODO Tree**: Provides sidebar view of all TODOs
+- **GitLens**: Shows TODO history and ownership
+
+### Git Hooks (Recommended)
+```bash
+# Pre-commit hook to prevent new Critical TODOs
+#!/bin/sh
+if git diff --cached | grep -i "TODO.*CRITICAL\|FIXME.*CRITICAL"; then
+  echo "❌ Critical TODOs detected. Please resolve before committing."
+  exit 1
+fi
+```
+
+### Search Commands
+```bash
+# Find all TODOs
+bun run grep -r "TODO\|FIXME\|XXX\|HACK" src/
+
+# Find Critical TODOs
+bun run grep -r "TODO.*CRITICAL\|FIXME.*CRITICAL" src/
+
+# Count TODOs by file
+bun run grep -rc "TODO\|FIXME" src/ | grep -v ":0"
+```
+
+---
+
+## 📚 **Related Rules**
+
+- `@code-style.mdc` - Code formatting standards
+- `@error-handling.mdc` - Error handling patterns  
+- `@testing-patterns.mdc` - Test coverage for TODO fixes
+- `@action-patterns.mdc` - Action implementation standards
+
+---
+
+**Remember**: TODOs are not just comments—they're commitments to future improvements. Treat them as part of your technical roadmap, not just reminders.

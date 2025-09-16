@@ -142,7 +142,7 @@ export const action: Action = {
       const [assets, news, strategies, positions] = await Promise.all([
         service.getWalletAssets({ chainId, address }),
         service.getCryptoNews(),
-        service.getStrategies(chainId),
+        service.strategy.getStrategies(chainId),
         service.getUserPositions(address, chainId),
       ]);
 
@@ -378,7 +378,7 @@ export const suggest: Suggestion[] = [
         const [assets, positions, strategies] = await Promise.all([
           service.getWalletAssets({ chainId, address }),
           service.getUserPositions(address, chainId),
-          service.getStrategies(chainId),
+          service.strategy.getStrategies(chainId),
         ]);
 
         const totalValue = assets.reduce(
@@ -429,7 +429,7 @@ Suggest 3-4 optimization actions like:
       try {
         const [assets, strategies] = await Promise.all([
           service.getWalletAssets({ chainId, address }),
-          service.getStrategies(chainId),
+          service.strategy.getStrategies(chainId),
         ]);
 
         const significantAssets = assets

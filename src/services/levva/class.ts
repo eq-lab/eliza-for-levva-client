@@ -5,7 +5,6 @@ import {
   formatUnits,
   getAddress,
   isHex,
-  parseUnits,
   sha256,
   toHex,
 } from "viem";
@@ -29,10 +28,8 @@ import { balancesTable } from "../../schema/balances";
 import { getDb } from "../../util/db";
 import {
   extractTokenData,
-  getAllowance,
   getBalanceOf,
   getChain,
-  getClient,
   getLevvaUser,
   getTokenData,
   getToken as getTokenImpl,
@@ -51,16 +48,11 @@ import {
   onFeedItem,
 } from "./news";
 import {
-  LevvaPoolInterface,
-  PoolConstants,
-  Strategy,
-  StrategyEntry,
-  StrategyType,
-  VaultConstants,
   getPoolConstants,
   getPoolVariables as getPoolVariablesImpl,
   getVaultConstants,
 } from "./pool";
+import { StrategyComponent } from "./strategy";
 import {
   PendleInterface,
   getPendleParams as getPendleParamsImpl,
@@ -71,18 +63,10 @@ import {
   upsertBalance,
   WalletInterface,
 } from "./wallet";
-import { wrapEth } from "src/util/eth/weth";
-import { getPendleSwap } from "src/api/swap/pendle";
-import { bundlerEnter } from "./tx";
-import poolAbi from "./abi/pool.abi";
 import vaultAbi from "./abi/vault.abi";
 import withdrawalNftAbi from "./abi/vault.withdrawal-nft.abi";
 import { getMessages } from "./messages";
-import {
-  getStrategies as getStrategiesApi,
-  getUserPositions,
-  getWithdrawalRequests,
-} from "../../api/levva";
+import { getUserPositions, getWithdrawalRequests } from "../../api/levva";
 import { createPositionSummary } from "./positions";
 import { checkSecret } from "./secrets";
 
@@ -98,8 +82,11 @@ const MAX_WAIT_TIME = 15000; // time after which put promise in background
 
 export class LevvaService
   extends Service
-  implements ILevvaService, LevvaPoolInterface, PendleInterface, WalletInterface
+  implements ILevvaService, PendleInterface, WalletInterface
 {
+  // Service composition components - NEW functionality only
+  public readonly strategy: StrategyComponent;
+
   static serviceType = LEVVA_SERVICE.LEVVA_COMMON;
   capabilityDescription =
     "Levva service should analyze the user's portfolio, suggest earning strategies, swap crypto assets, etc.";
@@ -182,8 +169,11 @@ export class LevvaService
   constructor(runtime: IAgentRuntime) {
     super(runtime);
     assert(checkPlugins(runtime), "Required plugins not found");
-    this.handlerInterval = setInterval(this.bgHandler, 500);
 
+    // Initialize NEW service components - pass service instance to constructor
+    this.strategy = new StrategyComponent(runtime, this);
+
+    this.handlerInterval = setInterval(this.bgHandler, 500);
     this.events.on("background:resolved", (event) => {
       if (isFeedItem(event.id)) {
         // fixme handler invocations should have same call signature
@@ -602,7 +592,7 @@ export class LevvaService
     const [positions, withdrawals, strategies] = await Promise.all([
       this.getUserPositions(address, chainId),
       this.getWithdrawalRequests(address, chainId),
-      this.getStrategies(chainId), // Use processed StrategyEntry[] instead of raw API
+      this.strategy.getStrategies(chainId),
     ]);
 
     return {
@@ -713,387 +703,8 @@ export class LevvaService
     this.getVaultConstantsCacheKey
   );
 
-  private getStrategiesKey = (chainId?: number) =>
-    `strategies:${chainId ?? "all"}`;
-
-  getStrategies = this.permanentCache(async (chainId?: number) => {
-    const result = await getStrategiesApi(chainId);
-
-    if (!result.success) {
-      logger.error("Failed to get strategies", result.error);
-      throw new Error("Failed to get strategies");
-    }
-
-    logger.debug("Raw strategies data:", {
-      count: result.data.length,
-      firstStrategy: result.data[0],
-    });
-
-    return result.data.map<StrategyEntry>((x, index) => {
-      try {
-        logger.debug(`Processing strategy ${index}:`, {
-          id: x.id,
-          name: x.name,
-          type: x.type,
-          risk: x.risk,
-          category: x.category,
-        });
-
-        const type: StrategyType = "vault";
-        const strategy: Strategy =
-          x.type === "UltraSafe"
-            ? "ultra-safe"
-            : x.type === "Safe"
-              ? "safe"
-              : x.type === "Brave"
-                ? "brave"
-                : "custom";
-
-        const contractAddress = x.vault?.address;
-
-        if (!isHex(contractAddress)) {
-          throw new Error(
-            `Invalid contract address: ${contractAddress} for strategy ${x.id}`
-          );
-        }
-
-        const strategyEntry: StrategyEntry = {
-          type,
-          vaultChainId: x.vault?.publicChainId ?? 1,
-          contractAddress: contractAddress as `0x${string}`,
-          strategy,
-          description: x.description,
-          id: x.id,
-          name: x.name,
-          risk: x.risk,
-          category: x.category,
-          shortDescription: x.shortDescription,
-          backgroundColor: x.backgroundColor,
-          minimumEfficientDeposit: x.minimumEfficientDeposit,
-          apy: x.apy,
-          liquidityAvailability: x.liquidityAvailability,
-          bonuses: x.bonuses,
-          vault: x.vault,
-        };
-
-        logger.debug(
-          `Successfully processed strategy ${index}:`,
-          strategyEntry
-        );
-        return strategyEntry;
-      } catch (error) {
-        logger.error(`Error processing strategy ${index}:`, {
-          error,
-          strategy: x,
-        });
-        throw error;
-      }
-    });
-  }, this.getStrategiesKey);
-
-  formatStrategy(strategy: StrategyEntry) {
-    return `${strategy.strategy} - Contract: ${strategy.contractAddress}. Type: "${strategy.type}". ${strategy.description} `;
-  }
-
-  async getStrategyData(
-    strategy: StrategyEntry
-  ): Promise<
-    | { type: "vault"; data: VaultConstants }
-    | { type: "pool"; data: PoolConstants }
-  > {
-    if (strategy.type === "vault") {
-      return {
-        type: "vault",
-        data: await this.getVaultConstants(
-          strategy.vaultChainId,
-          strategy.contractAddress
-        ),
-      };
-    }
-
-    return {
-      type: "pool",
-      data: await this.getPoolConstants(
-        strategy.vaultChainId,
-        strategy.contractAddress
-      ),
-    };
-  }
-
-  async handlePoolStrategy(
-    strategy: StrategyEntry,
-    receiver: `0x${string}`,
-    tokenSymbolOrAddress: string,
-    amount: string,
-    _leverage?: number
-  ) {
-    if (!_leverage) {
-      logger.warn("No leverage provided, using default(x5)");
-    }
-
-    const leverage = _leverage ?? 5;
-    const {
-      type,
-      vaultChainId: chainId,
-      contractAddress: address,
-      bundler,
-    } = strategy;
-
-    if (type !== "pool") {
-      throw new Error(`Strategy ${address} is not a pool`);
-    }
-
-    const pool = await this.getPoolConstants(chainId, address);
-
-    const calls: CalldataWithDescription[] = [];
-
-    let tokenIn = await this.getTokenDataWithInfo({
-      chainId,
-      symbolOrAddress: tokenSymbolOrAddress,
-    });
-
-    let amountIn = parseUnits(amount, tokenIn?.decimals ?? 18);
-
-    const balance = await this.getBalanceOf(
-      receiver,
-      chainId,
-      tokenIn?.address ?? ETH_NULL_ADDR // todo fix native token
-    );
-
-    if ((balance?.amount ?? BigInt(0)) < amountIn) {
-      throw new Error("Insufficient balance");
-    }
-
-    if (!tokenIn?.address) {
-      logger.warn(`using WETH`);
-      const weth = await this.getWETH(chainId);
-
-      tokenIn = await this.getTokenDataWithInfo({
-        chainId,
-        symbolOrAddress: weth.symbol,
-      });
-
-      calls.push(wrapEth(amountIn, weth));
-      amountIn = parseUnits(amount, weth.decimals);
-    }
-
-    const client = getClient(getChain(chainId));
-
-    const basePriceX96 = await client.readContract({
-      address,
-      abi: poolAbi,
-      functionName: "getLiquidationPrice",
-    });
-
-    const limitPriceX96 = (basePriceX96.inner * BigInt(100)) / BigInt(95); // 5% slippage tolerance
-
-    if (bundler && tokenIn?.address !== pool.baseToken) {
-      // handling tokens other than base token if supported
-      // fixme make method
-      const pendle = await this.getPendleParams(chainId, {
-        baseToken: pool.baseToken,
-        quoteToken: pool.quoteToken,
-      });
-
-      const market = pendle?.market;
-
-      if (!market) {
-        throw new Error(
-          `Market not found for ${pool.baseToken} and ${pool.quoteToken}`
-        );
-      }
-
-      if (!tokenIn?.address) {
-        throw new Error("weth error");
-      }
-
-      const swap = await getPendleSwap({
-        chainId: chainId.toString() as `${number}`,
-        market,
-        receiver,
-        slippage: "0.05" as `${number}`,
-        enableAggregator: "true",
-        tokenIn: tokenIn.address,
-        tokenOut: pool.baseToken,
-        amountIn: amountIn.toString() as `${number}`,
-      });
-
-      if (!swap) {
-        throw new Error(
-          `Failed to swap ${amountIn.toString()} ${tokenIn?.symbol} to ${pool.baseToken}`
-        );
-      }
-
-      logger.debug(`Swap: ${JSON.stringify(swap, null, 2)}`);
-
-      if (leverage < 1) {
-        throw new Error("Leverage must be greater than 1");
-      }
-
-      const longAmount = BigInt(swap.data.amountOut) * BigInt(leverage - 1);
-
-      const { approve } = await getAllowance({
-        sender: receiver,
-        spender: bundler,
-        token: tokenIn.address,
-        amount: amountIn,
-        client,
-        decimals: tokenIn.decimals,
-        symbol: tokenIn.symbol,
-      });
-
-      if (approve) {
-        calls.push(approve);
-      }
-
-      const calldata = bundlerEnter(swap, {
-        pool: address,
-        longAmount,
-        limitPriceX96,
-      });
-
-      calls.push({
-        to: bundler,
-        data: calldata,
-        title: `Deposit ${amount} ${tokenIn.symbol}`,
-        description: `Entering pool ${address} with ${amountIn.toString()} ${tokenIn?.symbol} and x${leverage} leverage`,
-      });
-
-      return calls;
-    }
-
-    if (tokenIn?.address === pool.baseToken) {
-      if (leverage < 1) {
-        throw new Error("Leverage must be greater than 1");
-      }
-
-      const longAmount = BigInt(amountIn) * BigInt(leverage - 1);
-
-      const { approve } = await getAllowance({
-        sender: receiver,
-        spender: address,
-        token: tokenIn.address,
-        amount: amountIn,
-        client,
-        decimals: tokenIn.decimals,
-        symbol: tokenIn.symbol,
-      });
-
-      if (approve) {
-        calls.push(approve);
-      }
-
-      const defaultSwapCalldata = await client.readContract({
-        abi: poolAbi,
-        address,
-        functionName: "defaultSwapCallData",
-      });
-
-      const calldata = encodeFunctionData({
-        abi: poolAbi,
-        functionName: "execute",
-        args: [
-          0 /* DEPOSIT_BASE */,
-          amountIn,
-          longAmount,
-          limitPriceX96,
-          false,
-          ETH_NULL_ADDR,
-          BigInt(defaultSwapCalldata),
-        ],
-      });
-
-      calls.push({
-        to: address,
-        data: calldata,
-        title: `Deposit ${amount} ${tokenIn.symbol}`,
-        description: `Depositing ${amountIn.toString()} ${tokenIn.symbol} to pool ${address} with x${leverage} leverage`,
-      });
-
-      return calls;
-    }
-
-    throw new Error(
-      `deposit of token ${tokenIn?.symbol} to pool ${address} is not supported, please swap into ${pool.baseToken} first or use bundler`
-    );
-  }
-
-  async handleVaultStrategy(
-    strategy: StrategyEntry,
-    sender: `0x${string}`,
-    amount: string,
-    wrap?: boolean
-  ) {
-    const { type, vaultChainId: chainId, contractAddress: address } = strategy;
-
-    if (type !== "vault") {
-      throw new Error(`Strategy ${address} is not a vault`);
-    }
-
-    const vault = await this.getVaultConstants(chainId, address);
-    const calls: CalldataWithDescription[] = [];
-
-    const tokenIn = await this.getTokenDataWithInfo({
-      chainId,
-      symbolOrAddress: vault.asset,
-    });
-
-    if (!tokenIn?.address) {
-      throw new Error(`Token ${vault.asset} not found`);
-    }
-
-    let amountIn = parseUnits(amount, tokenIn.decimals);
-
-    const balance = await this.getBalanceOf(sender, chainId, tokenIn.address);
-
-    if (wrap) {
-      const weth = await this.getWETH(chainId);
-
-      if (weth.address !== vault.asset) {
-        throw new Error(`Vault ${address} is not a WETH vault`);
-      }
-
-      calls.push(wrapEth(amountIn, weth));
-      amountIn = parseUnits(amount, weth.decimals);
-    }
-
-    if ((balance?.amount ?? BigInt(0)) < amountIn) {
-      throw new Error(
-        `Insufficient balance, consider swapping to ${tokenIn.symbol} first`
-      );
-    }
-
-    const client = getClient(getChain(chainId));
-
-    const { approve } = await getAllowance({
-      sender,
-      spender: address,
-      token: tokenIn.address,
-      amount: amountIn,
-      client,
-      decimals: tokenIn.decimals,
-      symbol: tokenIn.symbol,
-    });
-
-    if (approve) {
-      calls.push(approve);
-    }
-
-    const calldata = encodeFunctionData({
-      abi: vaultAbi,
-      functionName: "deposit",
-      args: [amountIn, sender],
-    });
-
-    calls.push({
-      to: address,
-      data: calldata,
-      title: `Deposit ${amount} ${tokenIn.symbol}`,
-      description: `Depositing ${amount} ${tokenIn.symbol} to vault ${address}`,
-    });
-
-    return calls;
-  }
+  // getStrategies moved to StrategyComponent
+  // handlePoolStrategy moved to StrategyComponent
 
   async checkEligibility(
     entity?: Entity | null

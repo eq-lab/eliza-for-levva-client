@@ -12,11 +12,142 @@ import {
   PositionParamsProviderData,
 } from "../../providers/position-params";
 import { selectProviderState } from "../../providers/util";
+import { ExtractedDataForDeposit } from "../../prompts/deposit";
 import { LevvaService } from "../../services/levva/class";
+import { StrategyEntry } from "../../services/levva/pool";
 import { IntentContext, IntentHandler } from "../../services/intent-manager";
-import { ActionResult } from "../../util/action-results";
 import { CalldataWithDescription } from "../../types/tx";
+import { ActionResult } from "../../util/action-results";
 import { rephrase } from "../../util/generate";
+
+export interface DepositData extends ExtractedDataForDeposit {
+  strategy?: StrategyEntry;
+  [key: string]: any;
+}
+
+export function formatDepositIntent(data: DepositData): string {
+  const {
+    strategy,
+    strategyId,
+    strategyName,
+    strategyRisk,
+    tokenSymbol,
+    tokenAddress,
+    amount,
+    leverage,
+  } = data || {};
+
+  const hasStrategyInput = Boolean(
+    strategy || strategyId || strategyName || strategyRisk
+  );
+
+  const isVault = strategy?.type === "vault";
+  const isPool = strategy?.type === "pool";
+
+  // Strategy formatting
+  let strategyLine = "[Not specified]";
+  if (strategy) {
+    const parts: string[] = [];
+    parts.push(strategy.name || "Unknown");
+    parts.push(`ID: ${strategy.id}`);
+    if (strategy.type) parts.push(`Type: ${strategy.type}`);
+    if (strategy.risk) parts.push(`Risk: ${strategy.risk}`);
+    strategyLine = `${parts.join(", ")}`;
+
+    if (isVault && strategy.vault?.underlyingToken?.symbol) {
+      strategyLine += ` - Underlying: ${strategy.vault.underlyingToken.symbol}`;
+    }
+  } else if (hasStrategyInput) {
+    const parts: string[] = [];
+    if (strategyName) parts.push(`Name: ${strategyName}`);
+    if (Number.isFinite(strategyId)) parts.push(`ID: ${strategyId}`);
+    if (strategyRisk) parts.push(`Risk: ${strategyRisk}`);
+    strategyLine = parts.length ? parts.join(", ") : strategyLine;
+  }
+
+  // Token formatting
+  let inferredVaultTokenNote = "";
+  let tokenLine = "[Not specified]";
+  if (isVault) {
+    const vaultSymbol = strategy?.vault?.underlyingToken?.symbol;
+    const vaultAddress = strategy?.vault?.underlyingToken?.address;
+    const providedSymbolOrAddress = tokenSymbol || tokenAddress;
+    const displaySymbol = providedSymbolOrAddress || vaultSymbol;
+    const displayAddress = providedSymbolOrAddress
+      ? tokenAddress
+      : vaultAddress;
+
+    if (displaySymbol || displayAddress) {
+      const symbolText = displaySymbol ?? "";
+      const addressText = displayAddress
+        ? displayAddress === ETH_NULL_ADDR
+          ? "ETH"
+          : displayAddress
+        : "";
+      tokenLine = [symbolText, addressText && `(${addressText})`]
+        .filter(Boolean)
+        .join(" ");
+    }
+
+    if (!tokenSymbol && !tokenAddress && vaultSymbol) {
+      inferredVaultTokenNote = `\n- Note: Token is derived from vault underlying token (${vaultSymbol})`;
+    }
+  } else if (isPool) {
+    if (tokenSymbol || tokenAddress) {
+      const addressText = tokenAddress
+        ? tokenAddress === ETH_NULL_ADDR
+          ? "ETH"
+          : tokenAddress
+        : "";
+      tokenLine = [tokenSymbol ?? "", addressText && `(${addressText})`]
+        .filter(Boolean)
+        .join(" ");
+    }
+  } else {
+    // Unknown strategy type or not selected yet
+    if (tokenSymbol || tokenAddress) {
+      const addressText = tokenAddress
+        ? tokenAddress === ETH_NULL_ADDR
+          ? "ETH"
+          : tokenAddress
+        : "";
+      tokenLine = [tokenSymbol ?? "", addressText && `(${addressText})`]
+        .filter(Boolean)
+        .join(" ");
+    }
+  }
+
+  // Amount formatting
+  const amountLine = amount ?? "[Not specified]";
+
+  // Leverage formatting: only meaningful for pool strategies
+  const leverageLine = isPool ? `x${leverage || 1}` : "N/A";
+
+  // Missing parameters detection
+  const missing: string[] = [];
+  if (!strategy) {
+    missing.push("strategy");
+  }
+  if (isPool && !(tokenSymbol || tokenAddress)) {
+    missing.push("token");
+  }
+  if (!amount) {
+    missing.push("amount");
+  }
+
+  const status = missing.length === 0 ? "complete" : "needsMoreInfo";
+
+  const missingLine =
+    missing.length > 0 ? `\n- Missing Parameters: ${missing.join(", ")}` : "";
+
+  return `### Deposit Intent
+
+- Strategy: ${strategyLine}
+- Token: ${tokenLine}
+- Amount: ${amountLine}
+- Leverage: ${leverageLine}
+- Status: ${status}${missingLine}${inferredVaultTokenNote}`;
+}
 
 /**
  * Deposit Intent Handler
@@ -80,14 +211,15 @@ export const handleDepositIntent: IntentHandler = async (
     const {
       strategyId,
       strategyName,
+      strategy,
       tokenSymbol,
       tokenAddress,
       amount,
       leverage,
-    } = intentContext.returnData || {};
+    } = (intentContext.returnData as DepositData) || {};
 
     // Check if we have all required parameters
-    if (!strategyId && !strategyName) {
+    if (!strategy || (!strategyId && !strategyName)) {
       return await handleMissingDepositParameters(
         runtime,
         message,
@@ -100,7 +232,30 @@ export const handleDepositIntent: IntentHandler = async (
       );
     }
 
+    const matchedStrategy = strategy; // strategy should be matched in provider
+
+    // For vault strategies, token is determined by the vault's underlyingToken (handled in provider)
+    // If token is missing here:
+    // - Vault: skip asking for token and proceed to amount question
+    // - Pool/Other: ask for token
     if (!tokenSymbol && !tokenAddress) {
+      if (
+        matchedStrategy?.type === "vault" &&
+        matchedStrategy.vault?.underlyingToken
+      ) {
+        return await handleMissingDepositParameters(
+          runtime,
+          message,
+          state,
+          callback,
+          intentContext,
+          params,
+          prevActions,
+          "amount",
+          matchedStrategy
+        );
+      }
+
       return await handleMissingDepositParameters(
         runtime,
         message,
@@ -109,7 +264,8 @@ export const handleDepositIntent: IntentHandler = async (
         intentContext,
         params,
         prevActions,
-        "token"
+        "token",
+        matchedStrategy
       );
     }
 
@@ -122,7 +278,8 @@ export const handleDepositIntent: IntentHandler = async (
         intentContext,
         params,
         prevActions,
-        "amount"
+        "amount",
+        matchedStrategy
       );
     }
 
@@ -136,7 +293,8 @@ export const handleDepositIntent: IntentHandler = async (
       { strategyId, strategyName, tokenSymbol, tokenAddress, amount, leverage },
       lvva,
       service,
-      prevActions
+      prevActions,
+      matchedStrategy
     );
   } catch (error) {
     runtime.logger.error("Error in deposit intent handler:", error);
@@ -182,7 +340,8 @@ async function handleMissingDepositParameters(
   intentContext: IntentContext,
   params: PositionParamsProviderData,
   prevActions?: any,
-  missingParam?: string
+  missingParam?: string,
+  matchedStrategy?: StrategyEntry
 ): Promise<ActionResult> {
   // Get context from intent data and conversation
   const { returnData } = intentContext;
@@ -195,77 +354,89 @@ async function handleMissingDepositParameters(
     amount,
   } = returnData || {};
 
-  // Get service and provider state for strategy lookup
-  const service = runtime.getService<LevvaService>(LEVVA_SERVICE.toString());
-  const lvva = selectProviderState<LevvaProviderState>(
-    LEVVA_PROVIDER_NAME,
+  const positionParams = selectProviderState<PositionParamsProviderData>(
+    POSITION_PARAMS_PROVIDER_NAME,
     state
   );
+
+  if (!positionParams) {
+    throw new Error("Failed to get position params");
+  }
+  // Get service for StrategyComponent helpers
+  const service = runtime.getService<LevvaService>(LEVVA_SERVICE.LEVVA_COMMON);
+  if (!service) {
+    throw new Error("Failed to get levva service");
+  }
 
   // Build context-aware response based on what we already know
   let contextualResponse = "";
 
   if (missingParam === "strategy") {
+    const strategiesText = positionParams.strategies
+      .map((s) => service.strategy.formatStrategy(s))
+      .join("\n");
+
     // We know they want to deposit but not which strategy
     if (tokenSymbol || tokenAddress) {
-      contextualResponse = `I see you want to deposit ${tokenSymbol || "tokens"}. Which strategy would you like to use? You can choose from ultra-safe, safe, or brave strategies.`;
+      contextualResponse = `I see you want to deposit ${tokenSymbol || "tokens"}.
+Which strategy would you like to use?
+### Available Strategies
+${strategiesText}`;
     } else {
-      contextualResponse = `I can help you choose an investment strategy. Would you prefer an ultra-safe, safe, or brave strategy?`;
+      contextualResponse = `I can help you choose an investment strategy.
+### Available Strategies
+${strategiesText}`;
     }
   } else if (missingParam === "token") {
-    // This should mainly apply to pool strategies, as vault strategies auto-determine token
-    if (strategyName || strategyRisk) {
+    // Use StrategyComponent helper for strategy-specific token logic
+    if (matchedStrategy) {
+      const tokenResult = service.strategy.autoFillVaultToken(
+        matchedStrategy,
+        intentContext
+      );
+
+      if (tokenResult.autoFilled) {
+        // Vault strategy auto-filled token - skip to amount parameter
+        contextualResponse = tokenResult.message!;
+
+        return await handleMissingDepositParameters(
+          runtime,
+          message,
+          state,
+          callback,
+          intentContext,
+          params,
+          prevActions,
+          "amount", // Move to next missing parameter
+          matchedStrategy
+        );
+      } else {
+        // Pool strategy or other - ask for token
+        contextualResponse = tokenResult.message!;
+      }
+    } else if (strategyName || strategyRisk) {
       const strategy = strategyName || `${strategyRisk} strategy`;
       contextualResponse = `Great choice on the ${strategy}! Which token would you like to deposit? You can use USDC, ETH, or other tokens from your portfolio.`;
     } else {
       contextualResponse = `Which token would you like to deposit? I can see your available tokens and help you choose.`;
     }
   } else if (missingParam === "amount") {
-    // We know strategy and token but not amount
-    const strategy =
-      strategyName || (strategyRisk ? `${strategyRisk} strategy` : "strategy");
-
-    // For vault strategies, use the strategy's underlyingToken symbol
-    // For pool strategies or when strategy is unknown, use extracted token data
+    // Use StrategyComponent helper for strategy-specific token logic
+    let strategy = "strategy";
     let token = "tokens";
 
-    // Try to get the actual strategy to determine the correct token
-    if ((strategyName || strategyRisk || strategyId) && service && lvva) {
-      try {
-        const chainId = lvva.chainId;
-        const availableStrategies = await service.getStrategies(chainId);
-
-        const foundStrategy = availableStrategies.find(
-          (s) =>
-            s.id === strategyId ||
-            (s.name &&
-              strategyName &&
-              s.name.toLowerCase() === strategyName.toLowerCase()) ||
-            (strategyRisk &&
-              s.risk.toLowerCase() === strategyRisk.toLowerCase())
-        );
-
-        if (
-          foundStrategy?.type === "vault" &&
-          foundStrategy.vault?.underlyingToken
-        ) {
-          token = foundStrategy.vault.underlyingToken.symbol;
-        } else {
-          // For pool strategies or when vault info is missing, use extracted token
-          token =
-            tokenSymbol ||
-            (tokenAddress !== ETH_NULL_ADDR ? tokenAddress : "ETH") ||
-            "tokens";
-        }
-      } catch {
-        // Fallback to extracted token data
-        token =
-          tokenSymbol ||
-          (tokenAddress !== ETH_NULL_ADDR ? tokenAddress : "ETH") ||
-          "tokens";
-      }
+    if (matchedStrategy) {
+      strategy = matchedStrategy.name || `${matchedStrategy.risk} strategy`;
+      token = service.strategy.getTokenForAmountPrompt(
+        matchedStrategy,
+        tokenSymbol,
+        tokenAddress
+      );
     } else {
-      // No strategy info, use extracted token
+      // Fallback to extracted data
+      strategy =
+        strategyName ||
+        (strategyRisk ? `${strategyRisk} strategy` : "strategy");
       token =
         tokenSymbol ||
         (tokenAddress !== ETH_NULL_ADDR ? tokenAddress : "ETH") ||
@@ -334,7 +505,8 @@ async function executeDepositTransaction(
   },
   lvva: LevvaProviderState,
   service: LevvaService,
-  prevActions?: any
+  prevActions?: any,
+  strategy?: StrategyEntry
 ): Promise<ActionResult> {
   const {
     strategyId,
@@ -345,20 +517,8 @@ async function executeDepositTransaction(
     leverage,
   } = depositParams;
 
-  // Get full strategy data from service (needed for contractAddress, etc.)
-  const chainId = lvva.chainId;
-  const availableStrategies = await service.getStrategies(chainId);
-
-  // Find the strategy by ID or name
-  const strategy = availableStrategies.find(
-    (s) =>
-      s.id === strategyId ||
-      (s.name &&
-        strategyName &&
-        s.name.toLowerCase() === strategyName.toLowerCase())
-  );
-
   if (!strategy) {
+    // should not happen but nevertheless
     throw new Error(`Strategy not found: ${strategyId || strategyName}`);
   }
 
@@ -377,27 +537,6 @@ async function executeDepositTransaction(
 
     actualToken = strategy.vault.underlyingToken.symbol;
     tokenIn = strategy.vault.underlyingToken.address;
-
-    // If user specified a token, validate it matches the vault's underlyingToken
-    if (tokenSymbol || tokenAddress) {
-      const userToken = tokenAddress || tokenSymbol;
-      const isValidToken =
-        userToken?.toLowerCase() ===
-          strategy.vault.underlyingToken.symbol.toLowerCase() ||
-        userToken?.toLowerCase() ===
-          strategy.vault.underlyingToken.address.toLowerCase() ||
-        // Handle ETH/WETH aliases
-        (userToken?.toLowerCase() === "eth" &&
-          strategy.vault.underlyingToken.symbol.toLowerCase() === "weth") ||
-        (userToken?.toLowerCase() === "weth" &&
-          strategy.vault.underlyingToken.symbol.toLowerCase() === "weth");
-
-      if (!isValidToken) {
-        throw new Error(
-          `Invalid token for ${strategy.name}. This vault only accepts ${strategy.vault.underlyingToken.symbol} deposits.`
-        );
-      }
-    }
   } else if (strategy.type === "pool") {
     // Pool strategies require user to specify token
     tokenIn = tokenAddress || tokenSymbol || "";
@@ -425,7 +564,7 @@ async function executeDepositTransaction(
   try {
     if (strategy.type === "pool") {
       // Handle pool strategy with leverage
-      calldata = await service.handlePoolStrategy(
+      calldata = await service.strategy.handlePoolStrategy(
         strategy,
         address,
         tokenIn,
@@ -446,7 +585,8 @@ async function executeDepositTransaction(
         actualToken.toLowerCase() === "eth" &&
         strategy.vault?.underlyingToken.symbol.toLowerCase() === "weth";
 
-      calldata = await service.handleVaultStrategy(
+      // Use StrategyComponent handleVaultStrategy
+      calldata = await service.strategy.handleVaultStrategy(
         strategy,
         address,
         amount!,
