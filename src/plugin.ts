@@ -18,6 +18,8 @@ import clearSuggestRoute from "./routes/clear-suggest";
 import { BrowserService } from "./services/browser";
 import { LevvaService } from "./services/levva/class";
 import { IntentManager } from "./services/intent-manager";
+import { MessageRateLimiter } from "./services/message-rate-limiter";
+import { LEVVA_SERVICE } from "./constants/enum";
 
 /**
  * Define the configuration schema for the plugin with the following properties:
@@ -81,7 +83,7 @@ const plugin: Plugin = {
         );
 
         if (!service) {
-          logger.warn("Service not found");
+          logger.warn("LevvaService not found");
           return;
         }
 
@@ -90,14 +92,36 @@ const plugin: Plugin = {
         );
 
         if (!result) {
-          logger.warn("Entity is not eligible", { runId, entityId, reason });
+          logger.warn("Entity is not eligible (ETH balance)", {
+            runId,
+            entityId,
+            reason,
+          });
           const signal = CancelRunSignal.getSignal(runId);
           signal.cancel(reason);
+          return;
+        }
+
+        const rateLimiter = runtime.getService<MessageRateLimiter>(
+          LEVVA_SERVICE.MESSAGE_RATE_LIMITER
+        );
+
+        if (!rateLimiter) {
+          logger.warn("MessageRateLimiter service not found");
+          return;
+        }
+
+        const rateLimitCheck = await rateLimiter.checkMessageLimit(entityId);
+
+        if (!rateLimitCheck.result) {
+          const signal = CancelRunSignal.getSignal(runId);
+          signal.cancel(rateLimitCheck.reason);
+          return;
         }
       },
     ],
   },
-  services: [BrowserService, LevvaService, IntentManager],
+  services: [BrowserService, LevvaService, IntentManager, MessageRateLimiter],
   actions: modules.map((m) => m.action),
   providers: [
     levvaProvider,
