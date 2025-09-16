@@ -8,6 +8,7 @@ export enum LEVVA_ACTIONS {
 export enum LEVVA_SERVICE {
   LEVVA_COMMON = "levva-common",
   INTENT_MANAGER = "intent-manager",
+  MESSAGE_RATE_LIMITER = "message-rate-limiter",
 }
 
 export enum INTENT_TYPE {
