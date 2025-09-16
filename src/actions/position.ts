@@ -431,8 +431,7 @@ export const suggest: Suggestion[] = [
       // Check for ETH in portfolio
       const ethAsset = portfolio.find(
         (asset) =>
-          asset.token === ETH_NULL_ADDR ||
-          asset.address === ETH_NULL_ADDR
+          asset.token === ETH_NULL_ADDR || asset.address === ETH_NULL_ADDR
       );
       const hasEth = ethAsset ? ethAsset.amount > 0n : false;
 
@@ -494,8 +493,7 @@ export const suggest: Suggestion[] = [
       // Check for ETH in portfolio
       const ethAsset = portfolio.find(
         (asset) =>
-          asset.token === ETH_NULL_ADDR ||
-          asset.address === ETH_NULL_ADDR
+          asset.token === ETH_NULL_ADDR || asset.address === ETH_NULL_ADDR
       );
       const hasEth = ethAsset ? ethAsset.amount > 0n : false;
 
@@ -545,8 +543,7 @@ export const suggest: Suggestion[] = [
       // Check for ETH in portfolio
       const ethAsset = portfolio.find(
         (asset) =>
-          asset.token === ETH_NULL_ADDR ||
-          asset.address === ETH_NULL_ADDR
+          asset.token === ETH_NULL_ADDR || asset.address === ETH_NULL_ADDR
       );
       const hasEth = ethAsset ? ethAsset.amount > 0n : false;
 

@@ -14,6 +14,7 @@ import {
   extractDepositDataFromMessagePrompt,
 } from "src/prompts/deposit";
 import { StrategyEntry } from "../services/levva/pool";
+import { DepositData } from "src/actions/intents/deposit";
 
 export interface PositionParamsProviderData {
   userPositions: UserPosition[];
@@ -129,6 +130,15 @@ export const positionParamsProvider: Provider = {
           );
         }
       } else if (intentContext?.type === "DEPOSIT") {
+        const strategyIdMap = strategies.reduce(
+          (acc, strategy) => {
+            acc[strategy.id] =
+              `id: ${strategy.id}, name: "${strategy.name}", type: ${strategy.type}, risk: ${strategy.risk}`;
+            return acc;
+          },
+          {} as Record<number, string>
+        );
+
         // Get additional data needed for deposit context
         const [availableTokens, walletAssets] = await Promise.all([
           service.getAvailableTokens({ chainId }),
@@ -169,9 +179,40 @@ export const positionParamsProvider: Provider = {
         );
 
         if (result) {
+          // 1) Combine values from existing returnData and newly extracted result
+          const previous = (intentContext?.returnData ||
+            {}) as Partial<DepositData>;
+
+          const combined: DepositData = {
+            ...previous,
+            ...result,
+          };
+
+          // 2) Match strategy using StrategyComponent helpers
+          const matched: StrategyEntry | undefined =
+            service.strategy.findStrategy(strategies, {
+              strategyId: combined.strategyId,
+              strategyName: combined.strategyName,
+              strategyRisk: combined.strategyRisk,
+            });
+
+          combined.strategy = matched;
+
+          // For vault strategies, auto-fill token if still missing
+          if (
+            matched?.type === "vault" &&
+            matched.vault?.underlyingToken &&
+            !combined.tokenSymbol &&
+            !combined.tokenAddress
+          ) {
+            combined.tokenSymbol = matched.vault.underlyingToken.symbol;
+            combined.tokenAddress = matched.vault.underlyingToken.address;
+          }
+
+          // 3) Only then update the current intent
           intentContext = await intentService.updateIntent(
             intentContext,
-            result
+            combined
           );
         }
       }

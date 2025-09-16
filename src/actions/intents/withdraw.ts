@@ -23,6 +23,10 @@ import { WithdrawalRequest } from "../../api/levva/schema";
 import { StrategyEntry } from "../../services/levva/pool";
 import { CalldataWithDescription } from "../../types/tx";
 
+export interface WithdrawData extends ExtractedDataForWithdraw {
+  [key: string]: any;
+}
+
 async function handleRequestRedeem(
   runtime: IAgentRuntime,
   address: `0x${string}`,
@@ -191,7 +195,7 @@ export const handleWithdrawIntent: IntentHandler = async (
   }
 
   // todo proper typing
-  const withdrawParams = intentContext.returnData as ExtractedDataForWithdraw;
+  const withdrawParams = intentContext.returnData as WithdrawData;
 
   if (!withdrawParams) {
     const errorContent = await rephrase({
@@ -429,7 +433,7 @@ export async function onWithdrawSuccess(
     throw new Error("Strategy ID not found");
   }
 
-  const strategies = await service.getStrategies();
+  const strategies = await service.strategy.getStrategies();
   const strategy = strategies.find((s) => s.id === strategyId);
 
   if (!strategy) {

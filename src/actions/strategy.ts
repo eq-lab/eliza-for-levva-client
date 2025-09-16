@@ -280,7 +280,7 @@ export const suggest: Suggestion[] = [
       }
 
       const [strategies, assets, availableTokens] = await Promise.all([
-        service.getStrategies(params.chainId),
+        service.strategy.getStrategies(params.chainId),
         service.getWalletAssets({
           address: params.address,
           chainId: params.chainId,
@@ -291,7 +291,9 @@ export const suggest: Suggestion[] = [
       ]);
 
       return suggestStrategyRiskProfilePrompt({
-        strategies: strategies.map(service.formatStrategy).join("\n"),
+        strategies: strategies
+          .map((s) => service.strategy.formatStrategy(s))
+          .join("\n"),
         decision: params.decision,
         conversation: params.conversation,
         portfolio: service.formatWalletAssets(assets, true),
@@ -314,21 +316,23 @@ export const suggest: Suggestion[] = [
       }
 
       const [strategies, assets, availableTokens] = await Promise.all([
-        service.getStrategies(params.chainId).then(async (strategies) => {
-          return Promise.all(
-            strategies.map(async (strategy) => {
-              // fixme implement WHERE ID IN (arr) for cache entries
-              const data = await service.getStrategyData(strategy);
+        service.strategy
+          .getStrategies(params.chainId)
+          .then(async (strategies) => {
+            return Promise.all(
+              strategies.map(async (strategy) => {
+                // fixme implement WHERE ID IN (arr) for cache entries
+                const data = await service.strategy.getStrategyData(strategy);
 
-              const tokenStr =
-                data.type === "pool"
-                  ? `Base token: ${data.data.baseToken}, Quote token: ${data.data.quoteToken}`
-                  : `Token: ${data.data.asset}`;
+                const tokenStr =
+                  data.type === "pool"
+                    ? `Base token: ${data.data.baseToken}, Quote token: ${data.data.quoteToken}`
+                    : `Token: ${data.data.asset}`;
 
-              return `${service.formatStrategy(strategy)}. ${tokenStr}`;
-            })
-          );
-        }),
+                return `${service.strategy.formatStrategy(strategy)}. ${tokenStr}`;
+              })
+            );
+          }),
         service.getWalletAssets({
           address: params.address,
           chainId: params.chainId,
@@ -362,21 +366,23 @@ export const suggest: Suggestion[] = [
       }
 
       const [strategies, assets, availableTokens] = await Promise.all([
-        service.getStrategies(params.chainId).then(async (strategies) => {
-          return Promise.all(
-            strategies.map(async (strategy) => {
-              // fixme implement WHERE ID IN (arr) for cache entries
-              const data = await service.getStrategyData(strategy);
+        service.strategy
+          .getStrategies(params.chainId)
+          .then(async (strategies) => {
+            return Promise.all(
+              strategies.map(async (strategy) => {
+                // fixme implement WHERE ID IN (arr) for cache entries
+                const data = await service.strategy.getStrategyData(strategy);
 
-              const tokenStr =
-                data.type === "pool"
-                  ? `Base token: ${data.data.baseToken}, Quote token: ${data.data.quoteToken}`
-                  : `Token: ${data.data.asset}`;
+                const tokenStr =
+                  data.type === "pool"
+                    ? `Base token: ${data.data.baseToken}, Quote token: ${data.data.quoteToken}`
+                    : `Token: ${data.data.asset}`;
 
-              return `${service.formatStrategy(strategy)}. ${tokenStr}`;
-            })
-          );
-        }),
+                return `${service.strategy.formatStrategy(strategy)}. ${tokenStr}`;
+              })
+            );
+          }),
         service.getWalletAssets({
           address: params.address,
           chainId: params.chainId,
@@ -389,8 +395,7 @@ export const suggest: Suggestion[] = [
       // Check for ETH in portfolio for WETH conversion awareness
       const ethBalance = assets.find(
         (asset) =>
-          asset.token === ETH_NULL_ADDR ||
-          asset.address === ETH_NULL_ADDR
+          asset.token === ETH_NULL_ADDR || asset.address === ETH_NULL_ADDR
       );
 
       const hasEth = ethBalance && ethBalance.amount > 0n;
@@ -422,21 +427,23 @@ export const suggest: Suggestion[] = [
       }
 
       const [strategies, tokens, portfolio] = await Promise.all([
-        service.getStrategies(params.chainId).then(async (strategies) => {
-          return Promise.all(
-            strategies.map(async (strategy) => {
-              // fixme implement WHERE ID IN (arr) for cache entries
-              const data = await service.getStrategyData(strategy);
+        service.strategy
+          .getStrategies(params.chainId)
+          .then(async (strategies) => {
+            return Promise.all(
+              strategies.map(async (strategy) => {
+                // fixme implement WHERE ID IN (arr) for cache entries
+                const data = await service.strategy.getStrategyData(strategy);
 
-              const tokenStr =
-                data.type === "pool"
-                  ? `Base token: ${data.data.baseToken}, Quote token: ${data.data.quoteToken}`
-                  : `Token: ${data.data.asset}`;
+                const tokenStr =
+                  data.type === "pool"
+                    ? `Base token: ${data.data.baseToken}, Quote token: ${data.data.quoteToken}`
+                    : `Token: ${data.data.asset}`;
 
-              return `${service.formatStrategy(strategy)}. ${tokenStr}`;
-            })
-          );
-        }),
+                return `${service.strategy.formatStrategy(strategy)}. ${tokenStr}`;
+              })
+            );
+          }),
         service.getAvailableTokens({
           chainId: params.chainId,
         }),
@@ -449,8 +456,7 @@ export const suggest: Suggestion[] = [
       // Check for ETH in portfolio for WETH conversion awareness
       const ethBalance = portfolio.find(
         (asset) =>
-          asset.token === ETH_NULL_ADDR ||
-          asset.address === ETH_NULL_ADDR
+          asset.token === ETH_NULL_ADDR || asset.address === ETH_NULL_ADDR
       );
 
       const hasEth = ethBalance && ethBalance.amount > 0n;
