@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { drizzle } from "drizzle-orm/node-postgres";
 import { Pool } from "pg";
+import { getAddress } from "viem";
 import { erc20Table } from "../src/schema";
 import { LEVVA_API_V1_BASEURL } from "../src/api/levva/constants";
 
@@ -44,7 +45,7 @@ async function insertTokensToDb(
         await db
           .insert(erc20Table)
           .values({
-            address: token.address,
+            address: getAddress(token.address),
             name: token.name,
             symbol: token.symbol,
             decimals: token.decimals,
