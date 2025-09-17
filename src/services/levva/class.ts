@@ -299,10 +299,7 @@ export class LevvaService
     }
   };
 
-  private getTokenFromMap = (params: {
-    chainId: number;
-    address: `0x${string}`;
-  }) => {
+  getTokenFromMap = (params: { chainId: number; address: `0x${string}` }) => {
     const key =
       `${params.chainId}:${params.address}` as `${number}:0x${string}`;
 
