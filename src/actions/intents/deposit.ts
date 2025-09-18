@@ -613,7 +613,7 @@ async function executeDepositTransaction(
         attachments: [
           {
             id: "calls.json",
-            url: `/api/calldata?hash=${calldataHash}`,
+            url: `/api/levva/calldata?hash=${calldataHash}`,
           },
         ],
         text,

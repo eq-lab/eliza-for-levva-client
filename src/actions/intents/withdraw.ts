@@ -161,7 +161,7 @@ After signing, you'll receive withdrawal NFT to your wallet. The withdrawal will
     attachments: [
       {
         id: "calls.json",
-        url: `/api/calldata?hash=${calldataHash}`,
+        url: `/api/levva/calldata?hash=${calldataHash}`,
       },
     ],
   };
@@ -216,7 +216,7 @@ After signing, you'll receive your withdrawn funds directly to your wallet.`,
     attachments: [
       {
         id: "calls.json",
-        url: `/api/calldata?hash=${calldataHash}`,
+        url: `/api/levva/calldata?hash=${calldataHash}`,
       },
     ],
   };
