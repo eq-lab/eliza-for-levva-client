@@ -7,7 +7,7 @@ import {
   UUID,
   logger,
 } from "@elizaos/core";
-import { schema } from "@elizaos/plugin-sql";
+import { plugin } from "@elizaos/plugin-sql";
 import { modules } from "../actions/modules";
 import { LEVVA_SERVICE } from "../constants/enum";
 import { defaultSuggestionPrompt } from "../prompts/default";
@@ -17,6 +17,8 @@ import { formatUnits, isHex } from "viem";
 import { hasRawMetadata } from "./utils";
 import { IntentManager } from "../services/intent-manager";
 import { ETH_NULL_ADDR } from "../constants/eth";
+
+const schema = plugin.schema;
 
 interface MessageEntry {
   authorId: string;

@@ -1,7 +1,9 @@
 import { PgSelectQueryBuilder } from "drizzle-orm/pg-core";
 import { IAgentRuntime } from "@elizaos/core";
-import { schema } from "@elizaos/plugin-sql";
+import { plugin } from "@elizaos/plugin-sql";
 import { getDb } from "../../util/db";
+
+const schema = plugin.schema;
 
 type WhereParams = Parameters<PgSelectQueryBuilder["where"]>[0];
 type OrderByParams = Parameters<PgSelectQueryBuilder["orderBy"]>[0];

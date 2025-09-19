@@ -1,5 +1,5 @@
 import { EventType, logger, type Plugin } from "@elizaos/core";
-
+/** @ts-ignore type error in plugin-bootstrap src */
 import { CancelRunSignal } from "@elizaos/plugin-bootstrap";
 import { z } from "zod";
 import { modules } from "./actions/modules";
@@ -92,11 +92,14 @@ const plugin: Plugin = {
         );
 
         if (!result) {
-          logger.warn("Entity is not eligible (ETH balance)", {
-            runId,
-            entityId,
-            reason,
-          });
+          logger.warn(
+            "Entity is not eligible (ETH balance)",
+            JSON.stringify({
+              runId,
+              entityId,
+              reason,
+            })
+          );
           const signal = CancelRunSignal.getSignal(runId);
           signal.cancel(reason);
           return;
