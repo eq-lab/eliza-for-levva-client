@@ -12,6 +12,7 @@ import { suggestionsEvaluator } from "./evaluators/suggestions";
 import { intentAcknowledgeEvaluator } from "./evaluators/intent-acknowledge";
 import statusRoute from "./routes/status";
 import calldataRoute from "./routes/calldata";
+import chanRoute from "./routes/chan";
 import levvaUserRoute from "./routes/levva-user";
 import suggestRoute from "./routes/suggest";
 import clearSuggestRoute from "./routes/clear-suggest";
@@ -70,6 +71,7 @@ const plugin: Plugin = {
   },
   routes: [
     calldataRoute,
+    chanRoute,
     clearSuggestRoute,
     levvaUserRoute,
     suggestRoute,

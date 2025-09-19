@@ -1,14 +1,23 @@
 import {
   ApiClientConfig,
-  ApiError,
-  ApiResponse,
   BaseApiClient,
   ElizaClient,
 } from "@elizaos/api-client";
 
-console.log("ElizaClient:", ElizaClient);
-console.log("BaseApiClient:", BaseApiClient);
 import { UUID } from "@elizaos/core";
+
+export interface ChannelEntry {
+  id: string;
+  name: string;
+  sourceType: string | null;
+  sourceId: string | null;
+  metadata: unknown;
+  createdAt: Date;
+  updatedAt: Date;
+  messageServerId: string;
+  type: string;
+  topic: string | null;
+}
 
 export type CalldataWithDescription = {
   title: string;
@@ -25,40 +34,23 @@ class LevvaAgentClient extends BaseApiClient {
    * @param address - user address(make sure it's not used on frontend)
    * @param secret - API secret(make sure it's not used on frontend)
    */
-  getUserId = async (
-    params: { proxy: string } | { address: `0x${string}`; secret: string }
-  ) => {
-    if ("proxy" in params) {
-      const request = await fetch(params.proxy);
-      if (!request.ok) {
-        throw new ApiError(
-          "HTTP_ERROR",
-          `HTTP ${request.status}: ${request.statusText}`
-        );
+  getUserId = async (params: { address: `0x${string}`; secret: string }) => {
+    return this.get<{ id?: UUID }>(
+      `/api/levva/levva-user?address=${params.address}`,
+      {
+        headers: {
+          Authorization: `Bearer ${params.secret}`,
+        },
       }
-
-      const response: ApiResponse<{ id?: UUID }> = await request.json();
-
-      if (!response.success) {
-        throw new ApiError(
-          response.error.code,
-          response.error.message,
-          response.error.details
-        );
-      }
-
-      return response.data;
-    } else {
-      return this.get<{ id?: UUID }>(
-        `/api/levva-user?address=${params.address}`,
-        {
-          headers: {
-            Authorization: `Bearer ${params.secret}`,
-          },
-        }
-      );
-    }
+    );
   };
+
+  /**
+   * @description get channel by name
+   * @param name - channel name
+   */
+  getChannelByName = (name: string) =>
+    this.get<ChannelEntry | undefined>(`/api/levva/chan?name=${name}`);
 
   /**
    * @description suggestions for user input
@@ -68,7 +60,7 @@ class LevvaAgentClient extends BaseApiClient {
    */
   getSuggestions = (address: `0x${string}`, channelId: UUID, chainId: number) =>
     this.get<{ suggestions: { label: string; text: string }[] }>(
-      `/suggest?address=${address}&channelId=${channelId}&chainId=${chainId}`
+      `/api/levva/suggest?address=${address}&channelId=${channelId}&chainId=${chainId}`
     );
 
   /**
@@ -76,7 +68,7 @@ class LevvaAgentClient extends BaseApiClient {
    * @param url - pass url received from attachment
    */
   getCalldata = async ({ url }: { url: string }) => {
-    if (!url.startsWith(`/api/calldata?hash=`)) {
+    if (!url.startsWith(`/api/levva/calldata?hash=`)) {
       throw new Error("Invalid URL");
     }
 
@@ -84,7 +76,7 @@ class LevvaAgentClient extends BaseApiClient {
   };
 
   status = async (address: `0x${string}`) =>
-    this.get<{ ready: boolean }>(`/api/status?address=${address}`);
+    this.get<{ ready: boolean }>(`/api/levva/status?address=${address}`);
 }
 
 export class AgentClient extends ElizaClient {

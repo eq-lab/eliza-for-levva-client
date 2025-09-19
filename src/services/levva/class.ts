@@ -65,7 +65,7 @@ import {
 } from "./wallet";
 import vaultAbi from "./abi/vault.abi";
 import withdrawalNftAbi from "./abi/vault.withdrawal-nft.abi";
-import { getMessages } from "./messages";
+import { getChannelByName, getMessages } from "./messages";
 import { getUserPositions, getWithdrawalRequests } from "../../api/levva";
 import { createPositionSummary } from "./positions";
 import { checkSecret } from "./secrets";
@@ -224,6 +224,7 @@ export class LevvaService
   };
 
   // do we need it? or better to use runtime.getMemoryById?
+  getChannelByName = getChannelByName.bind(null, this.runtime);
   getMessages = getMessages.bind(null, this.runtime);
   checkSecret = checkSecret.bind(null, this.runtime);
 
