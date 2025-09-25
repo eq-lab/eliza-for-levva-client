@@ -1,0 +1,322 @@
+---
+description: Simple reply pattern for providers when action state is not available
+globs: ["**/providers/**/*.ts"]
+alwaysApply: false
+---
+
+# Simple Reply Pattern for Providers
+
+## 🎯 **Pattern Overview**
+
+The `shouldSimpleReply` pattern is used in providers to handle cases where no action plan is available yet. Instead of performing expensive operations, providers should give simple instructions for generating conversational acknowledgments.
+
+## 🔧 **Implementation Pattern**
+
+### **Recommended: Utility Function**
+```typescript
+import { checkSimpleReply } from "./util";
+
+// At the start of provider's get() method
+const simpleReply = checkSimpleReply(
+  runtime,
+  state,
+  "PROVIDER-NAME",
+  "Data description"
+);
+if (simpleReply) return simpleReply;
+```
+
+### **Legacy: Manual Implementation** (Not Recommended)
+```typescript
+const actionState = selectProviderState<ActionResultsCache["data"]>(
+  "ACTION_STATE",
+  state
+);
+
+const shouldSimpleReply = !actionState?.actionPlan?.steps;
+runtime.logger.debug("Should simple reply", { shouldSimpleReply });
+```
+
+### **Utility Function Benefits**
+- **Centralized Logic**: Single place to maintain simple reply logic
+- **Consistent Logging**: Standardized debug messages with provider names
+- **DRY Principle**: No code duplication across providers
+- **Easy Updates**: Changes to simple reply logic update all providers
+- **Type Safety**: Proper TypeScript typing for all parameters
+
+### **checkSimpleReply Parameters**
+```typescript
+checkSimpleReply(
+  runtime: IAgentRuntime,     // For logging and state access
+  state: State | undefined,   // Provider state
+  providerName: string,       // For logging (e.g., "SWAP-PARAMS")
+  dataDescription: string     // Brief description (e.g., "Swap analysis data")
+): ProviderResult | undefined // Returns result if simple reply, undefined otherwise
+```
+
+### **Provider Response Pattern**
+```typescript
+if (typeof params !== "object") {
+  return {
+    ...EMPTY_RESULT,
+    text: !shouldSimpleReply
+      ? `Failed to extract [specific] parameters.`
+      : "# Simple Reply Mode\nProvide a brief acknowledgment that you understand the user's request. The detailed analysis and action will be handled in the next step. Keep the response conversational and reassuring.",
+  };
+}
+```
+
+### **Conditional Processing**
+```typescript
+// Skip expensive operations when shouldSimpleReply is true
+if (!params && !shouldSimpleReply) {
+  params = await runtime.useModel(ModelType.OBJECT_SMALL, {
+    prompt: extractParametersPrompt(context),
+  });
+  
+  // Intent management and caching only when not simple reply
+  if (intentContext && params) {
+    await intentService.updateIntent(intentContext, params);
+  }
+  
+  await runtime.setCache(cacheKey, params);
+}
+```
+
+## 📋 **When to Use Simple Reply Mode**
+
+### **✅ Use Simple Reply When:**
+- `!actionState?.actionPlan?.steps` (no action plan available)
+- First interaction in a conversation flow
+- User is exploring options without committing to action
+- System is in "conversation mode" rather than "execution mode"
+
+### **❌ Don't Use Simple Reply When:**
+- Action plan with steps is available
+- User has explicitly requested detailed analysis
+- System is in active transaction flow
+- Parameters are required for immediate action
+
+## 🎨 **Simple Reply Message Guidelines**
+
+### **Format Structure**
+```typescript
+"# Simple Reply Mode\n[Instructions for LLM on how to respond]"
+```
+
+### **Message Components**
+1. **Header**: `# Simple Reply Mode` - identifies the context
+2. **Data Suppression**: Instruction to ignore this provider's specific data
+3. **Focus Guidance**: Direct attention to user's primary request
+4. **Neutrality**: Avoid domain-specific acknowledgments that could pollute other actions
+
+### **⚠️ Cross-Provider Pollution Problem**
+
+**Problem**: Providers can be dynamically included for multiple actions. Domain-specific acknowledgments pollute unrelated prompts.
+
+**Example of Pollution**:
+```
+User: "I want to swap USDC to ETH"
+- swap-params provider: Active (primary)
+- position-params provider: Included for context (secondary)
+
+❌ BAD: Position provider says "I understand your position management request"
+✅ GOOD: Position provider says "Focus on the user's primary request"
+```
+
+### **Standard Simple Reply Message**
+
+#### **Recommended Pattern**
+```typescript
+"# Simple Reply Mode\n[Brief Data Description] is not needed for the current response. Focus on the user's primary request and provide a natural conversational reply without referencing [domain]-specific information."
+```
+
+#### **Domain Variations**
+```typescript
+// For swap operations
+"# Simple Reply Mode\nSwap analysis data is not needed for the current response. Focus on the user's primary request and provide a natural conversational reply without referencing swap-specific information."
+
+// For position management  
+"# Simple Reply Mode\nPosition data is not needed for the current response. Focus on the user's primary request and provide a natural conversational reply without referencing position-specific information."
+
+// For strategy selection
+"# Simple Reply Mode\nStrategy data is not needed for the current response. Focus on the user's primary request and provide a natural conversational reply without referencing strategy-specific information."
+```
+
+#### **Brief Data Descriptions (Under 3 Words)**
+- **Swap Provider**: "Swap analysis data"
+- **Position Provider**: "Position data" 
+- **Strategy Provider**: "Strategy data"
+- **Portfolio Provider**: "Portfolio data"
+- **Token Provider**: "Token data"
+- **Balance Provider**: "Balance data"
+- **News Provider**: "News data"
+
+### **❌ Anti-Patterns to Avoid**
+
+#### **Domain-Specific Acknowledgments**
+```typescript
+// ❌ BAD: Creates pollution when provider is secondary
+"I understand your swap request"
+"I'll analyze your positions"
+"Let me check your strategies"
+```
+
+#### **Forward-Looking Statements**
+```typescript
+// ❌ BAD: Assumes this provider will be primary in next step
+"Detailed analysis will follow in the next step"
+"I'll prepare the swap for you"
+```
+
+#### **Action Commitments**
+```typescript
+// ❌ BAD: Makes promises about actions this provider won't handle
+"I'll help you with that"
+"Let me process your request"
+```
+
+#### **Copy-Paste Messages**
+```typescript
+// ❌ BAD: Identical messages across providers
+"This provider's detailed data is not needed..."
+"This provider's detailed data is not needed..."
+"This provider's detailed data is not needed..."
+
+// ✅ GOOD: Unique brief descriptions
+"Swap analysis data is not needed..."
+"Position data is not needed..."
+"Strategy data is not needed..."
+```
+
+## 🔄 **Flow Pattern**
+
+### **Two-Phase Processing**
+
+#### **Phase 1: Simple Reply** (`shouldSimpleReply = true`)
+- Provider returns simple acknowledgment instructions
+- No parameter extraction or expensive operations
+- LLM generates brief, conversational response
+- Sets up context for detailed analysis
+
+#### **Phase 2: Detailed Analysis** (`shouldSimpleReply = false`)
+- Full parameter extraction with LLM models
+- Intent management and caching
+- Comprehensive data analysis
+- Detailed response with specific information
+
+### **Example Flow**
+```
+User: "I want to swap 100 USDC to ETH"
+
+Phase 1 (Simple Reply):
+- swap-params provider → "# Simple Reply Mode\n[focus on primary request]"
+- position-params provider → "# Simple Reply Mode\n[ignore position data]"
+LLM → "I'll help you swap 100 USDC to ETH." (clean, focused response)
+
+Phase 2 (Detailed Analysis):
+- swap-params provider → Full swap analysis with token data, balances, etc.
+- position-params provider → Detailed position data for context
+LLM → Comprehensive swap information with relevant context
+```
+
+### **Cross-Action Scenarios**
+
+#### **Swap Request with Position Context**
+```
+User: "Swap my USDC to ETH"
+- Primary: swap-params (active analysis)
+- Secondary: position-params (context only)
+
+Simple Reply: "I'll help you swap USDC to ETH." ✅
+Not: "I understand your position management request." ❌
+```
+
+#### **Strategy Inquiry with Portfolio Context**
+```
+User: "What strategies do you recommend?"
+- Primary: strategy-params (active analysis)  
+- Secondary: position-params (portfolio context)
+
+Simple Reply: "Let me analyze the available strategies for you." ✅
+Not: "I'll check your positions and analyze strategies." ❌
+```
+
+## 🛠️ **Implementation Checklist**
+
+### **Using the Utility Function**
+- [ ] Import `checkSimpleReply` from `./util`
+- [ ] Call `checkSimpleReply()` at the start of provider's `get()` method
+- [ ] Return early if simple reply is needed
+- [ ] Continue with normal provider logic if not
+
+### **Provider Setup Pattern**
+```typescript
+import { checkSimpleReply } from "./util";
+
+export const myProvider: Provider = {
+  async get(runtime, message, state) {
+    // Check for simple reply mode first
+    const simpleReply = checkSimpleReply(
+      runtime,
+      state,
+      "MY-PROVIDER",
+      "My data"
+    );
+    if (simpleReply) return simpleReply;
+
+    // Normal provider logic continues...
+  }
+};
+```
+
+### **Legacy Manual Implementation** (Not Recommended)
+- [ ] Extract `actionState` from provider state
+- [ ] Calculate `shouldSimpleReply = !actionState?.actionPlan?.steps`
+- [ ] Add debug logging for `shouldSimpleReply` value
+- [ ] Return appropriate simple reply instructions
+
+### **Message Format**
+- [ ] Use `# Simple Reply Mode` header
+- [ ] Provide clear instructions for LLM response
+- [ ] Keep instructions general and reusable
+- [ ] Include tone guidance (conversational, reassuring)
+
+### **Error Handling**
+- [ ] Handle both simple reply and detailed error cases
+- [ ] Provide appropriate fallback messages
+- [ ] Maintain consistent error reporting
+
+## 🎯 **Benefits**
+
+### **Performance**
+- **Reduced Latency**: Skip expensive operations in first phase
+- **Resource Efficiency**: No unnecessary LLM calls or database operations
+- **Better UX**: Immediate acknowledgment while processing continues
+
+### **User Experience**
+- **Responsive Feel**: Quick initial response
+- **Progressive Disclosure**: Simple → detailed information flow
+- **Natural Conversation**: Maintains conversational flow
+
+### **System Architecture**
+- **Separation of Concerns**: Acknowledgment vs. analysis phases
+- **Scalability**: Reduces load during exploration phase
+- **Flexibility**: Easy to extend pattern to new domains
+
+## 🔗 **Related Patterns**
+
+- `@action-patterns.mdc` - Action implementation patterns
+- `@provider-intent-patterns.mdc` - Intent management in providers
+- `@conversation-flow-patterns.mdc` - Natural conversation patterns
+- `@caching-patterns.mdc` - Caching strategies for providers
+
+## 📚 **Examples in Codebase**
+
+- `src/providers/swap-params.ts` - Reference implementation
+- `src/providers/position-params.ts` - Position management variant
+- `src/providers/strategy-params.ts` - Strategy selection variant
+
+---
+
+**Remember**: Simple reply mode is about providing instructions to the LLM for generating appropriate responses, not generating the responses directly. The actual user-facing reply is created by the LLM using these instructions as context.

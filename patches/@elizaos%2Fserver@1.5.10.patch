@@ -1,0 +1,46 @@
+diff --git a/dist/index.js b/dist/index.js
+index f260a6dcf11f93fa230d005e70d96ded8bca08b0..27ead07dec46d06dd86694925e326f27ffb917b1 100644
+--- a/dist/index.js
++++ b/dist/index.js
+@@ -24016,6 +24016,32 @@ function createMessagingCoreRouter(serverInstance) {
+       res.status(500).json({ success: false, error: "Failed to ingest message" });
+     }
+   });
++  router.post("/complete", async (req, res) => {
++    const { channel_id, server_id } = req.body;
++    if (!validateUuid9(channel_id) || !validateUuid9(server_id)) {
++      return res.status(400).json({
++        success: false,
++        error: "Missing or invalid required fields: channel_id, server_id"
++      });
++    }
++    try {
++      if (serverInstance.socketIO) {
++        serverInstance.socketIO.to(channel_id).emit("messageComplete", {
++          channelId: channel_id,
++          roomId: channel_id,
++          serverId: server_id
++        });
++        logger8.info(`[Messages Router /complete] Emitted messageComplete event for channel ${channel_id}`);
++      }
++      res.status(200).json({
++        success: true,
++        message: "Message completion notification sent"
++      });
++    } catch (error) {
++      logger8.error("[Messages Router /complete] Error processing message completion:", error instanceof Error ? error.message : String(error));
++      res.status(500).json({ success: false, error: "Failed to process message completion" });
++    }
++  });
+   return router;
+ }
+ 
+@@ -27452,7 +27478,7 @@ import express30 from "express";
+ // package.json
+ var package_default = {
+   name: "@elizaos/server",
+-  version: "1.5.10",
++  version: "1.5.10-beta.0",
+   description: "ElizaOS Server - Core server infrastructure for ElizaOS agents",
+   publishConfig: {
+     access: "public",

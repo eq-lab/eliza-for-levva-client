@@ -1,6 +1,7 @@
 import { LEVVA_API_V1_BASEURL, LEVVA_API_V2_BASEURL } from "./constants";
 import {
   strategiesResponseSchema,
+  tokenResponseSchema,
   userPositionsResponseSchema,
   withdrawalRequestsResponseSchema,
 } from "./schema";
@@ -31,4 +32,14 @@ export const getWithdrawalRequests = async (
   const response = await fetch(url);
   const data = await response.json();
   return withdrawalRequestsResponseSchema.safeParse(data);
+};
+
+export const getToken = async (
+  tokenAddress: `0x${string}`,
+  chainId: number
+) => {
+  const url = `${LEVVA_API_V1_BASEURL}/token/${chainId}/${tokenAddress}`;
+  const response = await fetch(url);
+  const data = await response.json();
+  return tokenResponseSchema.safeParse(data);
 };

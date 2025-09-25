@@ -5,7 +5,7 @@ import { ETH_NULL_ADDR } from "../constants/eth";
 import { LevvaService } from "../services/levva/class";
 import { selectSwapDataFromMessagesPrompt } from "../prompts/swap";
 import { LEVVA_PROVIDER_NAME, LevvaProviderState } from "./index";
-import { EMPTY_RESULT, selectProviderState } from "./util";
+import { EMPTY_RESULT, selectProviderState, checkSimpleReply } from "./util";
 import { TokenDataWithInfo } from "../types/token";
 import { IntentManager, IntentContext } from "../services/intent-manager";
 
@@ -35,6 +35,15 @@ export const swapParamsProvider: Provider = {
     "Parameters for swap transaction. Enable this provider if user wants to swap tokens.",
   dynamic: true,
   async get(runtime, message, state) {
+    // Check for simple reply mode first
+    const simpleReply = checkSimpleReply(
+      runtime,
+      state,
+      "SWAP-PARAMS",
+      "Swap analysis data"
+    );
+    if (simpleReply) return simpleReply;
+
     const service = await runtime.getService<LevvaService>(
       LEVVA_SERVICE.LEVVA_COMMON
     );
@@ -59,6 +68,7 @@ export const swapParamsProvider: Provider = {
     }
     const { user, chainId, tokens } = lvva;
 
+
     // Extract user info for intent management
     const raw: any = (message.metadata as unknown as { raw: any }).raw;
     const userId = raw.senderId;
@@ -76,36 +86,39 @@ export const swapParamsProvider: Provider = {
     }
 
     try {
-      // Check for existing active intent
-      intentContext = await intentService.getActiveIntentByDomain(
-        userId,
-        channelId,
-        LEVVA_ACTIONS.SWAP_TOKENS
-      );
+      // Handle intent management
+      {
+        // Check for existing active intent
+        intentContext = await intentService.getActiveIntentByDomain(
+          userId,
+          channelId,
+          LEVVA_ACTIONS.SWAP_TOKENS
+        );
 
-      // Use helper function to handle intent detection and creation
-      intentContext = await intentService.handleIntentDetectionAndCreation(
-        message,
-        LEVVA_ACTIONS.SWAP_TOKENS,
-        userId,
-        channelId,
-        intentContext
-      );
+        // Use helper function to handle intent detection and creation
+        intentContext = await intentService.handleIntentDetectionAndCreation(
+          message,
+          LEVVA_ACTIONS.SWAP_TOKENS,
+          userId,
+          channelId,
+          intentContext
+        );
 
-      // Add swap-specific metadata if intent was created
-      if (
-        intentContext &&
-        intentContext.metadata &&
-        !intentContext.metadata.userAddress
-      ) {
-        intentContext.metadata.userAddress = user.address;
-        intentContext.metadata.chainId = chainId;
-        await intentService.storeIntent(intentContext);
-      }
+        // Add swap-specific metadata if intent was created
+        if (
+          intentContext &&
+          intentContext.metadata &&
+          !intentContext.metadata.userAddress
+        ) {
+          intentContext.metadata.userAddress = user.address;
+          intentContext.metadata.chainId = chainId;
+          await intentService.storeIntent(intentContext);
+        }
 
-      // Add current message to intent memory
-      if (intentContext) {
-        await intentService.addMemoryToIntent(intentContext, message);
+        // Add current message to intent memory
+        if (intentContext) {
+          await intentService.addMemoryToIntent(intentContext, message);
+        }
       }
     } catch (error) {
       runtime.logger.warn("Error in swap intent management:", error);
@@ -149,6 +162,7 @@ export const swapParamsProvider: Provider = {
     if (typeof params !== "object") {
       return {
         ...EMPTY_RESULT,
+        // suppress if no action state
         text: `Failed to extract swap parameters.`,
       };
     }
