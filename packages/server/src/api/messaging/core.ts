@@ -345,5 +345,44 @@ export function createMessagingCoreRouter(serverInstance: AgentServer): express.
     }
   });
 
+  // Endpoint for message completion notification
+  (router as any).post('/complete', async (req: express.Request, res: express.Response) => {
+    const { channel_id, server_id } = req.body;
+
+    // Validate required fields
+    if (!validateUuid(channel_id) || !validateUuid(server_id)) {
+      return res.status(400).json({
+        success: false,
+        error: 'Missing or invalid required fields: channel_id, server_id',
+      });
+    }
+
+    try {
+      // Emit messageComplete event to all clients in the channel
+      if (serverInstance.socketIO) {
+        serverInstance.socketIO.to(channel_id).emit('messageComplete', {
+          channelId: channel_id,
+          roomId: channel_id, // Keep for backward compatibility
+          serverId: server_id,
+        });
+
+        logger.info(
+          `[Messages Router /complete] Emitted messageComplete event for channel ${channel_id}`
+        );
+      }
+
+      res.status(200).json({
+        success: true,
+        message: 'Message completion notification sent',
+      });
+    } catch (error) {
+      logger.error(
+        '[Messages Router /complete] Error processing message completion:',
+        error instanceof Error ? error.message : String(error)
+      );
+      res.status(500).json({ success: false, error: 'Failed to process message completion' });
+    }
+  });
+
   return router;
 }
