@@ -19,7 +19,7 @@ import { LevvaService } from "../services/levva/class";
 import { UserPosition, WithdrawalRequest } from "../services/levva/positions";
 import { IntentManager, IntentContext } from "../services/intent-manager";
 import { StrategyEntry } from "../services/levva/pool";
-import { EMPTY_RESULT, selectProviderState, checkSimpleReply } from "./util";
+import { checkSimpleReply } from "./util";
 
 export interface PositionParamsProviderData {
   userPositions: UserPosition[];
@@ -44,7 +44,7 @@ export const positionParamsProvider: Provider = {
     logger.info(
       `[POSITION-PARAMS] Provider started for: "${message.content.text}"`
     );
-    
+
     // Check for simple reply mode first
     const simpleReply = checkSimpleReply(
       runtime,
@@ -81,7 +81,6 @@ export const positionParamsProvider: Provider = {
       if (!isHex(user.address)) {
         throw new Error(`Invalid Ethereum address format: ${user.address}`);
       }
-
 
       // Use LevvaService to get position summary with caching
       const { summary, withdrawals, positions, strategies } =

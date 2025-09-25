@@ -45,66 +45,72 @@ export class StrategyComponent {
       firstStrategy: result.data[0],
     });
 
-    const mapped = result.data.map<StrategyEntry>((x, index) => {
-      try {
-        logger.debug(`Processing strategy ${index}:`, {
-          id: x.id,
-          name: x.name,
-          type: x.type,
-          risk: x.risk,
-          category: x.category,
-        });
+    const mapped = result.data
+      .filter(
+        (x) => Boolean(x.vault)
+        // FIXME!!! for now only support vaults; NEED TO FIX POOL IMPLEMENTATION
+        // invalidatee cache after fixing pool
+      )
+      .map<StrategyEntry>((x, index) => {
+        try {
+          logger.debug(`Processing strategy ${index}:`, {
+            id: x.id,
+            name: x.name,
+            type: x.type,
+            risk: x.risk,
+            category: x.category,
+          });
 
-        const type: any = "vault";
-        const strategy: any =
-          x.type === "UltraSafe"
-            ? "ultra-safe"
-            : x.type === "Safe"
-              ? "safe"
-              : x.type === "Brave"
-                ? "brave"
-                : "custom";
+          const type: any = "vault";
+          const strategy: any =
+            x.type === "UltraSafe"
+              ? "ultra-safe"
+              : x.type === "Safe"
+                ? "safe"
+                : x.type === "Brave"
+                  ? "brave"
+                  : "custom";
 
-        const contractAddress = x.vault?.address;
+          const contractAddress = x.vault?.address;
 
-        if (!isHex(contractAddress)) {
-          throw new Error(
-            `Invalid contract address: ${contractAddress} for strategy ${x.id}`
+          if (!isHex(contractAddress)) {
+            throw new Error(
+              `Invalid contract address: ${contractAddress} for strategy ${x.id}`
+            );
+          }
+
+          const strategyEntry: StrategyEntry = {
+            type,
+            vaultChainId: x.vault?.publicChainId ?? 1,
+            contractAddress: contractAddress as `0x${string}`,
+            strategy,
+            description: x.description,
+            id: x.id,
+            name: x.name,
+            risk: x.risk,
+            category: x.category,
+            shortDescription: x.shortDescription,
+            backgroundColor: x.backgroundColor,
+            minimumEfficientDeposit: x.minimumEfficientDeposit,
+            apy: x.apy,
+            liquidityAvailability: x.liquidityAvailability,
+            bonuses: x.bonuses,
+            vault: x.vault,
+          };
+
+          logger.debug(
+            `Successfully processed strategy ${index}:`,
+            strategyEntry
           );
+          return strategyEntry;
+        } catch (error) {
+          logger.error(`Error processing strategy ${index}:`, {
+            error,
+            strategy: x,
+          });
+          throw error;
         }
-
-        const strategyEntry: StrategyEntry = {
-          type,
-          vaultChainId: x.vault?.publicChainId ?? 1,
-          contractAddress: contractAddress as `0x${string}`,
-          strategy,
-          description: x.description,
-          id: x.id,
-          name: x.name,
-          risk: x.risk,
-          category: x.category,
-          shortDescription: x.shortDescription,
-          backgroundColor: x.backgroundColor,
-          minimumEfficientDeposit: x.minimumEfficientDeposit,
-          apy: x.apy,
-          liquidityAvailability: x.liquidityAvailability,
-          bonuses: x.bonuses,
-          vault: x.vault,
-        };
-
-        logger.debug(
-          `Successfully processed strategy ${index}:`,
-          strategyEntry
-        );
-        return strategyEntry;
-      } catch (error) {
-        logger.error(`Error processing strategy ${index}:`, {
-          error,
-          strategy: x,
-        });
-        throw error;
-      }
-    });
+      });
 
     await this.runtime.setCache(cacheKey, mapped);
     return mapped;
