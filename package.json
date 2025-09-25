@@ -59,7 +59,7 @@
   },
   "scripts": {
     "start": "elizaos start",
-    "dev": " elizaos dev",
+    "dev": "LOG_LEVEL=debug elizaos dev",
     "debug": "bun --inspect-brk ./src/server.ts",
     "build": "tsup",
     "lint": "eslint . --ext .ts,.tsx,.js,.jsx",
@@ -92,6 +92,7 @@
   },
   "gitHead": "b165ad83e5f7a21bc1edbd83374ca087e3cd6b33",
   "patchedDependencies": {
-    "@elizaos/plugin-bootstrap@1.5.10": "patches/@elizaos%2Fplugin-bootstrap@1.5.10.patch"
+    "@elizaos/plugin-bootstrap@1.5.10": "patches/@elizaos%2Fplugin-bootstrap@1.5.10.patch",
+    "@elizaos/server@1.5.10": "patches/@elizaos%2Fserver@1.5.10.patch"
   }
 }
