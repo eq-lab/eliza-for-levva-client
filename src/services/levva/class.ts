@@ -4,7 +4,6 @@ import {
   encodeFunctionData,
   formatUnits,
   getAddress,
-  isHex,
   sha256,
   toHex,
 } from "viem";
@@ -27,18 +26,11 @@ import { CalldataWithDescription } from "../../types/tx";
 import { balancesTable } from "../../schema/balances";
 import { getDb } from "../../util/db";
 import {
-  extractTokenData,
   getBalanceOf,
-  getChain,
   getLevvaUser,
-  getTokenData,
   getToken as getTokenImpl,
-  parseTokenInfo,
-  TokenEntry,
-  upsertToken,
 } from "../../util";
 import { delay, isRejected, isResolved, Mutex } from "../../util/async";
-import { TokenData, TokenDataWithInfo } from "../../types/token";
 import { ETH_NULL_ADDR } from "../../constants/eth";
 import {
   getFeed,
@@ -69,6 +61,8 @@ import { getChannelByName, getMessages } from "./messages";
 import { getUserPositions, getWithdrawalRequests } from "../../api/levva";
 import { createPositionSummary } from "./positions";
 import { checkSecret } from "./secrets";
+import { TokenServiceComponent } from "./token";
+import { createTimedCache, createPermanentCache } from "./cache-util";
 
 const REQUIRED_PLUGINS = ["levva"];
 
@@ -84,8 +78,11 @@ export class LevvaService
   extends Service
   implements ILevvaService, PendleInterface, WalletInterface
 {
+  public readonly runtime: IAgentRuntime;
+
   // Service composition components - NEW functionality only
   public readonly strategy: StrategyComponent;
+  public readonly token: TokenServiceComponent;
 
   static serviceType = LEVVA_SERVICE.LEVVA_COMMON;
   capabilityDescription =
@@ -128,50 +125,14 @@ export class LevvaService
     return Promise.race([promise, delay(waitTime, undefined)]);
   };
 
-  private permanentCache = <P extends unknown[], V>(
-    getData: (...params: P) => Promise<V>,
-    getKey: (...params: P) => string
-  ) => {
-    return async (...params: P) => {
-      const cacheKey = getKey(...params);
-      const cached = await this.runtime.getCache<V>(cacheKey);
-
-      if (cached) {
-        return cached;
-      }
-
-      const result = await getData(...params);
-      await this.runtime.setCache(cacheKey, result);
-      return result;
-    };
-  };
-
-  private timedCache = <P extends unknown[], V>(
-    ttl: number,
-    getData: (...params: P) => Promise<V>,
-    getKey: (...params: P) => string
-  ) => {
-    return async (...params: P) => {
-      const cacheKey = getKey(...params);
-      const cached = await this.runtime.getCache<CacheEntry<V>>(cacheKey);
-      const now = Date.now();
-
-      if (cached?.timestamp && now - cached.timestamp < ttl) {
-        return cached.value;
-      }
-
-      const result = await getData(...params);
-      await this.runtime.setCache(cacheKey, { timestamp: now, value: result });
-      return result;
-    };
-  };
-
   constructor(runtime: IAgentRuntime) {
     super(runtime);
+    this.runtime = runtime; // making public until fix
     assert(checkPlugins(runtime), "Required plugins not found");
 
     // Initialize NEW service components - pass service instance to constructor
     this.strategy = new StrategyComponent(runtime, this);
+    this.token = new TokenServiceComponent(runtime);
 
     this.handlerInterval = setInterval(this.bgHandler, 500);
     this.events.on("background:resolved", (event) => {
@@ -193,7 +154,7 @@ export class LevvaService
   }
 
   static async stop(runtime: IAgentRuntime) {
-    logger.info("*** Stopping Levva service ***");
+    runtime.logger.info("*** Stopping Levva service ***");
     // get the service from the runtime
     const service = runtime.getService(LevvaService.serviceType);
 
@@ -205,12 +166,15 @@ export class LevvaService
   }
 
   async stop() {
-    logger.info("*** Stopping levva service instance ***");
+    this.runtime.logger.info("*** Stopping levva service instance ***");
 
     if (this.handlerInterval) {
       clearInterval(this.handlerInterval);
       this.handlerInterval = null;
     }
+
+    // Cleanup components
+    this.token.cleanup();
   }
 
   getUser = async (address: `0x${string}`) => {
@@ -223,124 +187,49 @@ export class LevvaService
     return user as typeof user | undefined;
   };
 
+  getChannelByName = (name: string) => getChannelByName(this.runtime, name);
   // do we need it? or better to use runtime.getMemoryById?
-  getChannelByName = getChannelByName.bind(null, this.runtime);
-  getMessages = getMessages.bind(null, this.runtime);
-  checkSecret = checkSecret.bind(null, this.runtime);
+  getMessages = (params: Parameters<typeof getMessages>[1]) =>
+    getMessages(this.runtime, params);
+  checkSecret = (secret: string) => checkSecret(this.runtime, secret);
 
-  /** @deprecated fix typing, maybe consider making private */
-  getToken = getTokenImpl.bind(null, this.runtime) as (
-    params: Parameters<typeof getTokenImpl>[1]
-  ) => ReturnType<typeof getTokenImpl>;
+  // TOKEN BLOCK - Delegated to TokenComponent
+  /** @deprecated Use this.token.getToken() directly instead */
+  getToken = (params: Parameters<typeof getTokenImpl>[1]) =>
+    this.token.getToken(params);
 
-  getTokenDataWithInfo = async ({
-    chainId,
-    symbolOrAddress,
-  }: {
+  /** @deprecated Use this.token.getTokenDataWithInfo() directly instead */
+  getTokenDataWithInfo = (params: {
     chainId: number;
     symbolOrAddress?: string;
-  }) => {
-    const chain = getChain(chainId);
-    let tokenData: TokenDataWithInfo | undefined;
+  }) => this.token.getTokenDataWithInfo(params);
 
-    if (!isHex(symbolOrAddress)) {
-      const symbol = symbolOrAddress;
+  /** @deprecated Use this.token.getWETH() directly instead */
+  getWETH = (chainId: number) => this.token.getWETH(chainId);
 
-      if (symbol?.toLowerCase() === chain.nativeCurrency.symbol.toLowerCase()) {
-        logger.info("Using native currency as token value");
-        tokenData = extractTokenData(chain.nativeCurrency);
-      } else {
-        const token = (await this.getToken({ chainId: chain.id, symbol }))[0];
+  /** @deprecated Use this.token.getAvailableTokens() directly instead */
+  getAvailableTokens = (params: { chainId: number }) =>
+    this.token.getAvailableTokens(params);
 
-        if (!token) {
-          return;
-        }
-
-        tokenData = extractTokenData(token);
-        /* @ts-expect-error fix typing */
-        tokenData.info = parseTokenInfo(token.info);
-      }
-    } else {
-      tokenData = await getTokenData(chain.id, symbolOrAddress);
-      logger.info(`Saving ${symbolOrAddress} as ${tokenData.symbol}`);
-
-      // todo now we can get market from adapter contract for base token, can be used
-      await upsertToken(this.runtime, {
-        ...(tokenData as Required<TokenData>),
-        chainId: chain.id,
-      });
-    }
-
-    return tokenData;
-  };
-
-  getWETH = async (chainId: number) => {
-    const [weth] = await this.getToken({ chainId, symbol: "WETH" });
-
-    if (!weth) {
-      throw new Error(`WETH not found for chain ${chainId}`);
-    }
-
-    return weth;
-  };
-
-  private tokenMap = new Map<
-    `${number}:0x${string}`,
-    Omit<TokenEntry, "id"> | undefined
-  >();
-
-  private populateTokenMap = async (entries: Omit<TokenEntry, "id">[]) => {
-    for (const entry of entries) {
-      const key =
-        `${entry.chainId}:${entry.address}` as `${number}:0x${string}`;
-
-      if (!this.tokenMap.has(key)) {
-        this.tokenMap.set(key, entry);
-      }
-    }
-  };
-
-  private getTokenFromMap = (params: {
-    chainId: number;
-    address: `0x${string}`;
-  }) => {
-    const key =
-      `${params.chainId}:${params.address}` as `${number}:0x${string}`;
-
-    return this.tokenMap.get(key);
-  };
-
-  async getAvailableTokens(params: { chainId: number }) {
-    const chain = getChain(params.chainId);
-
-    const tokens: /* fixme type */ Omit<TokenEntry, "id">[] =
-      await this.getToken({
-        chainId: params.chainId,
-      });
-
-    tokens.push({
-      symbol: chain.nativeCurrency.symbol,
-      name: chain.nativeCurrency.name,
-      decimals: chain.nativeCurrency.decimals,
-      address: ETH_NULL_ADDR,
-      info: undefined,
-      chainId: params.chainId,
-    });
-
-    this.populateTokenMap(tokens);
-    return tokens;
-  }
-
-  formatToken(token: {
+  /** @deprecated Use this.token.formatToken() directly instead */
+  formatToken = (token: {
     symbol: string;
     name: string;
     address?: string;
     decimals: number;
     info?: unknown;
-  }) {
-    const isNative = !token.address || token.address === ETH_NULL_ADDR;
-    return `${token.symbol}(${token.name}) - ${isNative ? "Native token" : `${token.address}`}. Decimals: ${token.decimals}.`;
-  }
+  }) => this.token.formatToken(token);
+
+  /** @deprecated Use this.token.getExternalTokenData() directly instead */
+  getExternalTokenData = (tokenAddress: `0x${string}`, chainId: number) =>
+    this.token.getExternalTokenData(tokenAddress, chainId);
+
+  /** @deprecated Use this.token.getTokenFromMap() directly instead */
+  private getTokenFromMap = (params: {
+    chainId: number;
+    address: `0x${string}`;
+  }) => this.token.getTokenFromMap(params);
+  // END TOKEN BLOCK
 
   // -- Wallet assets --
   private BALANCE_PREFIX = "balance:";
@@ -545,14 +434,18 @@ export class LevvaService
   invalidateUserPositionsCache = (address: `0x${string}`, chainId?: number) =>
     this.runtime.deleteCache(this.getUserPositionsCacheKey(address, chainId));
 
-  getUserPositions = this.timedCache(
+  getUserPositions = createTimedCache(
+    this,
     300000, // 5 minutes TTL
     async (address: `0x${string}`, chainId?: number) => {
       const result = await getUserPositions(address, chainId);
       if (result.success) {
         return result.data;
       } else {
-        logger.warn("Failed to parse user positions response:", result.error);
+        this.runtime.logger.warn(
+          "Failed to parse user positions response:",
+          result.error
+        );
         return [];
       }
     },
@@ -572,14 +465,15 @@ export class LevvaService
     chainId: number
   ) => `withdrawal-requests:${address}:${chainId}`;
 
-  getWithdrawalRequests = this.timedCache(
+  getWithdrawalRequests = createTimedCache(
+    this,
     300000, // 5 minutes TTL
     async (address: `0x${string}`, chainId: number) => {
       const result = await getWithdrawalRequests(address, chainId);
       if (result.success) {
         return result.data;
       } else {
-        logger.warn(
+        this.runtime.logger.warn(
           "Failed to parse withdrawal requests response:",
           result.error
         );
@@ -613,7 +507,8 @@ export class LevvaService
     }: { baseToken: `0x${string}`; quoteToken: `0x${string}` }
   ) => `pendle-markets:${chainId}:${baseToken}:${quoteToken}`;
 
-  getPendleParams = this.permanentCache(
+  getPendleParams = createPermanentCache(
+    this,
     getPendleParamsImpl,
     this.getPendleMarketsCacheKey
   );
@@ -675,7 +570,8 @@ export class LevvaService
     address: `0x${string}`
   ) => `pool-constants:${chainId}:${address}`;
 
-  getPoolConstants = this.permanentCache(
+  getPoolConstants = createPermanentCache(
+    this,
     getPoolConstants,
     this.getPoolConstantsCacheKey
   );
@@ -688,7 +584,8 @@ export class LevvaService
   invalidatePoolVariablesCache = (chainId: number, address: `0x${string}`) =>
     this.runtime.deleteCache(this.getPoolVariablesCacheKey(chainId, address));
 
-  getPoolVariables = this.timedCache(
+  getPoolVariables = createTimedCache(
+    this,
     300000,
     getPoolVariablesImpl,
     this.getPoolVariablesCacheKey
@@ -699,7 +596,8 @@ export class LevvaService
     address: `0x${string}`
   ) => `vault-constants:${chainId}:${address}`;
 
-  getVaultConstants = this.permanentCache(
+  getVaultConstants = createPermanentCache(
+    this,
     getVaultConstants,
     this.getVaultConstantsCacheKey
   );

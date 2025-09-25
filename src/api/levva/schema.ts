@@ -77,6 +77,11 @@ export const withdrawalRequestsResponseSchema = z.array(
   withdrawalRequestSchema
 );
 
+// Token response schema
+export const tokenResponseSchema = tokenSchema;
+
+export type Token = z.infer<typeof tokenSchema>;
+export type TokenResponse = z.infer<typeof tokenResponseSchema>;
 export type UserPosition = z.infer<typeof userPositionSchema>;
 export type UserPositionsResponse = z.infer<typeof userPositionsResponseSchema>;
 export type WithdrawalRequest = z.infer<typeof withdrawalRequestSchema>;
