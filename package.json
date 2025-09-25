@@ -76,7 +76,8 @@
     "test:watch": "vitest",
     "format": "prettier --write ./src",
     "format:check": "prettier --check ./src",
-    "check": "bun run lint:check && bun run format:check && bun run test:unit"
+    "check": "bun run lint:check && bun run format:check && bun run test:unit",
+    "fetch-tokens": "bun run scripts/fetch-tokens-by-chain.ts"
   },
   "publishConfig": {
     "access": "public"

@@ -1,4 +1,4 @@
-import { isHex } from "viem";
+import { formatUnits, isHex } from "viem";
 import { Action, Memory } from "@elizaos/core";
 import { INTENT_TYPE, LEVVA_ACTIONS, LEVVA_SERVICE } from "../constants/enum";
 import { LEVVA_PROVIDER_NAME, LevvaProviderState } from "../providers";
@@ -9,7 +9,14 @@ import { Suggestion } from "./types";
 import { getPreviousReplyContext } from "../util/action-results";
 import { ETH_NULL_ADDR } from "../constants/eth";
 import { IntentManager } from "../services/intent-manager";
+import { blockexplorers } from "../util/eth/client";
 import { handleSendIntent } from "./intents";
+import { formatCoin } from "src/util/format-coin";
+
+const getExplorerLink = (chainId: number, address: string): string => {
+  const explorer = blockexplorers.get(chainId);
+  return explorer ? `[Explorer](${explorer}/address/${address})` : address;
+};
 
 // Register the send intent
 IntentManager.registerIntent({
@@ -147,7 +154,25 @@ export const action: Action = {
       ]);
 
       // Enhanced portfolio analysis with insights
-      const portfolioSummary = service.formatWalletAssets(assets, true);
+      const assetsWithValues = assets.filter((a) => a.amount > 0);
+
+      const portfolioSummary = assetsWithValues
+        .map((asset) => {
+          const isNative = !asset.token || asset.token === ETH_NULL_ADDR;
+
+          const token = service.getTokenFromMap({
+            chainId: asset.chainId,
+            address: (asset.token ?? ETH_NULL_ADDR) as `0x${string}`,
+          });
+
+          const decimals = token?.decimals ?? 18;
+          const symbol = token?.symbol ?? "ETH";
+
+          const balance = formatUnits(asset.amount, decimals);
+          return `- **${symbol}**: ${formatCoin(balance)} ${isNative ? "Native token" : getExplorerLink(asset.chainId, asset.token)}`;
+        })
+        .join("\n");
+
       const totalValue = assets.reduce(
         (sum, asset) => sum + Number(asset.value) / 1e18,
         0

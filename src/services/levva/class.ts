@@ -631,10 +631,14 @@ export class LevvaService
     }
 
     // fixme use cache+invalidate?
-    const balance = await this.getBalanceOf(address, 1, ETH_NULL_ADDR);
+    // fixme access metadata's chainid
+    const chains = [1,8543,42161];
+    for (const chainId of chains) {
+      const balance = await this.getBalanceOf(address, chainId, ETH_NULL_ADDR);
 
-    if ((balance?.amount ?? 0n) > 0n) {
-      return { result: true };
+      if ((balance?.amount ?? 0n) > 0n) {
+        return { result: true };
+      }
     }
 
     const content: Content = {
