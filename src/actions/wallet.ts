@@ -8,9 +8,10 @@ import { rephrase } from "../util/generate";
 import { Suggestion } from "./types";
 import { getPreviousReplyContext } from "../util/action-results";
 import { ETH_NULL_ADDR } from "../constants/eth";
+import { USD_DECIMALS } from "../constants/math";
 import { IntentManager } from "../services/intent-manager";
 import { blockexplorers } from "../util/eth/client";
-import { handleSendIntent } from "./intents";
+import { handleSendIntent, generateSendSuggestions } from "./intents";
 import { formatCoin } from "src/util/format-coin";
 
 const getExplorerLink = (chainId: number, address: string): string => {
@@ -24,6 +25,7 @@ IntentManager.registerIntent({
   domain: LEVVA_ACTIONS.ANALYZE_WALLET,
   keywords: ["send", "transfer", "pay", "move", "give", "donate"],
   handler: handleSendIntent,
+  generateSuggestions: generateSendSuggestions,
   description: "Handle token transfer requests with multi-step process support",
 });
 
@@ -160,7 +162,7 @@ export const action: Action = {
         .map((asset) => {
           const isNative = !asset.token || asset.token === ETH_NULL_ADDR;
 
-          const token = service.getTokenFromMap({
+          const token = service.token.getTokenFromMap({
             chainId: asset.chainId,
             address: (asset.token ?? ETH_NULL_ADDR) as `0x${string}`,
           });
@@ -174,7 +176,7 @@ export const action: Action = {
         .join("\n");
 
       const totalValue = assets.reduce(
-        (sum, asset) => sum + Number(asset.value) / 1e18,
+        (sum, asset) => sum + Number(asset.value) / 10 ** USD_DECIMALS,
         0
       );
 
@@ -188,7 +190,7 @@ export const action: Action = {
       // Risk and diversification analysis
       const tokenCount = assets.length;
       const largestHolding = Math.max(
-        ...assets.map((a) => Number(a.value) / 1e18)
+        ...assets.map((a) => Number(a.value) / 10 ** USD_DECIMALS)
       );
       const concentrationRisk =
         totalValue > 0 ? (largestHolding / totalValue) * 100 : 0;
@@ -435,6 +437,10 @@ Suggest 3-4 optimization actions like:
 - ETH/WETH conversion opportunities
 - Position management actions`;
       } catch (error) {
+        runtime.logger.error(
+          "Error in portfolio-optimization suggestion:",
+          error
+        );
         return "Suggest general portfolio optimization strategies";
       }
     },
@@ -474,6 +480,10 @@ Suggest specific investment actions like:
 - "Wrap ETH and deposit into WETH strategy"
 - "Start with $100 in Safe strategy"`;
       } catch (error) {
+        runtime.logger.error(
+          "Error in investment-opportunities suggestion:",
+          error
+        );
         return "Suggest general investment opportunities";
       }
     },
@@ -482,7 +492,7 @@ Suggest specific investment actions like:
     name: "risk-assessment",
     description:
       "Provide risk analysis and recommendations for portfolio balance",
-    getPrompt: async (runtime, key, message?: Memory) => {
+    getPrompt: async () => {
       return `Generate risk assessment suggestions focusing on:
 
 - Portfolio concentration analysis
@@ -498,7 +508,7 @@ Provide actionable risk management suggestions.`;
     name: "market-insights",
     description:
       "Share relevant market insights and news affecting user's portfolio",
-    getPrompt: async (runtime, key, message?: Memory) => {
+    getPrompt: async (runtime) => {
       const service = runtime.getService<LevvaService>(
         LEVVA_SERVICE.LEVVA_COMMON
       );
@@ -518,6 +528,7 @@ Suggest actions like:
 - "What opportunities does this create?"
 - "How can I protect my portfolio from market volatility?"`;
       } catch (error) {
+        runtime.logger.error("Error in market-insights suggestion:", error);
         return "Suggest general market analysis and portfolio protection strategies";
       }
     },
@@ -526,7 +537,7 @@ Suggest actions like:
     name: "send-tokens",
     description:
       "Suggest token transfer and send operations based on available assets",
-    getPrompt: async (runtime, key, message?: Memory) => {
+    getPrompt: async (runtime, key) => {
       const service = runtime.getService<LevvaService>(
         LEVVA_SERVICE.LEVVA_COMMON
       );
@@ -553,6 +564,7 @@ Suggest transfer actions like:
 
 Include examples with specific amounts and emphasize the need for recipient addresses.`;
       } catch (error) {
+        runtime.logger.error("Error in send-tokens suggestion:", error);
         return "Suggest general token transfer and send operations";
       }
     },

@@ -1,14 +1,36 @@
-// Withdrawal suggestion prompts
-export {
-  withdrawalStatusCheckPrompt,
-  type WithdrawalStatusCheckParams,
-} from "./withdrawal-status-check";
-export {
-  withdrawalGuidancePrompt,
-  type WithdrawalGuidanceParams,
-} from "./withdrawal-guidance";
+// ============================================================================
+// INTENT-AWARE SUGGESTIONS (Active Intent Context)
+// ============================================================================
+// These are used when an intent is ACTIVE and provide progressive disclosure
 
-// Swap suggestion prompts
+export {
+  generateWithdrawIntentSuggestionsPrompt,
+  type WithdrawIntentSuggestionParams,
+} from "./withdraw-intent";
+
+export {
+  generateDepositIntentSuggestionsPrompt,
+  type DepositIntentSuggestionParams,
+} from "./deposit-intent";
+
+export {
+  generateSwapIntentSuggestionsPrompt,
+  type SwapIntentSuggestionParams,
+} from "./swap-intent";
+
+export {
+  generateSendIntentSuggestionsPrompt,
+  type SendIntentSuggestionParams,
+} from "./send-intent";
+
+export { generateIntentManagementSection } from "./intent-management";
+
+// ============================================================================
+// ACTION-BASED SUGGESTIONS (No Active Intent)
+// ============================================================================
+// These help users INITIATE intents when no intent is active
+
+// Swap action suggestions (help initiate SWAP intent)
 export {
   exchangeAmountPrompt,
   type ExchangeAmountParams,
@@ -18,7 +40,7 @@ export {
   type ExchangePairsParams,
 } from "./exchange-pairs";
 
-// Position suggestion prompts
+// Position action suggestions (help initiate DEPOSIT/WITHDRAW intents)
 export {
   positionManagementPrompt,
   type PositionManagementParams,

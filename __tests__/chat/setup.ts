@@ -1,5 +1,6 @@
+import { randomUUID } from "crypto";
 import { AgentClient } from "../utils/client/client";
-import { SocketIOManager } from "../utils/client/socket";
+import { SocketIOManager, MessageBroadcastData } from "../utils/client/socket";
 
 // Test configuration - using actual values from example.ts
 export const SECRET =
@@ -10,7 +11,7 @@ export const TEST_CONFIG = {
   baseUrl: process.env.ELIZA_BASE_URL || "http://localhost:3001",
   secret: SECRET,
   address: ADDRESS as `0x${string}`,
-  chainId: parseInt(process.env.ELIZA_CHAIN_ID || "1"),
+  chainId: 8453,
   timeout: 30000, // 30 seconds timeout for responses
 };
 
@@ -34,16 +35,16 @@ export async function setupChatTest(): Promise<ChatTestContext> {
   });
   const socket = SocketIOManager.getInstance();
 
-  // Get or create user
-  const user = await client.levva.getUserId({
+  // Get or create user - this returns the Levva user ID (database ID for the address)
+  const levvaUser = await client.levva.getUserId({
     secret: TEST_CONFIG.secret,
     address: TEST_CONFIG.address as `0x${string}`,
   });
 
-  if (!user?.id) {
-    throw new Error("Failed to get user ID");
+  if (!levvaUser?.id) {
+    throw new Error("Failed to get Levva user ID");
   }
-  const userId = user.id;
+  const userId = levvaUser.id; // This is the user ID we need for everything
 
   // Get available agents
   const agents = await client.agents.listAgents();
@@ -56,14 +57,13 @@ export async function setupChatTest(): Promise<ChatTestContext> {
 
   // Create DM channel
   const channel = await client.messaging.getOrCreateDmChannel({
-    currentUserId: userId,
-    targetUserId: agentId,
+    participantIds: [userId, agentId],
   });
   const channelId = channel.id;
 
   // Initialize socket connection
   socket.initialize(userId);
-  socket.joinChannel(channelId);
+  await socket.joinChannel(channelId);
 
   return { client, socket, userId, agentId, channelId };
 }
@@ -72,6 +72,57 @@ export function teardownChatTest(context: ChatTestContext | undefined) {
   if (context?.socket) {
     context.socket.disconnect();
   }
+}
+
+// Helper to send message and wait for agent's complete response
+export async function sendMessageAndWaitForComplete(
+  context: ChatTestContext,
+  text: string
+): Promise<MessageBroadcastData[]> {
+  const { socket, agentId, channelId, userId } = context;
+
+  return new Promise((resolve, reject) => {
+    const agentMessages: MessageBroadcastData[] = [];
+
+    const timeout = setTimeout(() => {
+      messageDetach.detach();
+      completeDetach.detach();
+      reject(new Error(`Timeout waiting for agent response to: "${text}"`));
+    }, TEST_CONFIG.timeout);
+
+    // Listen for all agent messages
+    const messageDetach = socket.evtMessageBroadcast.attach((data) => {
+      if (data.senderId === agentId && data.channelId === channelId) {
+        agentMessages.push(data);
+      }
+    });
+
+    // Wait for messageComplete event
+    const completeDetach = socket.evtMessageComplete.attach((data) => {
+      if (data.channelId === channelId && agentMessages.length > 0) {
+        clearTimeout(timeout);
+        messageDetach.detach();
+        completeDetach.detach();
+        resolve(agentMessages);
+      }
+    });
+
+    // Send the message
+    socket.sendMessage(
+      text,
+      channelId,
+      randomUUID(),
+      "client_chat",
+      undefined,
+      randomUUID(),
+      {
+        userAddressId: userId,
+        chainId: TEST_CONFIG.chainId,
+        isDm: true,
+        targetUserId: agentId,
+      }
+    );
+  });
 }
 
 // Helper function to calculate text similarity

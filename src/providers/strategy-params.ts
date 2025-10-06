@@ -1,5 +1,5 @@
 import { Provider } from "@elizaos/core";
-import { EMPTY_RESULT, selectProviderState, checkSimpleReply } from "./util";
+import { EMPTY_RESULT, selectProviderState } from "./util";
 import { LEVVA_SERVICE } from "../constants/enum";
 import { LevvaService } from "../services/levva/class";
 import { LEVVA_PROVIDER_NAME, LevvaProviderState } from ".";
@@ -21,15 +21,6 @@ export const strategyParamsProvider: Provider = {
   description:
     "Provides basic strategy and portfolio information for strategy recommendations. Parameter extraction is handled by the deposit intent system.",
   async get(runtime, message, state) {
-    // Check for simple reply mode first
-    const simpleReply = checkSimpleReply(
-      runtime,
-      state,
-      "STRATEGY-PARAMS",
-      "Strategy data"
-    );
-    if (simpleReply) return simpleReply;
-
     const service = runtime.getService<LevvaService>(
       LEVVA_SERVICE.LEVVA_COMMON
     );
@@ -55,7 +46,6 @@ export const strategyParamsProvider: Provider = {
 
     const { user, chainId } = lvva;
 
-
     try {
       const [strategies, portfolio] = await Promise.all([
         service.strategy.getStrategies(chainId),
@@ -68,7 +58,7 @@ export const strategyParamsProvider: Provider = {
       const strategiesText = strategies
         .map((s) => service.strategy.formatStrategy(s))
         .join("\n");
-      const portfolioText = service.formatWalletAssets(portfolio, true);
+      const portfolioText = service.wallet.formatWalletAssets(portfolio, true);
 
       const data: StrategyParamsProviderData = {
         strategies,

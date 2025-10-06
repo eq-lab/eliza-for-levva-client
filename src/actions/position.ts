@@ -23,7 +23,12 @@ import { depositOpportunitiesPrompt } from "../prompts/suggest/deposit-opportuni
 import { ETH_NULL_ADDR } from "../constants/eth";
 import { IntentManager, IntentContext } from "../services/intent-manager";
 import { Suggestion } from "./types";
-import { handleWithdrawIntent, handleDepositIntent } from "./intents";
+import {
+  handleWithdrawIntent,
+  generateWithdrawSuggestions,
+  handleDepositIntent,
+  generateDepositSuggestions,
+} from "./intents";
 
 // Register the withdraw intent
 IntentManager.registerIntent({
@@ -41,6 +46,7 @@ IntentManager.registerIntent({
     "take out",
   ],
   handler: handleWithdrawIntent,
+  generateSuggestions: generateWithdrawSuggestions,
   description:
     "Handle withdrawal requests from Levva positions with multi-step process support",
 });
@@ -66,6 +72,7 @@ IntentManager.registerIntent({
     "suggest strategy",
   ],
   handler: handleDepositIntent,
+  generateSuggestions: generateDepositSuggestions,
   description:
     "Handle deposit/investment requests for Levva strategies with transaction creation and multi-step process support",
 });
@@ -280,7 +287,10 @@ ${availableStrategies
       success: true,
     };
   } catch (error) {
-    logger.error("Error in MANAGE_POSITIONS action:", error);
+    logger.error(
+      "Error in MANAGE_POSITIONS action:",
+      error instanceof Error ? error.message : String(error)
+    );
     const errorMessage = (error as Error).message ?? "unknown error";
     const thought = `Action failed with error: ${errorMessage}. I should tell the user about the error.`;
     const text = `Failed to analyze positions, reason: ${errorMessage}. Please try again.`;
@@ -456,7 +466,7 @@ export const suggest: Suggestion[] = [
         withdrawalsSummary: summary.withdrawalsSummary,
         hasPositions: summary.hasPositions,
         availableStrategies,
-        portfolioText: service.formatWalletAssets(portfolio, true),
+        portfolioText: service.wallet.formatWalletAssets(portfolio, true),
         hasEth,
         riskDistribution,
       });
@@ -514,7 +524,7 @@ export const suggest: Suggestion[] = [
               `${s.name} (${s.risk} risk, ${s.category}) - ${s.shortDescription}. Contract: ${s.vault?.address || "N/A"}`
           )
           .join("\n"),
-        portfolioText: service.formatWalletAssets(portfolio, true),
+        portfolioText: service.wallet.formatWalletAssets(portfolio, true),
         hasEth,
         currentRiskLevels: uniqueCurrentRisks,
       });
@@ -562,7 +572,7 @@ export const suggest: Suggestion[] = [
         availableStrategies: strategies
           .map((s) => `${s.name} (${s.risk} risk) - ${s.shortDescription}`)
           .join("\n"),
-        portfolioText: service.formatWalletAssets(portfolio, true),
+        portfolioText: service.wallet.formatWalletAssets(portfolio, true),
         hasEth,
         significantTokens,
       });

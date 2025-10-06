@@ -38,6 +38,12 @@ async function handler(req: Request, res: Response, runtime: IAgentRuntime) {
     }
 
     const result = await getLevvaUser(runtime, { address });
+    // enqueue getWalletAssets accross all chains; to update stale balances
+    Promise.all(
+      [1, 8453].map((chainId) =>
+        service.wallet.getWalletAssets({ address, chainId })
+      )
+    );
 
     let id: string;
 

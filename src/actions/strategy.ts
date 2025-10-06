@@ -296,7 +296,7 @@ export const suggest: Suggestion[] = [
           .join("\n"),
         decision: params.decision,
         conversation: params.conversation,
-        portfolio: service.formatWalletAssets(assets, true),
+        portfolio: service.wallet.formatWalletAssets(assets, true),
         availableTokens: availableTokens
           .map((token) => `${token.symbol}(${token.address})`)
           .join(", "),
@@ -346,7 +346,7 @@ export const suggest: Suggestion[] = [
         pools: strategies.join("\n"),
         decision: params.decision,
         conversation: params.conversation,
-        portfolio: service.formatWalletAssets(assets, true),
+        portfolio: service.wallet.formatWalletAssets(assets, true),
         availableTokens: availableTokens
           .map((token) => `${token.symbol}(${token.address})`)
           .join(", "),
@@ -407,7 +407,8 @@ export const suggest: Suggestion[] = [
         pools: strategies.join("\n"),
         decision: params.decision,
         conversation: params.conversation,
-        portfolio: service.formatWalletAssets(assets, true) + ethConversionNote,
+        portfolio:
+          service.wallet.formatWalletAssets(assets, true) + ethConversionNote,
         availableTokens: availableTokens
           .map((token) => `${token.symbol}(${token.address})`)
           .join(", "),
@@ -469,7 +470,8 @@ export const suggest: Suggestion[] = [
         conversation: params.conversation,
         strategies: strategies.join("\n"),
         portfolio:
-          service.formatWalletAssets(portfolio, true) + ethConversionNote,
+          service.wallet.formatWalletAssets(portfolio, true) +
+          ethConversionNote,
         availableTokens: tokens
           .map(
             (token) =>

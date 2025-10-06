@@ -13,7 +13,7 @@ import { getPreviousReplyContext } from "../util/action-results";
 import { exchangeAmountPrompt } from "../prompts/suggest/exchange-amount";
 import { exchangePairsPrompt } from "../prompts/suggest/exchange-pairs";
 import { IntentManager } from "../services/intent-manager";
-import { handleSwapIntent } from "./intents/swap";
+import { handleSwapIntent, generateSwapSuggestions } from "./intents/swap";
 import { RawMessage } from "../types/core";
 
 const description =
@@ -298,6 +298,7 @@ IntentManager.registerIntent({
     "bridge",
   ],
   handler: handleSwapIntent,
+  generateSuggestions: generateSwapSuggestions,
   description:
     "Handle token swap requests with multi-step process support including Kyber swaps and ETH wrapping/unwrapping",
 });
@@ -372,7 +373,7 @@ export const suggest: Suggestion[] = [
       return exchangeAmountPrompt({
         conversation,
         decision,
-        walletAssetsFormatted: service.formatWalletAssets(assets),
+        walletAssetsFormatted: service.wallet.formatWalletAssets(assets, true),
         availableTokens: available,
         intentContext,
         swapParams,
@@ -438,7 +439,7 @@ export const suggest: Suggestion[] = [
       return exchangePairsPrompt({
         conversation,
         decision,
-        walletAssetsFormatted: service.formatWalletAssets(assets),
+        walletAssetsFormatted: service.wallet.formatWalletAssets(assets, true),
         availableTokens: available,
         intentContext,
         recentIntents,
@@ -519,7 +520,7 @@ Memories: ${intentContext.memories?.length || 0} messages
 ${swapParams ? JSON.stringify(swapParams) : "No swap parameters available"}
 </swapParams>
 <portfolio>
-${service.formatWalletAssets(assets)}
+${service.wallet.formatWalletAssets(assets, true)}
 </portfolio>
 <conversation>
 ${conversation}

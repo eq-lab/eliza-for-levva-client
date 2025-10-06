@@ -6,19 +6,14 @@ alwaysApply: false
 
 # ServiceComponent Architecture Patterns
 
-## 🎯 **Core Architecture Principles**
+## 🎯 **Core Principles**
 
-### **ServiceComponent vs Service Distinction**
+### **ServiceComponent vs Service**
 
 **CRITICAL**: ServiceComponents are plain classes, NOT Services:
 - ✅ **ServiceComponents**: Plain TypeScript classes for business logic modules
 - ✅ **Services**: ElizaOS Service classes for runtime integration (main service only)
 - ❌ **Never**: Extend Service in ServiceComponent classes
-
-### **Naming Convention**
-- **ServiceComponents**: `[Domain]ServiceComponent` (e.g., `TokenServiceComponent`)
-- **ElizaOS Components**: Entity components (different concept entirely)
-- **Services**: Main ElizaOS Service classes
 
 ### **Why This Separation?**
 
@@ -29,9 +24,7 @@ alwaysApply: false
 
 ---
 
-## 🏗️ **ServiceComponent Structure Pattern**
-
-### **1. ServiceComponent Template**
+## 🏗️ **Basic ServiceComponent Template**
 
 ```typescript
 import { IAgentRuntime } from "@elizaos/core";
@@ -45,33 +38,33 @@ export class [Name]ServiceComponent {
   }
 
   // Component-specific cache keys
-  private getSomeCacheKey = (param1: string, param2: number) => 
-    `component-prefix:${param1}:${param2}`;
+  private getCacheKey = (param: string) => `component-name:${param}`;
 
-  // Cached methods using shared utilities - pass 'this' for cache context
-  someMethod = createTimedCache(
-    this,
-    ttl,
-    actualFunction,
-    this.getSomeCacheKey
+  // Cached methods using shared utilities
+  cachedMethod = createTimedCache(
+    this, // Pass component instance, not just runtime
+    300000, // TTL in ms
+    this.actualMethod,
+    this.getCacheKey
   );
 
   // Business logic methods
   async processData(input: SomeType): Promise<ResultType> {
-    // Component-specific logic
-    this.runtime.logger.info("Processing data in component");
+    this.runtime.logger.info("Processing data");
     return result;
   }
 
   // Optional cleanup method
   cleanup() {
-    // Component-specific cleanup logic
     // Clear maps, cancel timers, etc.
+    this.runtime.logger.info("Component cleanup completed");
   }
 }
 ```
 
-### **2. Service Integration Pattern**
+---
+
+## 🔗 **Service Integration Pattern**
 
 ```typescript
 import { Service, IAgentRuntime } from "@elizaos/core";
@@ -82,32 +75,25 @@ export class MainService extends Service {
   // Make runtime public for cache utilities
   declare public readonly runtime: IAgentRuntime;
 
-  // Service composition - ServiceComponents as public readonly properties
+  // Compose ServiceComponents
   public readonly token: TokenServiceComponent;
   public readonly wallet: WalletServiceComponent;
 
   constructor(runtime: IAgentRuntime) {
     super(runtime);
     
-    // Initialize ServiceComponents
+    // Initialize components
     this.token = new TokenServiceComponent(runtime);
     this.wallet = new WalletServiceComponent(runtime);
   }
 
   async stop() {
-    this.runtime.logger.info("Stopping service");
-    
-    // Cleanup ServiceComponents
+    // Cleanup components
     this.token.cleanup();
     this.wallet.cleanup();
-    
-    // Service-specific cleanup
-    if (this.someInterval) {
-      clearInterval(this.someInterval);
-    }
   }
 
-  // Deprecated delegation methods for backward compatibility
+  // Backward compatibility delegation
   /** @deprecated Use this.token.getToken() directly instead */
   getToken = (...args) => this.token.getToken(...args);
 }
@@ -115,51 +101,16 @@ export class MainService extends Service {
 
 ---
 
-## 🔧 **Implementation Guidelines**
+## 🎯 **Naming Conventions**
 
-### **ServiceComponent Naming**
-- **Pattern**: `[Domain]ServiceComponent` (e.g., `TokenServiceComponent`, `WalletServiceComponent`)
-- **File**: `[domain].ts` (e.g., `token.ts`, `wallet.ts`)
+- **Components**: `[Domain]ServiceComponent` (e.g., `TokenServiceComponent`)
+- **Files**: `[domain].ts` (e.g., `token.ts`, `wallet.ts`)
 - **Export**: Named export of the ServiceComponent class
-
-### **Constructor Pattern**
-```typescript
-// ✅ Correct: Explicit runtime property assignment
-export class MyServiceComponent {
-  runtime: IAgentRuntime;
-  
-  constructor(runtime: IAgentRuntime) {
-    this.runtime = runtime;
-  }
-}
-
-// ❌ Wrong: Private parameter shorthand (doesn't work with cache utilities)
-constructor(private runtime: IAgentRuntime) {}
-```
-
-### **Method Organization**
-1. **Constructor** - Initialize component state
-2. **Cache key generators** - Private methods for cache keys
-3. **Cached methods** - Using shared cache utilities
-4. **Business logic methods** - Core component functionality
-5. **Cleanup method** - Optional cleanup logic
-
-### **Logging Pattern**
-```typescript
-// ✅ Use runtime logger
-this.runtime.logger.info("Component message");
-this.runtime.logger.error("Component error", error);
-
-// ❌ Don't import logger separately
-import { logger } from "@elizaos/core";
-logger.info("Message"); // Wrong - use runtime logger
-```
 
 ---
 
 ## 📦 **Cache Integration**
 
-### **Shared Cache Utilities**
 ```typescript
 import { createTimedCache, createPermanentCache } from "./cache-util";
 
@@ -170,44 +121,175 @@ export class MyServiceComponent {
     this.runtime = runtime;
   }
 
-  // Component-specific cache key generators
-  private getCacheKey = (param: string) => `component-name:${param}`;
+  private getCacheKey = (param: string) => `my-component:${param}`;
 
-  // Apply caching to methods - pass 'this' as first parameter
+  // ✅ Correct - pass component instance
   cachedMethod = createTimedCache(
-    this, // Pass component instance, not just runtime
-    300000, // 5 minutes TTL
+    this,        // Component instance (has runtime property)
+    300000,      // TTL
     this.actualMethod,
     this.getCacheKey
   );
-  
-  // For permanent caching
-  permanentCachedMethod = createPermanentCache(
-    this, // Pass component instance
-    this.expensiveMethod,
-    this.getCacheKey
-  );
 }
 ```
 
-### **Cache Utility Interface**
-The cache utilities expect an object with a `runtime` property:
-```typescript
-interface CacheThisArg {
-  readonly runtime: IAgentRuntime;
-}
-```
-
-### **Cache Key Patterns**
-- **Format**: `component-name:param1:param2`
-- **Scope**: Component-specific, not shared across components
-- **Location**: Private methods within the component
+**Key Points**:
+- Always pass component instance (`this`) to cache utilities
+- Cache utilities expect objects with `runtime` property
+- Use component-specific cache key prefixes
 
 ---
 
-## 🧪 **Testing Patterns**
+## 🚨 **Common Anti-Patterns**
 
-### **ServiceComponent Testing**
+### **1. Extending Service**
+```typescript
+// ❌ Wrong
+export class TokenServiceComponent extends Service { }
+
+// ✅ Correct
+export class TokenServiceComponent { }
+```
+
+### **2. Wrong Cache Usage**
+```typescript
+// ❌ Wrong - passing runtime instead of component
+createTimedCache(this.runtime, ttl, fn, keyFn);
+
+// ✅ Correct - pass component instance
+createTimedCache(this, ttl, fn, keyFn);
+```
+
+### **3. Private Runtime Constructor**
+```typescript
+// ❌ Wrong - doesn't work with cache utilities
+constructor(private runtime: IAgentRuntime) {}
+
+// ✅ Correct - explicit property
+runtime: IAgentRuntime;
+constructor(runtime: IAgentRuntime) {
+  this.runtime = runtime;
+}
+```
+
+### **4. Direct Logger Import**
+```typescript
+// ❌ Wrong
+import { logger } from "@elizaos/core";
+logger.info("Message");
+
+// ✅ Correct
+this.runtime.logger.info("Message");
+```
+
+### **5. Missing Cleanup**
+```typescript
+// ❌ Wrong - memory leak
+export class ComponentWithTimers {
+  private interval = setInterval(() => {}, 1000);
+}
+
+// ✅ Correct
+export class ComponentWithTimers {
+  private interval = setInterval(() => {}, 1000);
+  
+  cleanup() {
+    clearInterval(this.interval);
+  }
+}
+```
+
+### **6. Rebuilding Component Data Structures**
+```typescript
+// ❌ Wrong - Rebuilding data that already exists in component
+async function generateSuggestions(service: LevvaService) {
+  // getWalletAssets already calls getAvailableTokens which populates tokenMap
+  const walletAssets = await service.wallet.getWalletAssets({ address, chainId });
+  
+  // BAD: Rebuilding tokenMap from component's tokenMap!
+  const tokenMap: Record<string, TokenInfo> = {};
+  service.token.tokenMap.forEach((token, key) => {
+    if (token && key.startsWith(`${chainId}:`)) {
+      const address = key.split(":")[1];
+      tokenMap[address.toLowerCase()] = {
+        symbol: token.symbol,
+        address: token.address,
+      };
+    }
+  });
+  
+  // Pass rebuilt map
+  return generatePrompt({ walletAssets, tokenMap });
+}
+
+// ✅ Correct - Pass component's data structure directly
+async function generateSuggestions(service: LevvaService) {
+  const walletAssets = await service.wallet.getWalletAssets({ address, chainId });
+  
+  // GOOD: Pass component's tokenMap directly!
+  return generatePrompt({ 
+    walletAssets, 
+    tokenMap: service.token.tokenMap, // Direct reference
+    chainId 
+  });
+}
+
+// In the prompt generation function:
+function generatePrompt(params: {
+  walletAssets: BalanceData[];
+  tokenMap: Map<`${number}:0x${string}`, TokenInfo>; // Accept component's Map type
+  chainId: number;
+}) {
+  // Helper for lookups
+  const getToken = (address: string) => {
+    return params.tokenMap.get(`${chainId}:${address}` as `${number}:0x${string}`);
+  };
+  
+  // Use helper for O(1) lookups
+  const token = getToken(asset.token);
+  const symbol = token?.symbol || 'UNKNOWN';
+}
+```
+
+**Why This Matters:**
+- ❌ **Performance**: Rebuilding creates O(n) iteration + object creation overhead
+- ❌ **Memory**: Duplicates data already in memory
+- ❌ **Maintenance**: Two versions of same data to keep in sync
+- ✅ **Single Source of Truth**: Component owns and maintains the data structure
+- ✅ **Direct Access**: O(1) Map lookups instead of object property access
+- ✅ **Type Safety**: Preserve proper Map types throughout the call chain
+
+---
+
+## ✅ **Best Practices**
+
+1. **Single Responsibility**: Each component handles one domain
+2. **Dependency Injection**: Runtime passed through constructor
+3. **Proper Cleanup**: Always implement cleanup for resources
+4. **Cache Scoping**: Component-specific cache key prefixes
+5. **Logging**: Use runtime logger (`this.runtime.logger`)
+6. **Explicit Runtime**: Use explicit property assignment
+7. **Size**: Keep components 80-150 lines (sweet spot)
+8. **Testing**: Test components in isolation
+9. **Data Structure Ownership**: Components own and expose their data structures (e.g., `public readonly tokenMap`)
+10. **Avoid Rebuilding**: Pass component data structures directly instead of transforming/rebuilding them
+11. **Single Source of Truth**: Never duplicate or transform component-owned data for convenience
+
+---
+
+## 🔧 **Method Organization**
+
+Organize component methods in this order:
+1. Constructor
+2. Cache key generators (private)
+3. Cached methods
+4. Business logic methods
+5. Cleanup method
+
+---
+
+## 🧪 **Testing Pattern**
+
 ```typescript
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { createMockRuntime } from "../test-utils";
@@ -233,189 +315,31 @@ describe("TokenServiceComponent", () => {
 });
 ```
 
-### **Service Integration Testing**
-```typescript
-describe("MainService with ServiceComponents", () => {
-  it("should integrate ServiceComponents correctly", () => {
-    const service = new MainService(mockRuntime);
-    
-    // Test ServiceComponent access
-    expect(service.token).toBeInstanceOf(TokenServiceComponent);
-    expect(service.wallet).toBeInstanceOf(WalletServiceComponent);
-    
-    // Test deprecated methods still work
-    expect(service.getToken).toBeDefined();
-  });
-});
-```
-
----
-
-## 🔄 **Migration Strategy**
-
-### **Step-by-Step Component Extraction**
-
-#### **Phase 1: Identify Component Boundaries**
-1. Look for related method groups (e.g., TOKEN BLOCK, WALLET BLOCK)
-2. Identify shared dependencies and imports
-3. Map cache usage patterns
-4. Estimate component size (~80-150 lines ideal)
-
-#### **Phase 2: Create Component**
-1. Create new component file following template
-2. Move related methods to component
-3. Update imports and dependencies
-4. Implement cache key generators
-5. Add cleanup method if needed
-
-#### **Phase 3: Service Integration**
-1. Add component as property to main service
-2. Initialize component in service constructor
-3. Add component cleanup to service stop method
-4. Create deprecated delegation methods
-5. Add @deprecated annotations
-
-#### **Phase 4: Update Usage**
-1. Update internal service usage to use components directly
-2. External usage can continue using deprecated methods
-3. Gradually migrate external usage over time
-4. Eventually remove deprecated methods in future version
-
 ---
 
 ## 📊 **Success Metrics**
 
-### **Component Quality Indicators**
-- **Size**: 80-150 lines per component (sweet spot)
+- **Component Size**: 80-150 lines ideal
+- **Service Reduction**: Aim for 40-50% main service size reduction
+- **Test Coverage**: >90% for business logic
 - **Cohesion**: All methods related to single domain
-- **Dependencies**: Minimal external dependencies
-- **Testing**: >90% test coverage for business logic
-- **Caching**: Proper cache key scoping and TTL usage
-
-### **Service Decomposition Benefits**
-- **Maintainability**: Smaller, focused classes
-- **Testability**: Components testable in isolation
-- **Reusability**: Components can be reused across services
-- **Performance**: Better caching patterns
-- **Developer Experience**: Clear separation of concerns
-
----
-
-## 🚨 **Common Pitfalls**
-
-### **❌ Anti-Patterns to Avoid**
-
-1. **Extending Service in ServiceComponents**
-```typescript
-// ❌ Wrong
-export class TokenServiceComponent extends Service {
-  // ServiceComponents should NOT extend Service
-}
-```
-
-2. **Wrong Cache Utility Usage**
-```typescript
-// ❌ Wrong - passing runtime instead of component instance
-cachedMethod = createTimedCache(
-  this.runtime, // Wrong!
-  ttl,
-  fn,
-  keyFn
-);
-
-// ✅ Correct - pass component instance
-cachedMethod = createTimedCache(
-  this, // Correct!
-  ttl,
-  fn,
-  keyFn
-);
-```
-
-3. **Private Runtime Constructor**
-```typescript
-// ❌ Wrong - private runtime doesn't work with cache utilities
-constructor(private runtime: IAgentRuntime) {}
-
-// ✅ Correct - explicit property assignment
-runtime: IAgentRuntime;
-constructor(runtime: IAgentRuntime) {
-  this.runtime = runtime;
-}
-```
-
-4. **Shared Cache Keys Across Components**
-```typescript
-// ❌ Wrong - shared cache keys
-export const CACHE_KEYS = {
-  token: (id: string) => `token:${id}`,
-  wallet: (id: string) => `wallet:${id}`,
-};
-```
-
-5. **Direct Logger Import**
-```typescript
-// ❌ Wrong
-import { logger } from "@elizaos/core";
-logger.info("Message");
-
-// ✅ Correct
-this.runtime.logger.info("Message");
-```
-
-6. **Missing Cleanup**
-```typescript
-// ❌ Wrong - no cleanup method
-export class ServiceComponentWithTimers {
-  private interval = setInterval(() => {}, 1000);
-  // Missing cleanup method - memory leak!
-}
-```
-
-### **✅ Best Practices**
-
-1. **Single Responsibility**: Each ServiceComponent handles one domain
-2. **Dependency Injection**: Runtime passed through constructor
-3. **Proper Cleanup**: Always implement cleanup for resources
-4. **Cache Scoping**: ServiceComponent-specific cache keys
-5. **Error Handling**: Consistent error handling patterns
-6. **Logging**: Use runtime logger for consistency
-7. **Cache Pattern**: Always pass component instance (`this`) to cache utilities
-8. **Runtime Access**: Use explicit property assignment for runtime in ServiceComponents
-
-### **Service Class Runtime Pattern**
-For main Service classes that use cache utilities:
-```typescript
-export class MainService extends Service {
-  // Override protected runtime to make it public for cache utilities
-  declare public readonly runtime: IAgentRuntime;
-  
-  // ServiceComponent instances
-  public readonly token: TokenServiceComponent;
-  
-  constructor(runtime: IAgentRuntime) {
-    super(runtime);
-    this.token = new TokenServiceComponent(runtime);
-  }
-  
-  // Cache methods pass 'this' to utilities
-  cachedMethod = createTimedCache(this, ttl, fn, keyFn);
-}
-```
+- **Reusability**: Components usable across services
 
 ---
 
 ## 🔗 **Related Files**
 
 - `src/services/levva/cache-util.ts` - Shared cache utilities
-- `src/services/levva/token.ts` - Reference ServiceComponent implementation
-- `src/services/levva/class.ts` - Main service with composition pattern
+- `src/services/levva/token.ts` - Reference implementation
+- `src/services/levva/wallet.ts` - With BackgroundQueue
+- `src/services/levva/class.ts` - Service composition
 
 ---
 
 ## 📚 **Related Rules**
 
+- `@background-queue-pattern.mdc` - For async operations with BackgroundQueue
+- `@service-component-migration.mdc` - Step-by-step extraction guide
 - `@caching-patterns.mdc` - Cache utilities and best practices
-- `@testing-patterns.mdc` - Testing strategies for ServiceComponents
-- `@error-handling.mdc` - Error handling in ServiceComponents
-- `@service-module-organization.mdc` - Service file organization
+- `@testing-patterns.mdc` - Testing strategies
+- `@error-handling.mdc` - Error handling patterns

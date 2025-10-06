@@ -19,6 +19,7 @@ import { IntentContext, IntentHandler } from "../../services/intent-manager";
 import { CalldataWithDescription } from "../../types/tx";
 import { ActionResult } from "../../util/action-results";
 import { rephrase } from "../../util/generate";
+import { generateDepositIntentSuggestionsPrompt } from "../../prompts/suggest/deposit-intent";
 
 export interface DepositData extends ExtractedDataForDeposit {
   strategy?: StrategyEntry;
@@ -150,6 +151,62 @@ export function formatDepositIntent(data: DepositData): string {
 }
 
 /**
+ * Generate deposit intent-aware suggestions
+ * This function is registered with the intent and called by IntentManager
+ */
+export async function generateDepositSuggestions(params: {
+  runtime: IAgentRuntime;
+  intentContext: IntentContext;
+  conversation: string;
+  userAddress: `0x${string}`;
+  chainId: number;
+}): Promise<string> {
+  const { runtime, intentContext, conversation, userAddress, chainId } = params;
+  const service = runtime.getService<LevvaService>(LEVVA_SERVICE.LEVVA_COMMON);
+
+  if (!service) {
+    throw new Error("LevvaService not found");
+  }
+
+  // Fetch all required data in parallel
+  // Note: getWalletAssets already fetches availableTokens internally,
+  // which populates service.token.tokenMap
+  const [positions, strategies, walletAssets] = await Promise.all([
+    service.getUserPositions(userAddress, chainId),
+    service.strategy.getStrategies(chainId),
+    service.wallet.getWalletAssets({ address: userAddress, chainId }),
+  ]);
+
+  // Generate prompt using consolidated prompt function
+  // Pass component's tokenMap directly - no need to rebuild it!
+  return generateDepositIntentSuggestionsPrompt({
+    intentContext,
+    conversation,
+    userAddress,
+    chainId,
+    returnData: intentContext.returnData || {},
+    positions: positions.map((p) => ({
+      strategyId: p.strategyId,
+      balance: p.balance,
+      balanceUsd: p.balanceUsd,
+    })),
+    strategies: strategies.map((s) => ({
+      id: s.id,
+      name: s.name,
+      risk: s.risk,
+      type: s.type,
+      vaultUnderlyingToken: s.vault?.underlyingToken.address,
+    })),
+    walletAssets: walletAssets.map((a) => ({
+      token: a.token,
+      amount: a.amount,
+      value: a.value,
+    })),
+    tokenMap: service.token.tokenMap, // Use component's map directly!
+  });
+}
+
+/**
  * Deposit Intent Handler
  *
  * Handles deposit/investment operations with intent context tracking.
@@ -217,6 +274,18 @@ export const handleDepositIntent: IntentHandler = async (
       amount,
       leverage,
     } = (intentContext.returnData as DepositData) || {};
+
+    // Debug logging for parameter extraction
+    runtime.logger.info("[DEPOSIT_INTENT] Extracted parameters:", {
+      strategyId,
+      strategyName,
+      strategyType: strategy?.type,
+      tokenSymbol,
+      tokenAddress,
+      amount,
+      leverage,
+      returnDataKeys: Object.keys(intentContext.returnData || {}),
+    });
 
     // Check if we have all required parameters
     if (!strategy || (!strategyId && !strategyName)) {

@@ -68,7 +68,6 @@ export const swapParamsProvider: Provider = {
     }
     const { user, chainId, tokens } = lvva;
 
-
     // Extract user info for intent management
     const raw: any = (message.metadata as unknown as { raw: any }).raw;
     const userId = raw.senderId;

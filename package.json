@@ -61,6 +61,7 @@
     "start": "elizaos start",
     "dev": "LOG_LEVEL=debug elizaos dev",
     "debug": "bun --inspect-brk ./src/server.ts",
+    "type-check": "tsc --noEmit",
     "build": "tsup",
     "lint": "eslint . --ext .ts,.tsx,.js,.jsx",
     "lint:fix": "eslint . --ext .ts,.tsx,.js,.jsx --fix",

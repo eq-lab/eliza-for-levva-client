@@ -1,23 +1,13 @@
 import assert from "node:assert";
-import EventEmitter from "node:events";
-import {
-  encodeFunctionData,
-  formatUnits,
-  getAddress,
-  sha256,
-  toHex,
-} from "viem";
+import { encodeFunctionData, getAddress, sha256, toHex } from "viem";
 import { and, eq } from "drizzle-orm";
 import {
   Content,
   Entity,
   type IAgentRuntime,
-  logger,
   Service,
-  ServiceType,
   UUID,
 } from "@elizaos/core";
-import { BrowserService } from "../browser";
 import { LEVVA_SERVICE } from "../../constants/enum";
 import { getActiveMarkets, PendleActiveMarkets } from "../../api/market/pendle";
 import { CacheEntry } from "../../types/core";
@@ -25,20 +15,9 @@ import { ILevvaService } from "../../types/service";
 import { CalldataWithDescription } from "../../types/tx";
 import { balancesTable } from "../../schema/balances";
 import { getDb } from "../../util/db";
-import {
-  getBalanceOf,
-  getLevvaUser,
-  getToken as getTokenImpl,
-} from "../../util";
-import { delay, isRejected, isResolved, Mutex } from "../../util/async";
+import { getLevvaUser, getToken as getTokenImpl, TokenEntry } from "../../util";
 import { ETH_NULL_ADDR } from "../../constants/eth";
-import {
-  getFeed,
-  getFeedItemId,
-  getLatestNews,
-  isFeedItem,
-  onFeedItem,
-} from "./news";
+// News imports removed - now handled by NewsServiceComponent
 import {
   getPoolConstants,
   getPoolVariables as getPoolVariablesImpl,
@@ -49,12 +28,7 @@ import {
   PendleInterface,
   getPendleParams as getPendleParamsImpl,
 } from "./pendle";
-import {
-  BalanceEntry,
-  getBalance,
-  upsertBalance,
-  WalletInterface,
-} from "./wallet";
+import { WalletServiceComponent } from "./wallet";
 import vaultAbi from "./abi/vault.abi";
 import withdrawalNftAbi from "./abi/vault.withdrawal-nft.abi";
 import { getChannelByName, getMessages } from "./messages";
@@ -62,6 +36,7 @@ import { getUserPositions, getWithdrawalRequests } from "../../api/levva";
 import { createPositionSummary } from "./positions";
 import { checkSecret } from "./secrets";
 import { TokenServiceComponent } from "./token";
+import { NewsServiceComponent } from "./news-component";
 import { createTimedCache, createPermanentCache } from "./cache-util";
 
 const REQUIRED_PLUGINS = ["levva"];
@@ -71,59 +46,21 @@ function checkPlugins(runtime: IAgentRuntime) {
   return REQUIRED_PLUGINS.every((plugin) => set.has(plugin));
 }
 
-// todo config
-const MAX_WAIT_TIME = 15000; // time after which put promise in background
-
 export class LevvaService
   extends Service
-  implements ILevvaService, PendleInterface, WalletInterface
+  implements ILevvaService, PendleInterface
 {
   public readonly runtime: IAgentRuntime;
 
   // Service composition components - NEW functionality only
   public readonly strategy: StrategyComponent;
   public readonly token: TokenServiceComponent;
+  public readonly wallet: WalletServiceComponent;
+  public readonly news: NewsServiceComponent;
 
   static serviceType = LEVVA_SERVICE.LEVVA_COMMON;
   capabilityDescription =
     "Levva service should analyze the user's portfolio, suggest earning strategies, swap crypto assets, etc.";
-
-  private events = new EventEmitter();
-  private background: { id?: string; promise: Promise<unknown> }[] = [];
-
-  private handlerInterval: NodeJS.Timeout | null = null;
-
-  private bgHandler = async () => {
-    const unresolved: { id?: string; promise: Promise<unknown> }[] = [];
-
-    for (const { id, promise } of this.background) {
-      if (await isResolved(promise)) {
-        if (id) {
-          this.events.emit("background:resolved", { id, value: await promise });
-        }
-      } else if (await isRejected(promise)) {
-        try {
-          await promise;
-        } catch (error) {
-          logger.error(`Background promise rejected: ${id}`, error);
-        }
-      } else {
-        unresolved.push({ id, promise });
-      }
-    }
-
-    this.background = unresolved;
-  };
-
-  private inBackground = async <T>(
-    fn: () => Promise<T>,
-    id?: string,
-    waitTime = MAX_WAIT_TIME
-  ): Promise<T | undefined> => {
-    const promise = fn();
-    this.background.push({ id, promise });
-    return Promise.race([promise, delay(waitTime, undefined)]);
-  };
 
   constructor(runtime: IAgentRuntime) {
     super(runtime);
@@ -133,22 +70,12 @@ export class LevvaService
     // Initialize NEW service components - pass service instance to constructor
     this.strategy = new StrategyComponent(runtime, this);
     this.token = new TokenServiceComponent(runtime);
-
-    this.handlerInterval = setInterval(this.bgHandler, 500);
-    this.events.on("background:resolved", (event) => {
-      if (isFeedItem(event.id)) {
-        // fixme handler invocations should have same call signature
-        onFeedItem(this.runtime, event.id, event.value);
-      } else if (this.isBalanceId(event.id)) {
-        this.onUpdateBalance(event.id, event.value);
-      } else {
-        logger.warn(`Unknown event: ${event.id}`, JSON.stringify(event.value));
-      }
-    });
+    this.wallet = new WalletServiceComponent(runtime, this);
+    this.news = new NewsServiceComponent(runtime);
   }
 
   static async start(runtime: IAgentRuntime) {
-    logger.info("*** Starting Levva service ***");
+    runtime.logger.info("*** Starting Levva service ***");
     const service = new LevvaService(runtime);
     return service;
   }
@@ -168,13 +95,10 @@ export class LevvaService
   async stop() {
     this.runtime.logger.info("*** Stopping levva service instance ***");
 
-    if (this.handlerInterval) {
-      clearInterval(this.handlerInterval);
-      this.handlerInterval = null;
-    }
-
     // Cleanup components
     this.token.cleanup();
+    this.wallet.cleanup();
+    this.news.cleanup();
   }
 
   getUser = async (address: `0x${string}`) => {
@@ -211,14 +135,20 @@ export class LevvaService
   getAvailableTokens = (params: { chainId: number }) =>
     this.token.getAvailableTokens(params);
 
-  /** @deprecated Use this.token.formatToken() directly instead */
+  /** @deprecated Use this.wallet.formatToken() directly instead */
   formatToken = (token: {
     symbol: string;
     name: string;
     address?: string;
     decimals: number;
     info?: unknown;
-  }) => this.token.formatToken(token);
+  }) =>
+    this.wallet.formatToken({
+      ...token,
+      address: token.address ?? ETH_NULL_ADDR,
+      chainId: 1, // Default chainId for backward compatibility
+      info: token.info ?? {},
+    } as Omit<TokenEntry, "id">);
 
   /** @deprecated Use this.token.getExternalTokenData() directly instead */
   getExternalTokenData = (tokenAddress: `0x${string}`, chainId: number) =>
@@ -232,103 +162,10 @@ export class LevvaService
   // END TOKEN BLOCK
 
   // -- Wallet assets --
-  private BALANCE_PREFIX = "balance:";
 
-  private isBalanceId = (id: string) => {
-    return id.startsWith(this.BALANCE_PREFIX);
-  };
-
-  private createBalanceId = (params: {
-    address: `0x${string}`;
-    chainId: number;
-    token: `0x${string}` | undefined;
-  }) => {
-    return `${this.BALANCE_PREFIX}${params.address}:${params.chainId}:${params.token ?? "native"}`;
-  };
-
-  private onUpdateBalance = async (
-    id: string,
-    data: {
-      amount: bigint;
-      address: `0x${string}`;
-      token: `0x${string}`;
-      chainId: number;
-      value: bigint;
-    }
-  ) => {
-    await upsertBalance(this.runtime, data);
-  };
-
-  getBalanceOf = (
-    address: `0x${string}`,
-    chainId: number,
-    token: `0x${string}`
-  ) => {
-    // todo maybe always use 0x00..00 address for native token?
-    const id = this.createBalanceId({
-      address,
-      chainId,
-      token,
-    });
-
-    return this.inBackground(async () => {
-      const amount = await getBalanceOf(chainId, address, token);
-
-      // todo add prices
-      const value = BigInt(0);
-
-      return {
-        amount,
-        address,
-        token,
-        chainId,
-        value,
-      };
-    }, id);
-  };
-
-  // fixme update balances in db in another method
-  async getWalletAssets(params: { address: `0x${string}`; chainId: number }) {
-    const ttl = 900000; // update balance if older than 15 minutes
-    const now = new Date();
-
-    const [balances, tokens] = await Promise.all([
-      getBalance(this.runtime, {
-        address: params.address,
-        chainId: params.chainId,
-        ttl,
-      }),
-      this.getAvailableTokens({ chainId: params.chainId }),
-    ]);
-
-    const withBalance = new Set<string>(balances.map(({ token }) => token));
-
-    const outdated = await Promise.all(
-      tokens
-        .filter(({ address }) => !withBalance.has(address ?? ETH_NULL_ADDR))
-        .map(({ address }) => {
-          // fixme no type casting
-          const token = (address ?? ETH_NULL_ADDR) as `0x${string}`;
-          return this.getBalanceOf(params.address, params.chainId, token);
-        })
-    );
-
-    const result = outdated.reduce<Omit<BalanceEntry, "id">[]>((acc, data) => {
-      if (typeof data?.amount !== "bigint") {
-        return acc;
-      }
-
-      const entry: Omit<BalanceEntry, "id"> = {
-        ...data,
-        type: data.token && data.token !== ETH_NULL_ADDR ? "erc20" : "native",
-        updatedAt: now,
-      };
-
-      return [...acc, entry];
-    }, balances);
-
-    return result;
-  }
+  /** @deprecated Use this.wallet.getWalletAssets() directly instead */
+  getWalletAssets = (params: { address: `0x${string}`; chainId: number }) =>
+    this.wallet.getWalletAssets(params);
 
   /**
    * Invalidate user balance cache by deleting balance entries from database
@@ -346,83 +183,35 @@ export class LevvaService
           )
         );
 
-      logger.info("Invalidated user balance cache", {
+      this.runtime.logger.info("Invalidated user balance cache", {
         address,
         chainId,
       });
     } catch (error) {
-      logger.error("Failed to invalidate user balance cache:", error);
+      this.runtime.logger.error(
+        "Failed to invalidate user balance cache:",
+        error
+      );
       throw error;
     }
   }
 
-  formatWalletAssets(
-    _assets: Omit<BalanceEntry, "id">[],
-    hideZero?: boolean
-  ): string {
-    const assets = hideZero ? _assets.filter((a) => a.amount > 0) : _assets;
-
-    return assets
-      .map((asset) => {
-        const isNative = !asset.token || asset.token === ETH_NULL_ADDR;
-
-        const token = this.getTokenFromMap({
-          chainId: asset.chainId,
-          address: (asset.token ?? ETH_NULL_ADDR) as `0x${string}`,
-        });
-
-        const decimals = token?.decimals ?? 18;
-        const symbol = token?.symbol ?? "ETH";
-
-        // fixme add prices
-        return `${symbol} - ${isNative ? "Native token" : asset.token}. Balance: ${formatUnits(asset.amount, decimals)}.`;
-      })
-      .join("\n");
-  }
+  /** @deprecated Use this.wallet.getBalanceOf() directly instead */
+  getBalanceOf = (
+    address: `0x${string}`,
+    chainId: number,
+    token: `0x${string}`
+  ) => this.wallet.getBalanceOf(address, chainId, token);
 
   // -- End of Wallet Assets --
   // -- Crypto news --
 
-  // todo config
-  private RSS_FEEDS = ["https://cryptopanic.com/news/rss/"];
+  /** @deprecated Use this.news.getCryptoNews() directly instead */
+  getCryptoNews = (limit?: number) => this.news.getCryptoNews(limit);
 
-  private mutex = new Mutex();
-  private fetchFeed = async (url: string) => {
-    const browser = await this.runtime.getService<BrowserService>(
-      ServiceType.BROWSER
-    );
+  /** @deprecated Use this.news.fetchFeed() directly instead */
+  fetchFeed = (url: string) => this.news.fetchFeed(url);
 
-    if (!browser) {
-      throw new Error("Browser service not found");
-    }
-
-    try {
-      logger.info(`Fetching feed: ${url}`);
-      const items = await getFeed(this.runtime, url);
-
-      await Promise.all(
-        items.map((item) => {
-          const id = getFeedItemId(item.link);
-
-          return this.inBackground(
-            async () =>
-              // todo put mutex in browser
-              this.mutex.runExclusive(() =>
-                browser.getPageContent(item.link, this.runtime, 1000)
-              ),
-            id
-          );
-        })
-      );
-    } catch (error) {
-      logger.error("Failed to fetch feed", error);
-    }
-  };
-
-  async getCryptoNews(limit?: number) {
-    await Promise.allSettled(this.RSS_FEEDS.map(this.fetchFeed));
-    return getLatestNews(this.runtime, limit);
-  }
   // -- End of Crypto news --
 
   // -- Position Management --
@@ -632,7 +421,7 @@ export class LevvaService
 
     // fixme use cache+invalidate?
     // fixme access metadata's chainid
-    const chains = [1,8543,42161];
+    const chains = [1, 8543, 42161];
     for (const chainId of chains) {
       const balance = await this.getBalanceOf(address, chainId, ETH_NULL_ADDR);
 

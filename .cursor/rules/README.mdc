@@ -34,10 +34,15 @@ This directory contains workspace-specific rules and patterns for the ElizaOS Le
 - **ethereum-constants**: Ethereum constants and address patterns (ETH_NULL_ADDR usage)
 - **typescript-conventions**: TypeScript coding conventions and best practices (undefined vs null, type safety)
 - **api-integration-patterns**: API integration patterns, schema validation, and error handling best practices
+- **cleanup-verification**: Verification and cleanup patterns when removing or refactoring code (ALWAYS check usages before removal)
+- **decimal-handling-patterns**: Decimal handling for BigInt calculations, USD value representation, and token decimals
 
 ### 🏛️ **Architecture & Infrastructure**
 - **blockchain-integration**: Blockchain integration patterns and best practices
 - **database-patterns**: Database schema and ORM patterns using Drizzle
+- **service-component-architecture**: Core ServiceComponent patterns and best practices (282 lines)
+- **background-queue-pattern**: BackgroundQueue for async operations in ServiceComponents (231 lines)
+- **service-component-migration**: Step-by-step guide for extracting ServiceComponents (237 lines)
 - **service-organization**: Service module organization and extraction guidelines
 - **suggestion-system**: Suggestion system patterns and implementation
 
@@ -70,6 +75,13 @@ This directory contains workspace-specific rules and patterns for the ElizaOS Le
    - Use `.mdc` format with YAML frontmatter for structured rules
    - Follow proper rule types and scoping patterns
 
+5. **Decimal Handling Mistakes** (decimal-handling-patterns.mdc)
+   - Use `USD_DECIMALS` constant (9) for USD values, NOT 18
+   - Get token decimals from `getTokenFromMap`, don't assume 18
+   - Use self-documenting constants instead of magic numbers or verbose comments
+   - Keep formatting functions synchronous and pure
+   - Leverage already-fetched data instead of making redundant API calls
+
 ## Cross-References
 
 ### ElizaOS Framework
@@ -87,6 +99,12 @@ This directory contains workspace-specific rules and patterns for the ElizaOS Le
 - Debugging techniques: debugging-patterns.mdc
 - Intent resolution: intent-based-actions.mdc
 - Rules structure: cursor-rules-structure.mdc
+
+### Service Architecture
+- Core patterns: service-component-architecture.mdc
+- Async operations: background-queue-pattern.mdc
+- Extraction guide: service-component-migration.mdc
+- Module organization: service-organization.mdc
 
 ## Usage
 

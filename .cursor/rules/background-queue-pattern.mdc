@@ -1,0 +1,231 @@
+---
+description: BackgroundQueue pattern for async operations in ServiceComponents
+globs: ["**/services/**/*.ts"]
+alwaysApply: false
+---
+
+# BackgroundQueue Pattern for ServiceComponents
+
+## 🎯 **When to Use BackgroundQueue**
+
+Use `BackgroundQueue` when your ServiceComponent needs:
+- Async operations with promise deduplication
+- Task cancellation capabilities
+- Event-driven background processing
+- Queue management for concurrent operations
+
+**Examples**: Balance fetching, news scraping, data synchronization
+
+---
+
+## 🏗️ **BackgroundQueue ServiceComponent Template**
+
+```typescript
+import { IAgentRuntime } from "@elizaos/core";
+import { BackgroundQueue } from "./background-queue";
+import { createTimedCache } from "./cache-util";
+
+// Define the type for queue items
+interface ComponentData {
+  id: string;
+  value: string;
+  // ... other fields
+}
+
+export class [Name]ServiceComponent extends BackgroundQueue<ComponentData> {
+  // Component-specific constants (optional)
+  private ITEM_PREFIX = "component-item:";
+
+  constructor(runtime: IAgentRuntime) {
+    super(runtime); // BackgroundQueue provides this.runtime
+  }
+
+  cleanup() {
+    // Cleanup queue first
+    this.cleanupQueue();
+    
+    this.runtime.logger.info("[Name]ServiceComponent cleanup completed");
+  }
+
+  // Required: Implement abstract method from BackgroundQueue
+  protected onBackgroundResolved = async (event: {
+    id: string;
+    value: ComponentData;
+  }) => {
+    // All events in this queue belong to this component's domain
+    // No need for prefix checking - trust the architecture!
+    await this.processResolvedItem(event.value);
+  };
+
+  // Helper to create consistent IDs
+  private createItemId = (param: string) => {
+    return `${this.ITEM_PREFIX}${param}`;
+  };
+
+  // Use inBackground for async operations
+  async fetchData(param: string): Promise<ComponentData | undefined> {
+    const id = this.createItemId(param);
+    
+    return this.inBackground(
+      id,
+      async () => {
+        // Your async operation
+        const data = await someAsyncOperation(param);
+        return data;
+      },
+      15000 // Optional custom wait time
+    );
+  }
+
+  // Can still use cached methods
+  getCachedData = createTimedCache(
+    this,
+    300000,
+    this.actualDataFetch,
+    (param) => `cache-key:${param}`
+  );
+
+  private async processResolvedItem(data: ComponentData) {
+    // Handle resolved background operations
+    // e.g., save to database, emit events, etc.
+  }
+}
+```
+
+---
+
+## ✅ **Key Principles**
+
+### **1. Trust Your Architecture**
+```typescript
+// ✅ Correct - each component has dedicated queue
+protected onBackgroundResolved = async (event: {
+  id: string;
+  value: ComponentData;
+}) => {
+  // All events belong to this component - no checking needed
+  await this.handleData(event.value);
+};
+
+// ❌ Wrong - unnecessary defensive checks
+protected onBackgroundResolved = async (event: {
+  id: string;
+  value: any;
+}) => {
+  if (this.isMyItemId(event.id)) { // Redundant!
+    await this.handleData(event.value);
+  } else {
+    this.runtime.logger.warn(`Unknown event: ${event.id}`); // Never happens!
+  }
+};
+```
+
+### **2. Use Strong Typing**
+```typescript
+// ✅ Correct - strongly typed queue
+export class MyComponent extends BackgroundQueue<MyDataType> {
+  protected onBackgroundResolved = async (event: {
+    id: string;
+    value: MyDataType; // Type-safe!
+  }) => {
+    await this.handleData(event.value);
+  };
+}
+
+// ❌ Wrong - loses type safety
+export class MyComponent extends BackgroundQueue<any> {
+  protected onBackgroundResolved = async (event: {
+    id: string;
+    value: any; // No type safety!
+  }) => {
+    await this.handleData(event.value);
+  };
+}
+```
+
+### **3. Avoid Unnecessary Wrappers**
+```typescript
+// ❌ Wrong - pointless indirection
+private createItemId = (url: string) => {
+  return getItemIdFromHelper(url); // Just calls another function!
+};
+const id = this.createItemId(url);
+
+// ✅ Correct - use the helper directly
+const id = getItemIdFromHelper(url);
+```
+
+---
+
+## 🚫 **Why Not Centralized Background Systems?**
+
+When components use `BackgroundQueue`, the main service doesn't need:
+- ❌ Central `EventEmitter` for background events
+- ❌ Central background promise array
+- ❌ Polling interval (`setInterval`) to check promise states
+- ❌ Shared `inBackground` method
+- ❌ Complex event routing logic
+
+```typescript
+// ❌ Old Pattern - Centralized (DON'T DO THIS)
+export class MainService extends Service {
+  private events = new EventEmitter();
+  private background: { id?: string; promise: Promise<unknown> }[] = [];
+  private handlerInterval: NodeJS.Timeout | null = null;
+  
+  private bgHandler = async () => {
+    for (const { id, promise } of this.background) {
+      if (await isResolved(promise)) {
+        this.events.emit("background:resolved", { id, value: await promise });
+      }
+    }
+  };
+  
+  constructor(runtime) {
+    super(runtime);
+    this.handlerInterval = setInterval(this.bgHandler, 500); // Polling!
+  }
+}
+
+// ✅ New Pattern - Component-Based (DO THIS)
+export class MainService extends Service {
+  public readonly wallet: WalletServiceComponent;  // Own BackgroundQueue
+  public readonly news: NewsServiceComponent;      // Own BackgroundQueue
+  
+  constructor(runtime) {
+    super(runtime);
+    this.wallet = new WalletServiceComponent(runtime);
+    this.news = new NewsServiceComponent(runtime);
+  }
+  
+  async stop() {
+    this.wallet.cleanup();  // Cancels wallet queue tasks
+    this.news.cleanup();    // Cancels news queue tasks
+  }
+}
+```
+
+---
+
+## 📊 **Benefits**
+
+1. **Promise Deduplication**: Multiple calls with same ID reuse the same promise
+2. **Automatic Cancellation**: All tasks cancelled on cleanup
+3. **Event-Driven**: No polling overhead
+4. **Type Safety**: Generic types ensure correct data handling
+5. **Isolation**: Each component's queue is independent
+
+---
+
+## 🔗 **Reference Implementations**
+
+- `src/services/levva/background-queue.ts` - Base class
+- `src/services/levva/wallet.ts` - Balance fetching with BackgroundQueue
+- `src/services/levva/news-component.ts` - News scraping with BackgroundQueue
+
+---
+
+## 📚 **Related Rules**
+
+- `@service-component-architecture.mdc` - Overall ServiceComponent patterns
+- `@caching-patterns.mdc` - Combining BackgroundQueue with caching
