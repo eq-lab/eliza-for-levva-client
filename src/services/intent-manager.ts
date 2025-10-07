@@ -10,6 +10,7 @@ import {
 } from "@elizaos/core";
 import { randomUUID } from "crypto";
 import { LEVVA_SERVICE, LEVVA_ACTIONS, INTENT_TYPE } from "../constants/enum";
+import { INTENT_CONFIDENCE_THRESHOLD } from "../constants/intent";
 import {
   createIntentDetectionPrompt,
   IntentOption,
@@ -215,7 +216,7 @@ export class IntentManager extends Service {
     userId: string,
     channelId: string,
     existingIntentContext?: IntentContext,
-    confidenceThreshold: number = 0.75
+    confidenceThreshold: number = INTENT_CONFIDENCE_THRESHOLD
   ): Promise<IntentContext | undefined> {
     try {
       // Detect intent from current message
@@ -444,7 +445,7 @@ export class IntentManager extends Service {
         return undefined;
       }
 
-      logger.debug("Found agent responses to analyze", {
+      this.runtime.logger.debug("Found agent responses to analyze", {
         agentResponses,
         currentMessageIndex,
         previousUserMessageIndex,
@@ -472,12 +473,15 @@ export class IntentManager extends Service {
           );
 
           if (intent && intent.status === "ACTIVE") {
-            logger.info("Found active intent from agent responses", {
-              intentId: intent.id,
-              intentType: intent.type,
-              domain: intent.domain,
-              fromResponseId: messageId,
-            });
+            this.runtime.logger.info(
+              "Found active intent from agent responses",
+              {
+                intentId: intent.id,
+                intentType: intent.type,
+                domain: intent.domain,
+                fromResponseId: messageId,
+              }
+            );
 
             return intent;
           }
@@ -487,7 +491,10 @@ export class IntentManager extends Service {
       logger.debug("No active intents found in agent responses or by domain");
       return undefined;
     } catch (error) {
-      logger.error("Error finding active intent from reply:", error);
+      this.runtime.logger.error(
+        "Error finding active intent from reply:",
+        error
+      );
       return undefined;
     }
   }

@@ -1,6 +1,7 @@
 import { formatUnits, isHex } from "viem";
 import { Action } from "@elizaos/core";
 import { INTENT_TYPE, LEVVA_ACTIONS, LEVVA_SERVICE } from "../constants/enum";
+import { INTENT_CONFIDENCE_THRESHOLD } from "../constants/intent";
 import { LEVVA_PROVIDER_NAME, LevvaProviderState } from "../providers";
 import { selectProviderState } from "../providers/util";
 import type { LevvaService } from "../services/levva/class";
@@ -76,8 +77,10 @@ export const action: Action = {
     ]);
 
     try {
-      // Check for SEND intent first
-      const intentManager = runtime.getService<IntentManager>("intent-manager");
+      // Check for SEND intent first using centralized service
+      const intentManager = runtime.getService<IntentManager>(
+        LEVVA_SERVICE.INTENT_MANAGER
+      );
       if (intentManager) {
         const userId = (message as any).userId || "unknown";
         const channelId =
@@ -90,30 +93,15 @@ export const action: Action = {
           LEVVA_ACTIONS.ANALYZE_WALLET
         );
 
-        // If no active intent, try to detect one
-        if (!intentContext) {
-          const detectionResult = await intentManager.detectIntentWithLLM(
-            message,
-            LEVVA_ACTIONS.ANALYZE_WALLET
-          );
-
-          if (
-            detectionResult.intentType === INTENT_TYPE.SEND &&
-            detectionResult.confidence > 0.7
-          ) {
-            intentContext = await intentManager.createIntent({
-              type: INTENT_TYPE.SEND,
-              domain: LEVVA_ACTIONS.ANALYZE_WALLET,
-              userId,
-              channelId,
-              metadata: { source: "wallet_action" },
-            });
-
-            if (intentContext) {
-              await intentManager.addMemoryToIntent(intentContext, message);
-            }
-          }
-        }
+        // Use centralized intent detection with global threshold
+        intentContext = await intentManager.handleIntentDetectionAndCreation(
+          message,
+          LEVVA_ACTIONS.ANALYZE_WALLET,
+          userId,
+          channelId,
+          intentContext,
+          INTENT_CONFIDENCE_THRESHOLD
+        );
 
         // If we have a SEND intent, handle it
         if (intentContext?.type === INTENT_TYPE.SEND) {

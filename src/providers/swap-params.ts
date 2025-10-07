@@ -1,6 +1,7 @@
 import { parseUnits, formatUnits } from "viem";
 import { ModelType, Provider } from "@elizaos/core";
 import { LEVVA_SERVICE, LEVVA_ACTIONS } from "../constants/enum";
+import { INTENT_CONFIDENCE_THRESHOLD } from "../constants/intent";
 import { ETH_NULL_ADDR } from "../constants/eth";
 import { LevvaService } from "../services/levva/class";
 import { selectSwapDataFromMessagesPrompt } from "../prompts/swap";
@@ -94,13 +95,14 @@ export const swapParamsProvider: Provider = {
           LEVVA_ACTIONS.SWAP_TOKENS
         );
 
-        // Use helper function to handle intent detection and creation
+        // Use helper function to handle intent detection and creation with global threshold
         intentContext = await intentService.handleIntentDetectionAndCreation(
           message,
           LEVVA_ACTIONS.SWAP_TOKENS,
           userId,
           channelId,
-          intentContext
+          intentContext,
+          INTENT_CONFIDENCE_THRESHOLD
         );
 
         // Add swap-specific metadata if intent was created
