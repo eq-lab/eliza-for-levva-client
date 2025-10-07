@@ -17,7 +17,11 @@ import { createTimedCache } from "./cache-util";
 export class TokenServiceComponent {
   runtime: IAgentRuntime;
 
-  private tokenMap = new Map<
+  /**
+   * Public readonly token map for efficient token lookups
+   * Populated by getAvailableTokens and used across the application
+   */
+  public readonly tokenMap = new Map<
     `${number}:0x${string}`,
     Omit<TokenEntry, "id"> | undefined
   >();

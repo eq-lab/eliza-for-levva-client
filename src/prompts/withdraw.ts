@@ -1,3 +1,12 @@
+/**
+ * Withdrawal parameter extraction prompt
+ * 
+ * @version 1.1.0
+ * @lastModified 2025-01-XX
+ * @changes v1.1.0: Standardized amount field to string type (was number | "all")
+ * @changes v1.0.0: Initial implementation with request/check/claim flow
+ */
+
 import { Memory } from "@elizaos/core";
 import { DataDescription, formatKeys, formatOutput } from "./util";
 import { UserPosition, WithdrawalRequest } from "../services/levva/positions";
@@ -7,7 +16,7 @@ export interface ExtractedDataForWithdraw {
   strategyId?: number;
   strategyName?: string;
   strategyRisk?: string;
-  amount?: number | "all";
+  amount?: string;
   withdrawalStep?: "request" | "check" | "claim";
   confidence?: number;
   thought?: string;
@@ -31,8 +40,9 @@ const dataDescription: DataDescription<ExtractedDataForWithdraw> = {
     default: "null",
   },
   amount: {
-    type: "number",
-    description: "The amount to withdraw, or 'all' for full withdrawal",
+    type: "string",
+    description:
+      'Numeric amount as string (e.g., "100", "0.5") or "all" for full withdrawal. Must match regex ^([0-9]+(\\.[0-9]+)?|all)$ when present.',
   },
   withdrawalStep: {
     type: "string",
@@ -146,7 +156,10 @@ CRITICAL WITHDRAWAL LOGIC:
 - If no existing withdrawal for the chosen strategy: User can initiate new withdrawal (withdrawalStep = "request")
 
 EXTRACTION RULES:
-- If user mentions "all", "everything", "full", set amount to "all"
+- **Amount Format**: Always return amount as a string (e.g., "100", "0.5", "all")
+  - If user mentions "all", "everything", "full", set amount to "all"
+  - If user mentions numeric amounts, return as string (e.g., "50" not 50)
+  - Strip currency/token symbols (e.g., "100 USDC" → "100")
 - If user mentions "claim" or "ready" with ID, set withdrawalStep to "claim"
 - If user mentions "status" or "check", set withdrawalStep to "check"  
 - If user mentions amount or "withdraw", set withdrawalStep to "request"

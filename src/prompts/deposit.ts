@@ -1,3 +1,12 @@
+/**
+ * Deposit parameter extraction prompt
+ * 
+ * @version 1.1.0
+ * @lastModified 2025-01-XX
+ * @changes v1.1.0: Standardized amount field to string type
+ * @changes v1.0.0: Initial implementation with vault/pool strategy support
+ */
+
 import { DataDescription, formatKeys, formatOutput } from "./util";
 
 export interface ExtractedDataForDeposit {

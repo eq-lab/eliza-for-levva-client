@@ -191,7 +191,7 @@ export const positionParamsProvider: Provider = {
           )
           .join("\n");
 
-        const userPortfolioText = service.formatWalletAssets(
+        const userPortfolioText = service.wallet.formatWalletAssets(
           walletAssets,
           true
         );
@@ -298,7 +298,10 @@ Overall Pending Withdrawals: ${summary.hasPendingWithdrawals ? "Yes" : "No"}${co
         },
       };
     } catch (error) {
-      logger.error("Error in position params provider:", error);
+      logger.error(
+        "Error in position params provider:",
+        error instanceof Error ? error.message : String(error)
+      );
       return {
         text: "Failed to load position data",
         data: {

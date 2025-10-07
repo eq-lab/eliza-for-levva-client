@@ -20,6 +20,65 @@ import { formatEstimation, selectSwapRouter } from "../../util/eth/swap";
 import { unwrapEth, wrapEth } from "../../util/eth/weth";
 import { IntentContext, IntentHandler } from "../../services/intent-manager";
 import { ActionResult } from "../../util/action-results";
+import { generateSwapIntentSuggestionsPrompt } from "../../prompts/suggest/swap-intent";
+import { ETH_NULL_ADDR } from "../../constants/eth";
+
+/**
+ * Generate suggestions for SWAP intent
+ */
+export async function generateSwapSuggestions(params: {
+  runtime: IAgentRuntime;
+  intentContext: IntentContext;
+  conversation: string;
+  userAddress: `0x${string}`;
+  chainId: number;
+}): Promise<string> {
+  const { runtime, intentContext, conversation, userAddress, chainId } = params;
+  const service = runtime.getService<LevvaService>(LEVVA_SERVICE.LEVVA_COMMON);
+
+  if (!service) {
+    throw new Error("LevvaService not found");
+  }
+
+  // Fetch wallet assets (which already includes token info internally)
+  const walletAssets = await service.wallet.getWalletAssets({
+    address: userAddress,
+    chainId,
+  });
+
+  // Enrich wallet assets with symbol information using cached tokens
+  const enrichedAssets = walletAssets.map((asset) => {
+    const token = service.token.getTokenFromMap({
+      chainId,
+      address: asset.token,
+    });
+    return {
+      token: asset.token,
+      symbol:
+        token?.symbol ||
+        (asset.token === ETH_NULL_ADDR ? "ETH" : asset.token.slice(0, 8)),
+      amount: asset.amount,
+      value: asset.value,
+    };
+  });
+
+  // Get available tokens from cache for the prompt (already loaded by getWalletAssets)
+  const availableTokens = await service.token.getAvailableTokens({ chainId });
+
+  // Generate prompt using consolidated prompt function
+  return generateSwapIntentSuggestionsPrompt({
+    intentContext,
+    conversation,
+    userAddress,
+    chainId,
+    returnData: intentContext.returnData || {},
+    walletAssets: enrichedAssets,
+    availableTokens: availableTokens.map((t) => ({
+      address: t.address,
+      symbol: t.symbol,
+    })),
+  });
+}
 
 /**
  * Swap Intent Handler

@@ -17,6 +17,7 @@ import {
   chromium,
 } from "patchright";
 import { delay } from "../util/async";
+import { generateWebPageSummaryPrompt } from "../prompts/browser-summary";
 
 // Type for cached content
 interface CachedContent {
@@ -38,19 +39,7 @@ async function generateSummary(
   // make sure text is under 128k characters
   const trimmedText = await trimTokens(text, 100000, runtime);
 
-  const prompt = `Please generate a concise summary for the following text:
-  
-    Text: """
-    ${trimmedText}
-    """
-  
-    Respond with a JSON object in the following format:
-    \`\`\`json
-    {
-      "title": "Generated Title",
-      "summary": "Generated summary and/or description of the text"
-    }
-    \`\`\``;
+  const prompt = generateWebPageSummaryPrompt(trimmedText);
 
   const response = await runtime.useModel(ModelType.TEXT_SMALL, {
     prompt,

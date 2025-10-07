@@ -290,195 +290,73 @@ async function generateIntentAwareSuggestions(
     // Generate context-aware suggestions based on intent type and current state
     let contextPrompt = "";
 
-    if (type === "DEPOSIT") {
-      const { strategyName, strategyRisk, tokenSymbol, amount } = returnData || {};
+    // Generate intent-aware suggestions if active intent exists
+    if (userAddress && activeIntent) {
+      try {
+        const intentManager = runtime.getService<IntentManager>(
+          LEVVA_SERVICE.INTENT_MANAGER
+        );
 
-      if ((strategyName || strategyRisk) && !amount) {
-        // User selected strategy, now needs amount - get their portfolio for realistic suggestions
-        const strategy = strategyName || `${strategyRisk} strategy`;
+        if (intentManager) {
+          const prompt = await intentManager.generateIntentSuggestions({
+            intentContext: activeIntent,
+            conversation,
+            userAddress,
+            chainId,
+          });
 
-        let portfolioContext = "";
-        if (userAddress) {
-          try {
-            const assets = await service.getWalletAssets({
-              address: userAddress,
-              chainId,
+          if (prompt) {
+            const result = await runtime.useModel(ModelType.OBJECT_SMALL, {
+              prompt,
             });
-
-            // Get available tokens for symbol lookup
-            const availableTokens = await service.getAvailableTokens({ chainId });
-            const tokenMap = new Map(
-              availableTokens.map((token) => [
-                token.address ?? ETH_NULL_ADDR,
-                token,
-              ])
-            );
-
-            // Filter assets with meaningful balances and format them
-            const significantAssets = assets
-              .filter((asset) => asset.amount > 0n)
-              .map((asset) => {
-                const tokenAddress = asset.token ?? ETH_NULL_ADDR;
-                const tokenInfo = tokenMap.get(tokenAddress);
-                const decimals = tokenInfo?.decimals ?? 18;
-                const symbol = tokenInfo?.symbol ?? "ETH";
-                const balance = formatUnits(asset.amount, decimals);
-                return { symbol, balance: parseFloat(balance) };
-              })
-              .filter((asset) => asset.balance > 0.001) // Filter out dust
-              .sort((a, b) => b.balance - a.balance) // Sort by balance descending
-              .slice(0, 3); // Top 3 assets
-
-            if (significantAssets.length > 0) {
-              portfolioContext = `
-User's portfolio (top assets):
-${significantAssets
-  .map((asset) => `- ${asset.symbol}: ${asset.balance.toFixed(6)}`)
-  .join("\n")}
-`;
-            }
-          } catch (error) {
-            logger.debug("Could not fetch user portfolio:", error);
+            return result;
           }
         }
-
-        contextPrompt = `
-The user has selected "${strategy}" and the agent is asking for deposit amount.
-${portfolioContext}
-Generate 5 realistic suggestions based on user's actual portfolio:
-
-1. Full deposit of their largest holding
-2. Partial deposit (50%) of their largest holding  
-3. Smaller deposit (25%) of their largest holding
-4. Swap suggestion if they don't have the right token
-5. General portfolio management option
-
-Examples format:
-- "I want to deposit 50 USDC into ${strategy}" (if they have 50 USDC)
-- "Let me deposit 25 USDC" (50% of their balance)
-- "I'd like to invest 10 USDC" (25% of their balance)
-- "Swap ETH -> USDC" (if they need different token)
-- "Manage Positions" (general portfolio option)
-
-Use their ACTUAL token balances from portfolio context. Make amounts realistic and actionable.
-`;
-      } else if (tokenSymbol && !amount && !strategyName && !strategyRisk) {
-        // User selected token but no strategy, now needs amount
-        contextPrompt = `
-The user has selected "${tokenSymbol}" token and the agent is asking for deposit amount.
-Generate amount-based suggestions for ${tokenSymbol}:
-- "I want to deposit 100 ${tokenSymbol}"
-- "Let me deposit 500 ${tokenSymbol}"
-- "I'd like to invest 1000 ${tokenSymbol}"
-- "Deposit 50% of my ${tokenSymbol}"
-- "I want to deposit all my ${tokenSymbol}"
-`;
-      }
-    } else if (type === "SWAP") {
-      const { fromToken, toToken, amount, tokenIn, tokenOut } = returnData || {};
-
-      if (fromToken && toToken && amount) {
-        // User has complete swap parameters but transaction might have failed - suggest retry options
-        contextPrompt = `
-The user wants to swap ${amount} ${fromToken} for ${toToken} but the transaction may have failed or needs retry.
-Generate retry and alternative suggestions:
-- "Please retry the swap"
-- "Try swapping ${amount} ${fromToken} to ${toToken} again"
-- "Let me retry this transaction"
-- "Proceed with the ${amount} ${fromToken} swap"
-- "Cancel and try a different amount"
-`;
-      } else if (fromToken && toToken && !amount) {
-        // User selected tokens, now needs amount
-        contextPrompt = `
-The user wants to swap ${fromToken} for ${toToken} and the agent is asking for swap amount.
-Generate amount-based suggestions:
-- "I want to swap 100 ${fromToken}"
-- "Let me swap 0.1 ${fromToken}"
-- "I'd like to swap 500 ${fromToken}"
-- "Swap 25% of my ${fromToken}"
-- "I want to swap all my ${fromToken}"
-`;
-      } else if (fromToken && !toToken) {
-        // User selected from token, needs to token
-        contextPrompt = `
-The user wants to swap ${fromToken} and the agent is asking for destination token.
-Generate token pair suggestions:
-- "Swap ${fromToken} to USDC"
-- "Convert ${fromToken} to ETH"
-- "Exchange ${fromToken} for WETH"
-- "Trade ${fromToken} for DAI"
-- "Swap ${fromToken} to USDT"
-`;
-      } else if (!fromToken && toToken) {
-        // User selected to token, needs from token
-        contextPrompt = `
-The user wants to swap to ${toToken} and the agent is asking for source token.
-Generate token pair suggestions:
-- "Swap ETH to ${toToken}"
-- "Convert USDC to ${toToken}"
-- "Exchange WETH for ${toToken}"
-- "Trade DAI for ${toToken}"
-- "Swap USDT to ${toToken}"
-`;
-      } else {
-        // No tokens specified, suggest popular pairs
-        contextPrompt = `
-The user wants to swap tokens but hasn't specified which ones.
-Generate popular token pair suggestions:
-- "Swap ETH to USDC"
-- "Convert WETH to DAI"
-- "Exchange USDC for ETH"
-- "Trade ETH for WETH"
-- "Swap DAI to USDC"
-`;
-      }
-    } else if (type === "SEND") {
-      const { tokenSymbol, recipientAddress, amount } = returnData || {};
-
-      if (tokenSymbol && recipientAddress && !amount) {
-        // User selected token and recipient, now needs amount
-        contextPrompt = `
-The user wants to send ${tokenSymbol} and the agent is asking for send amount.
-Generate amount-based suggestions:
-- "I want to send 50 ${tokenSymbol}"
-- "Let me send 100 ${tokenSymbol}"
-- "I'd like to send 25 ${tokenSymbol}"
-- "Send 10% of my ${tokenSymbol}"
-- "I want to send all my ${tokenSymbol}"
-`;
+      } catch (error) {
+        logger.error("Error generating intent-aware suggestions:", error);
+        // Fall through to action-based suggestions
       }
     }
 
-    if (contextPrompt) {
-      const result = await runtime.useModel(ModelType.OBJECT_SMALL, {
-        prompt: `${contextPrompt}
-
-<conversation>
-${conversation}
-</conversation>
-
-Generate 5 contextually relevant suggestions based on the current conversation state.
-
-<output>
-Respond using JSON format like this:
-{
-  "suggestions": [
-    {
-      "label": "short description",
-      "text": "full user message"
-    }
-  ]
-}
-</output>`,
-      });
-
-      return result;
-    }
-
+    // No active intent - return undefined to use action-based suggestions
+    // Action-based suggestions help users initiate intents (MANAGE_POSITIONS, SWAP_TOKENS, etc.)
     return undefined;
   } catch (error) {
     logger.error("Error generating intent-aware suggestions:", error);
     return undefined;
   }
 }
+
+/*
+ * LEGACY CODE REMOVED (Phase 6 Cleanup - 2025-01-XX)
+ * 
+ * The following intent-specific suggestion logic has been removed and replaced
+ * with intent-aware suggestion generators co-located with each intent handler:
+ * 
+ * - DEPOSIT intent suggestions → src/prompts/suggest/deposit-intent.ts
+ * - WITHDRAW intent suggestions → src/prompts/suggest/withdraw-intent.ts
+ * - SWAP intent suggestions → src/prompts/suggest/swap-intent.ts
+ * - SEND intent suggestions → src/prompts/suggest/send-intent.ts
+ * 
+ * These new generators provide:
+ * - Progressive disclosure (only ask for missing parameters)
+ * - Context-aware suggestions (based on intent state)
+ * - Intent management options (cancel, child intents)
+ * - Co-location with intent handlers for better maintainability
+ * 
+ * When no active intent exists, the evaluator falls through to action-based
+ * suggestions which help users initiate new intents.
+ */
+
+/**
+ * REMOVED LEGACY CODE (~200 lines) - Phase 6 Cleanup
+ * 
+ * All intent-specific suggestion logic has been migrated to co-located generators:
+ * - DEPOSIT: src/prompts/suggest/deposit-intent.ts
+ * - SWAP: src/prompts/suggest/swap-intent.ts  
+ * - SEND: src/prompts/suggest/send-intent.ts
+ * - WITHDRAW: src/prompts/suggest/withdraw-intent.ts
+ * 
+ * These provide progressive disclosure, context-awareness, and intent management
+ * (cancel, child intents) in a maintainable, type-safe architecture.
+ */

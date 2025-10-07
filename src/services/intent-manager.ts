@@ -53,6 +53,14 @@ export interface IntentRegistration {
   keywords: string[];
   handler: IntentHandler;
   description?: string;
+  // NEW: Intent-aware suggestion generator
+  generateSuggestions?: (params: {
+    runtime: IAgentRuntime;
+    intentContext: IntentContext;
+    conversation: string;
+    userAddress: `0x${string}`;
+    chainId: number;
+  }) => Promise<string>;
 }
 
 export interface IntentDetectionResult {
@@ -109,6 +117,31 @@ export class IntentManager extends Service {
   ): IntentRegistration | undefined {
     const key = `${domain}:${type}`;
     return this.intentRegistry.get(key);
+  }
+
+  /**
+   * Generate intent-aware suggestions using the intent's own generator
+   */
+  async generateIntentSuggestions(params: {
+    intentContext: IntentContext;
+    conversation: string;
+    userAddress: `0x${string}`;
+    chainId: number;
+  }): Promise<string | undefined> {
+    const { intentContext } = params;
+    const registration = IntentManager.getRegisteredIntent(
+      intentContext.domain,
+      intentContext.type
+    );
+
+    if (!registration?.generateSuggestions) {
+      return undefined;
+    }
+
+    return registration.generateSuggestions({
+      runtime: this.runtime,
+      ...params,
+    });
   }
 
   /**

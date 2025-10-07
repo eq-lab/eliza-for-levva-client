@@ -21,11 +21,10 @@ export const strategyParamsProvider: Provider = {
   description:
     "Provides basic strategy and portfolio information for strategy recommendations. Parameter extraction is handled by the deposit intent system.",
   async get(runtime, message, state) {
-    // Check for simple reply mode first
     const simpleReply = checkSimpleReply(
       runtime,
       state,
-      "STRATEGY-PARAMS",
+      STRATEGY_PARAMS_PROVIDER_NAME,
       "Strategy data"
     );
     if (simpleReply) return simpleReply;
@@ -55,7 +54,6 @@ export const strategyParamsProvider: Provider = {
 
     const { user, chainId } = lvva;
 
-
     try {
       const [strategies, portfolio] = await Promise.all([
         service.strategy.getStrategies(chainId),
@@ -68,7 +66,7 @@ export const strategyParamsProvider: Provider = {
       const strategiesText = strategies
         .map((s) => service.strategy.formatStrategy(s))
         .join("\n");
-      const portfolioText = service.formatWalletAssets(portfolio, true);
+      const portfolioText = service.wallet.formatWalletAssets(portfolio, true);
 
       const data: StrategyParamsProviderData = {
         strategies,

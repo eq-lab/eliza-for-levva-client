@@ -1,6 +1,6 @@
 import { Memory, IAgentRuntime, State, HandlerCallback } from "@elizaos/core";
 import { UUID } from "crypto";
-import { isAddress, parseUnits, encodeFunctionData } from "viem";
+import { isAddress, parseUnits, formatUnits, encodeFunctionData } from "viem";
 import { IntentContext, IntentHandler } from "../../services/intent-manager";
 import { LevvaService } from "../../services/levva/class";
 import { LEVVA_SERVICE } from "../../constants/enum";
@@ -9,6 +9,7 @@ import { ETH_NULL_ADDR } from "../../constants/eth";
 import { rephrase } from "../../util/generate";
 import { LevvaProviderState, LEVVA_PROVIDER_NAME } from "../../providers";
 import { selectProviderState } from "../../providers/util";
+import { generateSendIntentSuggestionsPrompt } from "../../prompts/suggest/send-intent";
 
 // ERC20 Transfer ABI
 const ERC20_TRANSFER_ABI = [
@@ -147,11 +148,15 @@ export const handleSendIntent: IntentHandler = async (
 
     // Check if user has sufficient balance
     const sendAmount = parseFloat(amount);
-    const tokenBalance = Number(selectedToken.amount) / 1e18; // Convert from wei
+    // Use actual token decimals (not hardcoded 1e18)
+    const tokenDecimals = tokenData.decimals ?? 18;
+    const tokenBalance = parseFloat(
+      formatUnits(selectedToken.amount, tokenDecimals)
+    );
 
     if (sendAmount > tokenBalance) {
       throw new Error(
-        `Insufficient balance. You have ${tokenBalance} tokens, but trying to send ${sendAmount}`
+        `Insufficient balance. You have ${tokenBalance} ${tokenData.symbol}, but trying to send ${sendAmount}`
       );
     }
 
@@ -376,6 +381,47 @@ Your transfer is ready to execute. The transaction will send ${amount} ${tokenSy
     );
   }
 };
+
+export async function generateSendSuggestions(params: {
+  runtime: IAgentRuntime;
+  intentContext: IntentContext;
+  conversation: string;
+  userAddress: `0x${string}`;
+  chainId: number;
+}): Promise<string> {
+  const { runtime, intentContext, conversation, userAddress, chainId } = params;
+  const service = runtime.getService<LevvaService>(LEVVA_SERVICE.LEVVA_COMMON);
+
+  if (!service) {
+    throw new Error("LevvaService not found");
+  }
+
+  // Fetch user wallet assets (this populates the token map)
+  const assets = await service.wallet.getWalletAssets({
+    address: userAddress,
+    chainId,
+  });
+
+  return generateSendIntentSuggestionsPrompt({
+    intentContext,
+    conversation,
+    userAddress,
+    chainId,
+    returnData: intentContext.returnData || {},
+    walletAssets: assets.map((asset) => {
+      const tokenData = service.token.getTokenFromMap({
+        chainId: asset.chainId,
+        address: asset.token,
+      });
+      return {
+        token: asset.token,
+        symbol: tokenData?.symbol || "UNKNOWN",
+        amount: asset.amount,
+        value: asset.value,
+      };
+    }),
+  });
+}
 
 export const onSendSuccess = async (
   runtime: IAgentRuntime,

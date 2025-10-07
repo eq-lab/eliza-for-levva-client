@@ -22,6 +22,7 @@ import { ExtractedDataForWithdraw } from "../../prompts/withdraw";
 import { WithdrawalRequest } from "../../api/levva/schema";
 import { StrategyEntry } from "../../services/levva/pool";
 import { CalldataWithDescription } from "../../types/tx";
+import { generateWithdrawIntentSuggestionsPrompt } from "../../prompts/suggest/withdraw-intent";
 
 export interface WithdrawData extends ExtractedDataForWithdraw {
   [key: string]: any;
@@ -89,7 +90,7 @@ async function handleRequestRedeem(
   runtime: IAgentRuntime,
   address: `0x${string}`,
   strategy: StrategyEntry,
-  amount: number | "all"
+  amount: string
 ): Promise<Content> {
   const levvaService = runtime.getService<LevvaService>(
     LEVVA_SERVICE.LEVVA_COMMON
@@ -127,7 +128,8 @@ async function handleRequestRedeem(
   if (amount === "all") {
     amountOut = balance?.amount ?? 0n;
   } else {
-    amountOut = parseUnits(amount.toString(), lpToken.decimals);
+    // amount is already a string after type standardization
+    amountOut = parseUnits(amount, lpToken.decimals);
   }
 
   if (amountOut > (balance?.amount ?? 0n)) {
@@ -220,6 +222,55 @@ After signing, you'll receive your withdrawn funds directly to your wallet.`,
       },
     ],
   };
+}
+
+/**
+ * Generate withdraw intent-aware suggestions
+ * This function is registered with the intent and called by IntentManager
+ */
+export async function generateWithdrawSuggestions(params: {
+  runtime: IAgentRuntime;
+  intentContext: IntentContext;
+  conversation: string;
+  userAddress: `0x${string}`;
+  chainId: number;
+}): Promise<string> {
+  const { runtime, intentContext, conversation, userAddress, chainId } = params;
+  const service = runtime.getService<LevvaService>(LEVVA_SERVICE.LEVVA_COMMON);
+
+  if (!service) {
+    throw new Error("LevvaService not found");
+  }
+
+  // Fetch all required data in parallel
+  const [positions, strategies, withdrawalRequests] = await Promise.all([
+    service.getUserPositions(userAddress, chainId),
+    service.strategy.getStrategies(chainId),
+    service.getWithdrawalRequests(userAddress, chainId),
+  ]);
+
+  // Generate prompt using consolidated prompt function
+  return generateWithdrawIntentSuggestionsPrompt({
+    intentContext,
+    conversation,
+    userAddress,
+    chainId,
+    returnData: intentContext.returnData || {},
+    positions: positions.map((p) => ({
+      strategyId: p.strategyId,
+      balance: p.balance,
+      balanceUsd: p.balanceUsd,
+    })),
+    strategies: strategies.map((s) => ({
+      id: s.id,
+      name: s.name,
+      risk: s.risk,
+    })),
+    withdrawalRequests: withdrawalRequests.map((req) => ({
+      strategyId: req.strategyId,
+      status: req.isFinalized ? "READY_TO_CLAIM" : "PENDING",
+    })),
+  });
 }
 
 export const handleWithdrawIntent: IntentHandler = async (
