@@ -55,10 +55,12 @@ export abstract class BackgroundQueue<T> {
    * Should be called by subclasses in their cleanup methods
    */
   protected cleanupQueue() {
-    // Cancel all active tasks
+    // Cancel all active tasks and emit CANCEL_EVENT for each
     for (const [id, task] of this.activeTasks) {
       const error = new Error("Queue cleanup", { cause: "CancelError" });
       task.signal.cancel(error);
+      // Emit CANCEL_EVENT so subclass handlers can run cleanup
+      this.events.emit(CANCEL_EVENT, { id, error });
       this.runtime.logger.debug(`Cancelled task during cleanup: ${id}`);
     }
 

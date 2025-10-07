@@ -10,6 +10,7 @@
 
 // Intent suggestion base helpers
 export {
+  generateDecisionSection,
   generateIntentContextSection,
   generateCommonInstructions,
   generateOutputFormat,

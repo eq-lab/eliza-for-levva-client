@@ -21,6 +21,33 @@ export interface ProgressiveStepConfig {
 }
 
 /**
+ * Generate decision section for intent prompts
+ */
+export function generateDecisionSection(config: {
+  intentType: string;
+  status: string;
+  missingParameters?: string[];
+  nextAction?: string;
+}): string {
+  const missing = config.missingParameters?.length
+    ? `Missing: ${config.missingParameters.join(", ")}`
+    : "All parameters collected";
+
+  const decision =
+    config.nextAction ||
+    (config.missingParameters?.length
+      ? `Select ${config.missingParameters[0]}`
+      : "Confirm or edit parameters");
+
+  return `<decision>
+Intent: ${config.intentType}
+Status: ${config.status}
+${missing}
+Decision Required: ${decision}
+</decision>`;
+}
+
+/**
  * Generate base intent context section for prompts
  */
 export function generateIntentContextSection(config: {

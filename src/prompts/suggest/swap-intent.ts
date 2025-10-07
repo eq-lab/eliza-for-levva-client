@@ -82,7 +82,7 @@ export function generateSwapIntentSuggestionsPrompt(
 
     const instructions = generateCommonInstructions({
       suggestionType: "confirmation",
-      specificInstructions: `Generate 3-5 natural, conversational suggestions for swap confirmation:
+      specificInstructions: `Generate 3-4 natural, conversational suggestions for swap confirmation:
 
 SUGGESTION PRIORITIES:
 1. Confirm and proceed with the swap
@@ -140,7 +140,7 @@ ${generateOutputFormat()}`;
 
     const instructions = generateCommonInstructions({
       suggestionType: "next-step",
-      specificInstructions: `Generate 3-5 natural, conversational suggestions for swap amount:
+      specificInstructions: `Generate 3-4 natural, conversational suggestions for swap amount:
 
 SUGGESTION PRIORITIES:
 1. Specific amounts (e.g., "100 ${fromSymbol}", "0.1 ${fromSymbol}")

@@ -30,19 +30,8 @@ export { generateIntentManagementSection } from "./intent-management";
 // ============================================================================
 // These help users INITIATE intents when no intent is active
 
-// Swap action suggestions (help initiate SWAP intent)
-export {
-  exchangeAmountPrompt,
-  type ExchangeAmountParams,
-} from "./exchange-amount";
-export {
-  exchangePairsPrompt,
-  type ExchangePairsParams,
-} from "./exchange-pairs";
-export {
-  swapContinuationPrompt,
-  type SwapContinuationParams,
-} from "./swap-continuation";
+// Removed: exchange-amount.ts, exchange-pairs.ts, swap-continuation.ts
+// All swap suggestions now handled by swap-intent.ts progressive disclosure system
 
 // Position action suggestions (help initiate DEPOSIT/WITHDRAW intents)
 export {
