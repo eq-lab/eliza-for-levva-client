@@ -1,6 +1,6 @@
 import { Memory, IAgentRuntime, State, HandlerCallback } from "@elizaos/core";
 import { UUID } from "crypto";
-import { isAddress, parseUnits, encodeFunctionData } from "viem";
+import { isAddress, parseUnits, formatUnits, encodeFunctionData } from "viem";
 import { IntentContext, IntentHandler } from "../../services/intent-manager";
 import { LevvaService } from "../../services/levva/class";
 import { LEVVA_SERVICE } from "../../constants/enum";
@@ -148,11 +148,15 @@ export const handleSendIntent: IntentHandler = async (
 
     // Check if user has sufficient balance
     const sendAmount = parseFloat(amount);
-    const tokenBalance = Number(selectedToken.amount) / 1e18; // Convert from wei
+    // Use actual token decimals (not hardcoded 1e18)
+    const tokenDecimals = tokenData.decimals ?? 18;
+    const tokenBalance = parseFloat(
+      formatUnits(selectedToken.amount, tokenDecimals)
+    );
 
     if (sendAmount > tokenBalance) {
       throw new Error(
-        `Insufficient balance. You have ${tokenBalance} tokens, but trying to send ${sendAmount}`
+        `Insufficient balance. You have ${tokenBalance} ${tokenData.symbol}, but trying to send ${sendAmount}`
       );
     }
 

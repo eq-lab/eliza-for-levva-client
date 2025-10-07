@@ -176,7 +176,8 @@ export const action: Action = {
         .join("\n");
 
       const totalValue = assets.reduce(
-        (sum, asset) => sum + Number(asset.value) / 10 ** USD_DECIMALS,
+        (sum, asset) =>
+          sum + parseFloat(formatUnits(asset.value, USD_DECIMALS)),
         0
       );
 
@@ -190,7 +191,7 @@ export const action: Action = {
       // Risk and diversification analysis
       const tokenCount = assets.length;
       const largestHolding = Math.max(
-        ...assets.map((a) => Number(a.value) / 10 ** USD_DECIMALS)
+        ...assets.map((a) => parseFloat(formatUnits(a.value, USD_DECIMALS)))
       );
       const concentrationRisk =
         totalValue > 0 ? (largestHolding / totalValue) * 100 : 0;

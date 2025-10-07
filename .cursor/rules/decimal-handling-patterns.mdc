@@ -1,319 +1,315 @@
 ---
 description: Decimal handling patterns for BigInt calculations and USD value representation
 globs: ["**/*.ts"]
-alwaysApply: false
+alwaysApply: true
 ---
 
-# Decimal Handling Patterns for BigInt and USD Values
+# Decimal Handling Patterns
 
-## Core Principle: Use Constants for Decimal Places
+## 🚨 CRITICAL: Decimals in Financial Applications
 
-Always use named constants instead of magic numbers for decimal places in BigInt calculations.
+**LLMs are NOT good at math.** Incorrect decimal handling can lead to:
+- Incorrect balance displays
+- Failed transactions
+- Loss of user funds
+- Trust issues
 
-### ✅ Correct Pattern
+## Constants
 
+### USD_DECIMALS
 ```typescript
-// In src/constants/math.ts
-export const USD_DECIMALS = 9; // 1 USD = 10^9 units
-
-// In calculation code
 import { USD_DECIMALS } from "../constants/math";
+// USD_DECIMALS = 9 (1 USD = 10^9 units)
+```
 
-const priceUsdBigInt = parseUnits(tokenData.priceUsd.toString(), USD_DECIMALS);
-const value = (amount * priceUsdBigInt) / BigInt(10) ** BigInt(decimals);
+### Token Decimals
+- **ETH/WETH**: 18 decimals
+- **USDC/USDT**: 6 decimals  
+- **WBTC**: 8 decimals
+- **Always get from token data**: `tokenData.decimals ?? 18`
 
-// When converting back to number
+## Required Imports
+
+```typescript
+import { formatUnits, parseUnits } from "viem";
+import { USD_DECIMALS } from "../constants/math";
+```
+
+## ✅ CORRECT Patterns
+
+### 1. Converting BigInt to Human-Readable
+
+**✅ Token Amounts:**
+```typescript
+// ALWAYS use formatUnits with proper decimals
+const tokenDecimals = tokenData.decimals ?? 18;
+const formattedAmount = formatUnits(amount, tokenDecimals);
+
+// Display
+console.log(`Balance: ${formattedAmount} ${tokenData.symbol}`);
+```
+
+**✅ USD Values:**
+```typescript
+// ALWAYS use USD_DECIMALS constant
+const usdValue = formatUnits(value, USD_DECIMALS);
+console.log(`Value: $${Number(usdValue).toFixed(2)}`);
+```
+
+### 2. Converting Human-Readable to BigInt
+
+**✅ Token Amounts:**
+```typescript
+// User input: "1.5" USDC
+const tokenDecimals = tokenData.decimals; // 6 for USDC
+const amountBigInt = parseUnits("1.5", tokenDecimals); 
+// Result: 1500000n (1.5 * 10^6)
+```
+
+**✅ USD Values:**
+```typescript
+// Internal USD representation
+const usdValueBigInt = parseUnits("100.50", USD_DECIMALS);
+// Result: 100500000000n (100.5 * 10^9)
+```
+
+### 3. Arithmetic Operations
+
+**✅ Always keep in BigInt:**
+```typescript
+// Addition/subtraction
+const total = amount1 + amount2; // Both bigint
+
+// Multiplication (with scaling)
+const fee = (amount * 5n) / 1000n; // 0.5% fee
+
+// Division (handle precision loss)
+const average = total / BigInt(count);
+```
+
+### 4. Comparisons
+
+**✅ Direct BigInt comparison:**
+```typescript
+if (userBalance >= requiredAmount) {
+  // Sufficient balance
+}
+
+// Zero checks
+if (amount > 0n) {
+  // Has value
+}
+```
+
+### 5. Display Formatting
+
+**✅ Format then round:**
+```typescript
+// Token amounts
+const formatted = formatUnits(amount, decimals);
+const display = Number(formatted).toFixed(6); // Precision for display
+
+// USD values
+const usdFormatted = formatUnits(value, USD_DECIMALS);
+const usdDisplay = Number(usdFormatted).toFixed(2); // 2 decimals for USD
+```
+
+## ❌ INCORRECT Patterns (NEVER DO THIS)
+
+### ❌ Hardcoded Decimals
+
+```typescript
+// ❌ BAD: Assumes 18 decimals
+const balance = Number(amount) / 1e18;
+
+// ❌ BAD: Hardcoded USD decimals
+const usdValue = Number(value) / 1e9;
+
+// ✅ CORRECT: Use proper decimals
+const balance = formatUnits(amount, tokenData.decimals);
+const usdValue = formatUnits(value, USD_DECIMALS);
+```
+
+### ❌ Direct Number Conversion
+
+```typescript
+// ❌ BAD: Loses precision
+const num = Number(bigIntValue);
+
+// ❌ BAD: Incorrect scaling
+const balance = Number(amount) / 10 ** decimals;
+
+// ✅ CORRECT: Format first, then convert if needed
+const formatted = formatUnits(amount, decimals);
+const num = parseFloat(formatted);
+```
+
+### ❌ Floating Point Arithmetic
+
+```typescript
+// ❌ BAD: Floating point errors
+const fee = balance * 0.005; // 0.5% fee - WRONG!
+
+// ✅ CORRECT: Use BigInt arithmetic
+const feeBigInt = (amountBigInt * 5n) / 1000n;
+```
+
+### ❌ String Concatenation Math
+
+```typescript
+// ❌ BAD: String math
+const total = amount1.toString() + amount2.toString();
+
+// ✅ CORRECT: BigInt arithmetic
+const total = amount1 + amount2;
+```
+
+## Complete Examples
+
+### Example 1: Balance Check
+
+```typescript
+// ❌ BAD
+const tokenBalance = Number(selectedToken.amount) / 1e18;
+const sendAmount = parseFloat(amount);
+if (sendAmount > tokenBalance) {
+  throw new Error("Insufficient balance");
+}
+
+// ✅ CORRECT
+const tokenDecimals = tokenData.decimals ?? 18;
+const tokenBalance = parseFloat(formatUnits(selectedToken.amount, tokenDecimals));
+const sendAmount = parseFloat(amount);
+if (sendAmount > tokenBalance) {
+  throw new Error(`Insufficient balance. Have ${tokenBalance} ${tokenData.symbol}`);
+}
+```
+
+### Example 2: USD Value Calculation
+
+```typescript
+// ❌ BAD
 const totalValue = assets.reduce(
   (sum, asset) => sum + Number(asset.value) / 10 ** USD_DECIMALS,
   0
 );
-```
 
-### ❌ Wrong Patterns
-
-```typescript
-// BAD: Magic number without explanation
-const value = Number(asset.value) / 1e18; // Wrong! USD uses 9 decimals, not 18
-
-// BAD: Hardcoded with comment
-const value = Number(asset.value) / 1e9; // USD has 9 decimals
-
-// BAD: Inconsistent decimals across codebase
-// In one file: / 1e9
-// In another: / 10**9
-// In another: / 1000000000
-```
-
-## USD Value Storage Standard
-
-**Convention**: All USD values stored as BigInt use 9 decimals
-- 1 USD = 1_000_000_000 units (10^9)
-- This provides sufficient precision for financial calculations
-- Avoids floating point errors
-
-### Why 9 Decimals for USD?
-
-1. **Precision**: Supports sub-cent amounts (e.g., $0.000001)
-2. **Performance**: Smaller than 18 decimals (common in EVM)
-3. **Compatibility**: Works well with token decimals (6-18)
-4. **Standard**: Many financial systems use 9 decimal places
-
-## Token Decimals Handling
-
-### Use getTokenFromMap for Metadata
-
-```typescript
-// ✅ Correct: Lookup from populated tokenMap
-const tokenData = this.service.token.getTokenFromMap({
-  chainId: asset.chainId,
-  address: asset.token,
-});
-
-const decimals = tokenData?.decimals ?? 18;
-const symbol = tokenData?.symbol ?? asset.token;
-
-const amount = formatUnits(asset.amount, decimals);
-```
-
-### ❌ Don't: Assume All Tokens Have 18 Decimals
-
-```typescript
-// BAD: Hardcoded 18 decimals
-const amount = formatUnits(asset.amount, 18);
-
-// BAD: Fetching metadata individually
-const tokenData = await service.getExternalTokenData(asset.token, asset.chainId);
-// This makes N API calls for N assets!
-```
-
-## Anti-Patterns to Avoid
-
-### 1. Over-Commenting Obvious Constants
-
-**❌ Bad:**
-```typescript
-if (tokenData.priceUsd) {
-  // Calculate USD value using proper decimal handling
-  // USD has 9 decimals (1$ = 1_000_000_000 units)
-  // Formula: value = (amount * priceUsd) / (10 ** tokenDecimals)
-
-  // Convert priceUsd (float) to BigInt with 9 decimals
-  const priceUsdBigInt = parseUnits(
-    tokenData.priceUsd.toString(),
-    9 // USD decimals
-  );
-
-  // Calculate: (amount * priceUsd) / (10 ** tokenDecimals)
-  const valueBeforeDivision = amount * priceUsdBigInt;
-  value = valueBeforeDivision / BigInt(10) ** BigInt(decimals);
-}
-```
-
-**✅ Good:**
-```typescript
-if (tokenData.priceUsd) {
-  const priceUsdBigInt = parseUnits(
-    tokenData.priceUsd.toString(),
-    USD_DECIMALS
-  );
-  value = (amount * priceUsdBigInt) / BigInt(10) ** BigInt(decimals);
-}
-```
-
-**Why**: The constant name `USD_DECIMALS` is self-documenting. Comments should explain *why*, not *what*.
-
-### 2. Making Formatting Functions Async
-
-**❌ Bad:**
-```typescript
-async formatWalletAssets(assets: BalanceData[]): Promise<string> {
-  // Fetching data inside formatting function
-  const tokenData = await service.getExternalTokenData(asset.token, chainId);
-  // ...
-}
-```
-
-**✅ Good:**
-```typescript
-formatWalletAssets(assets: BalanceData[], hideZero?: boolean): string {
-  // Pure, synchronous formatting
-  // Assumes tokenMap already populated by getAvailableTokens
-  const tokenData = this.service.token.getTokenFromMap({
-    chainId: asset.chainId,
-    address: asset.token,
-  });
-  // ...
-}
-```
-
-**Why**: Formatting functions should be pure presentation layer, not data layer.
-
-### 3. Enriching Core Data Structures with Display Metadata
-
-**❌ Bad:**
-```typescript
-interface BalanceData {
-  amount: bigint;
-  token: `0x${string}`;
-  chainId: number;
-  value: bigint;
-  // Adding display metadata to core data structure
-  decimals: number;
-  symbol: string;
-}
-```
-
-**✅ Good:**
-```typescript
-interface BalanceData {
-  amount: bigint;
-  token: `0x${string}`;
-  chainId: number;
-  value: bigint;
-}
-
-// Get display metadata separately when needed
-const tokenData = token.getTokenFromMap({ chainId, address: token });
-const { decimals, symbol } = tokenData;
-```
-
-**Why**: Core data structures should contain only essential data, not derived display information.
-
-### 4. Redundant API Calls for Already-Available Data
-
-**❌ Bad:**
-```typescript
-// getAvailableTokens already called and populated tokenMap
-await service.token.getAvailableTokens({ chainId });
-
-// But then fetching individually
-for (const asset of assets) {
-  const tokenData = await service.token.getExternalTokenData(
-    asset.token,
-    asset.chainId
-  );
-  // N API calls!
-}
-```
-
-**✅ Good:**
-```typescript
-// getAvailableTokens populates tokenMap
-await service.token.getAvailableTokens({ chainId });
-
-// Use the already-populated map
-for (const asset of assets) {
-  const tokenData = service.token.getTokenFromMap({
-    chainId: asset.chainId,
-    address: asset.token,
-  });
-  // Zero additional API calls!
-}
-```
-
-**Why**: Leverage data already fetched. Check existing data structures before making API calls.
-
-### 5. Over-Engineering Simple Problems
-
-**❌ Bad:**
-```typescript
-// Creating complex wrappers and helper methods
-private buildTokenMetadata(assets: BalanceData[]): Map<...> { }
-async getWalletAssetsWithMetadata(): Promise<{assets, metadata}> { }
-async getWalletAssetsFormatted(): Promise<string> { }
-formatWalletAssets(assets, metadata): string { }
-```
-
-**✅ Good:**
-```typescript
-// Simple, direct approach
-formatWalletAssets(assets: BalanceData[], hideZero?: boolean): string {
-  const tokenData = this.service.token.getTokenFromMap({ chainId, address });
-  // Format directly
-}
-```
-
-**Why**: Don't add layers of indirection unless they solve a real problem.
-
-## Common Bugs and Fixes
-
-### Bug: Wrong Decimal Places in USD Calculations
-
-**Symptom**: Portfolio shows $0.00 total when it should show actual value
-
-**Cause**: Using wrong decimal places when converting BigInt to number
-
-```typescript
-// ❌ Wrong: Using 18 decimals for USD (which uses 9)
+// ✅ CORRECT
 const totalValue = assets.reduce(
-  (sum, asset) => sum + Number(asset.value) / 1e18, // WRONG!
+  (sum, asset) => sum + parseFloat(formatUnits(asset.value, USD_DECIMALS)),
   0
 );
 ```
 
-**Fix**: Use correct USD_DECIMALS constant
+### Example 3: Token List Display
 
 ```typescript
-// ✅ Correct
-const totalValue = assets.reduce(
-  (sum, asset) => sum + Number(asset.value) / 10 ** USD_DECIMALS,
-  0
-);
+// ✅ CORRECT - Complete example
+function formatWalletAssets(assets: BalanceData[]): string {
+  return assets
+    .map((asset) => {
+      const tokenData = getTokenData(asset.token);
+      const decimals = tokenData?.decimals ?? 18;
+      const symbol = tokenData?.symbol ?? asset.token;
+      
+      // Format amounts with proper decimals
+      const amount = formatUnits(asset.amount, decimals);
+      const value = formatUnits(asset.value, USD_DECIMALS);
+      
+      // Round for display
+      return `${symbol}: ${Number(amount).toFixed(6)} ($${Number(value).toFixed(2)})`;
+    })
+    .join("\n");
+}
 ```
 
-### Bug: Inconsistent Token Display
+## Interface Patterns
 
-**Symptom**: All tokens show amounts with 18 decimal places (e.g., USDC shows 0.000014 instead of 14.0)
-
-**Cause**: Hardcoded 18 decimals instead of using actual token decimals
+### Asset Interfaces Should Use BigInt
 
 ```typescript
-// ❌ Wrong
-const amount = formatUnits(asset.amount, 18); // USDC has 6 decimals!
+// ✅ CORRECT
+export interface WalletAsset {
+  token: string;
+  symbol?: string;
+  amount: bigint;      // Raw amount with decimals
+  value: bigint;       // USD value with USD_DECIMALS
+  decimals?: number;   // Token decimals
+}
+
+// ❌ BAD
+export interface WalletAsset {
+  amount: number;      // Loses precision
+  value: number;       // Loses precision
+}
 ```
 
-**Fix**: Get decimals from token metadata
+## Testing Decimal Handling
+
+### Test Cases to Cover
+
+1. **Different token decimals**: Test with 6, 8, 18 decimal tokens
+2. **Large amounts**: Test with values > Number.MAX_SAFE_INTEGER
+3. **Small amounts**: Test precision with tiny values (0.000001)
+4. **USD values**: Test with USD_DECIMALS (9)
+5. **Edge cases**: Zero, max bigint, negative checks
+
+### Example Test
 
 ```typescript
-// ✅ Correct
-const tokenData = this.service.token.getTokenFromMap({
-  chainId: asset.chainId,
-  address: asset.token,
+describe("Decimal Handling", () => {
+  it("should handle USDC (6 decimals) correctly", () => {
+    const usdcAmount = 1500000n; // 1.5 USDC
+    const formatted = formatUnits(usdcAmount, 6);
+    expect(formatted).toBe("1.5");
+  });
+  
+  it("should handle WETH (18 decimals) correctly", () => {
+    const wethAmount = 1500000000000000000n; // 1.5 WETH
+    const formatted = formatUnits(wethAmount, 18);
+    expect(formatted).toBe("1.5");
+  });
+  
+  it("should handle USD values correctly", () => {
+    const usdValue = 1500000000n; // $1.50
+    const formatted = formatUnits(usdValue, USD_DECIMALS);
+    expect(formatted).toBe("1.5");
+    expect(Number(formatted).toFixed(2)).toBe("1.50");
+  });
 });
-const decimals = tokenData?.decimals ?? 18;
-const amount = formatUnits(asset.amount, decimals);
 ```
 
-## Lessons from Real Mistakes
+## Checklist
 
-These patterns emerged from actual debugging sessions where:
+Before merging any code that handles token amounts or USD values:
 
-1. **Portfolio displayed $0.00 total**: Fixed by using `USD_DECIMALS` (9) instead of 18
-2. **USDC showed tiny amounts**: Fixed by using token-specific decimals instead of hardcoded 18
-3. **Over-engineered formatting**: Fixed by simplifying to use `getTokenFromMap` directly
-4. **Verbose comments**: Fixed by introducing self-documenting `USD_DECIMALS` constant
+- [ ] All BigInt amounts use `formatUnits()` with proper decimals
+- [ ] No hardcoded decimal values (1e18, 1e9, etc.)
+- [ ] USD values use `USD_DECIMALS` constant
+- [ ] Token decimals retrieved from token data (`tokenData.decimals ?? 18`)
+- [ ] No direct `Number()` conversion of BigInt amounts
+- [ ] Arithmetic operations stay in BigInt until final display
+- [ ] Tests cover different decimal cases (6, 8, 18)
 
-## Quick Reference
+## Related Files
 
-```typescript
-// Constants
-import { USD_DECIMALS } from "../constants/math"; // 9
+- `src/constants/math.ts` - USD_DECIMALS constant
+- `src/constants/eth.ts` - ETH_NULL_ADDR constant
+- `src/prompts/helpers/token-selection.ts` - Token formatting helpers
+- `src/services/levva/wallet.ts` - Wallet asset handling
 
-// BigInt USD value storage
-const priceUsdBigInt = parseUnits(price.toString(), USD_DECIMALS);
-const value = (amount * priceUsdBigInt) / BigInt(10) ** BigInt(tokenDecimals);
+## Common Mistakes and Fixes
 
-// BigInt to number conversion
-const usdValue = Number(valueInBigInt) / 10 ** USD_DECIMALS;
+| Mistake | Fix |
+|---------|-----|
+| `Number(amount) / 1e18` | `formatUnits(amount, decimals)` |
+| `Number(value) / 10 ** USD_DECIMALS` | `formatUnits(value, USD_DECIMALS)` |
+| `parseUnits(amount, 18)` | `parseUnits(amount, tokenData.decimals)` |
+| `amount.toString()` math | Keep in BigInt, use operators |
+| `parseFloat(amount) * 0.005` | `(amount * 5n) / 1000n` |
 
-// Token decimals
-const tokenData = service.token.getTokenFromMap({ chainId, address });
-const decimals = tokenData?.decimals ?? 18;
-const amount = formatUnits(amountInBigInt, decimals);
-```
+## Key Principle
 
-## Related Rules
-
-- `@service-component-architecture.mdc` - Component decomposition patterns
-- `@caching-patterns.mdc` - Cache usage to avoid redundant API calls
-- `@code-style.mdc` - When to use comments vs. self-documenting code
+> **Always use the token's actual decimals. Never assume 18.**  
+> **Always use USD_DECIMALS constant for USD values. Never hardcode 1e9 or 1e18.**  
+> **LLMs see the formatted values, not the bigints. Format correctly to prevent confusion.**

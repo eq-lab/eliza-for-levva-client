@@ -1,16 +1,20 @@
 /**
  * Token selection helper for consistent token suggestion logic
- * 
+ *
  * @version 1.0.0
  * @lastModified 2025-01-XX
  * @changes Initial creation - extracted from 5+ prompts with token selection logic
  */
+
+import { formatUnits } from "viem";
+import { USD_DECIMALS } from "../../constants/math";
 
 export interface WalletAsset {
   token: string;
   symbol?: string;
   amount: bigint;
   value: bigint;
+  decimals?: number;
 }
 
 export interface TokenInfo {
@@ -48,14 +52,12 @@ export function formatWalletAssetsForPrompt(
     limit?: number;
   }
 ): string {
-  let filteredAssets = options?.includeZeroBalance 
-    ? assets 
+  let filteredAssets = options?.includeZeroBalance
+    ? assets
     : assets.filter((a) => a.amount > 0n);
 
   if (options?.sortByValue) {
-    filteredAssets = filteredAssets.sort((a, b) => 
-      Number(b.value - a.value)
-    );
+    filteredAssets = filteredAssets.sort((a, b) => Number(b.value - a.value));
   }
 
   if (options?.limit) {
@@ -65,7 +67,11 @@ export function formatWalletAssetsForPrompt(
   return filteredAssets
     .map((asset) => {
       const symbol = asset.symbol || "Unknown";
-      const balance = formatTokenBalance(asset.amount, asset.value);
+      const balance = formatTokenBalance(
+        asset.amount,
+        asset.value,
+        asset.decimals
+      );
       return `- ${symbol}: ${balance}`;
     })
     .join("\n");
@@ -73,11 +79,20 @@ export function formatWalletAssetsForPrompt(
 
 /**
  * Format token balance with value
+ * @param amount - Raw token amount (with decimals)
+ * @param value - USD value (with USD_DECIMALS)
+ * @param decimals - Token decimals (defaults to 18 if not provided)
  */
-function formatTokenBalance(amount: bigint, value: bigint): string {
-  // Simple formatting - actual implementation may vary
-  const usdValue = Number(value) / 1e18;
-  return `${amount.toString()} tokens ($${usdValue.toFixed(2)})`;
+function formatTokenBalance(
+  amount: bigint,
+  value: bigint,
+  decimals?: number
+): string {
+  const tokenDecimals = decimals ?? 18;
+  const formattedAmount = formatUnits(amount, tokenDecimals);
+  const usdValue = formatUnits(value, USD_DECIMALS);
+
+  return `${formattedAmount} ($${Number(usdValue).toFixed(2)})`;
 }
 
 /**
@@ -90,14 +105,12 @@ export function checkEthWethAvailability(assets: WalletAsset[]): {
   wethBalance?: bigint;
 } {
   const ETH_NULL_ADDR = "0x0000000000000000000000000000000000000000";
-  
+
   const ethAsset = assets.find(
     (a) => a.token === ETH_NULL_ADDR || a.symbol?.toUpperCase() === "ETH"
   );
-  
-  const wethAsset = assets.find(
-    (a) => a.symbol?.toUpperCase() === "WETH"
-  );
+
+  const wethAsset = assets.find((a) => a.symbol?.toUpperCase() === "WETH");
 
   return {
     hasEth: ethAsset ? ethAsset.amount > 0n : false,
@@ -110,9 +123,7 @@ export function checkEthWethAvailability(assets: WalletAsset[]): {
 /**
  * Generate ETH/WETH conversion note for prompts
  */
-export function generateEthWethConversionNote(
-  assets: WalletAsset[]
-): string {
+export function generateEthWethConversionNote(assets: WalletAsset[]): string {
   const { hasEth, hasWeth } = checkEthWethAvailability(assets);
 
   if (!hasEth && !hasWeth) return "";
@@ -139,7 +150,7 @@ export function generateAvailableTokensSection(
   }
 ): string {
   const ETH_NULL_ADDR = "0x0000000000000000000000000000000000000000";
-  
+
   return tokens
     .map((token) => {
       const isNative = token.address === ETH_NULL_ADDR;
