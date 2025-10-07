@@ -131,7 +131,9 @@ export abstract class BackgroundQueue<T> {
           );
         }
 
-        throw error;
+        // Swallow error after cleanup to prevent unhandled rejections
+        // when callers have already timed out or cancelled
+        return Promise.resolve();
       });
 
     // Return promise race with timeout
