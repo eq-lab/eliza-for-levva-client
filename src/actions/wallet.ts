@@ -23,7 +23,15 @@ const getExplorerLink = (chainId: number, address: string): string => {
 IntentManager.registerIntent({
   type: INTENT_TYPE.SEND,
   domain: LEVVA_ACTIONS.ANALYZE_WALLET,
-  keywords: ["send", "transfer", "pay", "move", "give", "donate"],
+  keywords: [
+    "send",
+    "transfer",
+    "donate",
+    // Removed ambiguous keywords:
+    // - "pay" (can trigger on questions: "what can I pay with?")
+    // - "move" (too generic: "move funds between strategies")
+    // - "give" (conversational: "give me details")
+  ],
   handler: handleSendIntent,
   generateSuggestions: generateSendSuggestions,
   description: "Handle token transfer requests with multi-step process support",

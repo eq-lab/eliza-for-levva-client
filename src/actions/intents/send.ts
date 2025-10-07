@@ -237,7 +237,48 @@ const handleMissingSendParameters = async (
     const token = tokenSymbol || tokenAddress || "tokens";
     contextualResponse = `How much ${token} would you like to send? Please specify an amount like "100 USDC" or "0.1 ETH".`;
   } else if (missingParam === "token") {
-    contextualResponse = `Which token would you like to send? You can specify a token symbol like "USDC" or "ETH".`;
+    // Get wallet assets to show available tokens
+    const service = runtime.getService<LevvaService>(
+      LEVVA_SERVICE.LEVVA_COMMON
+    );
+    const lvva = selectProviderState<LevvaProviderState>(
+      LEVVA_PROVIDER_NAME,
+      state
+    );
+
+    if (service && lvva?.user) {
+      try {
+        const assets = await service.getWalletAssets({
+          chainId: lvva.chainId,
+          address: lvva.user.address,
+        });
+
+        const tokensAvailable = assets
+          .filter((a) => a.amount > 0n)
+          .map((a) => {
+            const token = service.token.getTokenFromMap({
+              chainId: lvva.chainId,
+              address: a.token,
+            });
+            return (
+              token?.symbol ||
+              (a.token === ETH_NULL_ADDR ? "ETH" : a.token.slice(0, 8))
+            );
+          })
+          .slice(0, 8) // Show max 8 tokens
+          .join(", ");
+
+        contextualResponse = `Which token would you like to send?\n\nYou have: ${tokensAvailable}\n\nPlease specify a token symbol like "USDC" or "ETH".`;
+      } catch (error) {
+        runtime.logger.warn(
+          "Failed to get wallet assets for SEND intent:",
+          error
+        );
+        contextualResponse = `Which token would you like to send? You can specify a token symbol like "USDC" or "ETH".`;
+      }
+    } else {
+      contextualResponse = `Which token would you like to send? You can specify a token symbol like "USDC" or "ETH".`;
+    }
   } else {
     contextualResponse = errorMessage;
   }

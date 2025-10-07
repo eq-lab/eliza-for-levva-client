@@ -82,19 +82,24 @@ ${intentList}
    - If agent asked about strategy selection and user responds → DEPOSIT intent (for investment)
 
 2. **Message Analysis**: Analyze the user's current message for explicit intent keywords
-   - Look for direct action words (deposit, withdraw, swap, send, etc.)
+   - Look for direct ACTION words (deposit, withdraw, swap, send, etc.)
+   - "Review", "check", "show", "view" alone are NOT action words - they are informational requests
+   - Only trigger intents when user clearly expresses desire to PERFORM an action
    - Consider the context of numbers and amounts based on what was previously asked
 
 3. **Intent Selection**: Select the most appropriate intent from available options
+   - BE CONSERVATIVE: Only create intents when user clearly wants to perform a transaction
    - Prioritize conversation context over isolated message analysis
    - If user provides requested information (amount, strategy, etc.), continue the active flow
-   - Return null only if the message is clearly unrelated to any intent
+   - Return undefined if the message is informational (review, check, show status)
 
 4. **Confidence Scoring**: 
-   - High (0.8-1.0): Clear intent from context or explicit keywords
-   - Medium (0.6-0.7): Reasonable inference from context
-   - Low (0.3-0.5): Ambiguous but some indication
-   - Very Low (0.0-0.2): No clear intent indication
+   - High (0.8-1.0): Clear intent from context AND explicit action keywords (e.g., "withdraw 100 USDC")
+   - Medium (0.6-0.75): Some action indication but ambiguous (use confidence < 0.75 for these)
+   - Low (0.3-0.5): Informational request, not an action (e.g., "show positions", "check status")
+   - Very Low (0.0-0.2): No intent indication
+
+**CRITICAL**: "Review my positions", "Show my portfolio", "Check my status" should have confidence < 0.75
 
 5. **Value Extraction**: Extract relevant parameters (amounts, tokens, addresses, etc.)
 

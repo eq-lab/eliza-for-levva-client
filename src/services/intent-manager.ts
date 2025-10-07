@@ -215,7 +215,7 @@ export class IntentManager extends Service {
     userId: string,
     channelId: string,
     existingIntentContext?: IntentContext,
-    confidenceThreshold: number = 0.6
+    confidenceThreshold: number = 0.75
   ): Promise<IntentContext | undefined> {
     try {
       // Detect intent from current message

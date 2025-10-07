@@ -340,10 +340,16 @@ export const handleWithdrawIntent: IntentHandler = async (
   const { strategy, strategyId, amount, withdrawalStep } = withdrawParams;
 
   if (!strategyId || !strategy) {
+    // Show available positions to help user choose
+    const positionsSummary = params?.positionsSummary || "No active positions found";
+    const totalValue = params?.totalPositionValue 
+      ? `\n**Total Portfolio Value**: $${params.totalPositionValue.toFixed(2)}`
+      : "";
+
     const errorContent = await rephrase({
       runtime,
       content: {
-        text: "I need more information to process your withdrawal. Please specify which position you'd like to withdraw from.",
+        text: `I see you want to withdraw from a position. Here are your available positions:\n\n${positionsSummary}${totalValue}\n\nPlease specify which position you'd like to withdraw from (by strategy name or number).`,
         source: message.content.source,
       },
       // state,
@@ -353,7 +359,7 @@ export const handleWithdrawIntent: IntentHandler = async (
     await callback(errorContent);
 
     return {
-      text: "Generated withdrawal parameter request",
+      text: "Generated withdrawal parameter request with positions",
       success: true,
       values: {
         success: true,
@@ -366,6 +372,7 @@ export const handleWithdrawIntent: IntentHandler = async (
         intentType: "WITHDRAW",
         intentId: intentContext.id,
         needsMoreInfo: true,
+        showedPositions: true,
       },
     };
   }
