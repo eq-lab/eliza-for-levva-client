@@ -1,12 +1,12 @@
 import { Strategy } from "../services/levva/pool";
 import { DataDescription, formatKeys, formatOutput } from "./util";
 
-/** */
+/** Extracted strategy selection parameters from user messages */
 export interface ExtractedDataForStrategy {
   strategy?: Strategy;
   contract?: `0x${string}`;
   token?: string;
-  amount?: `${number}`;
+  amount?: string;
   leverage?: number;
 }
 
@@ -27,7 +27,7 @@ const dataDescription: DataDescription<ExtractedDataForStrategy> = {
   amount: {
     type: "string",
     description:
-      "The amount of tokens to deposit, denominated in token to be sent",
+      'Numeric amount as string (e.g., "100", "0.5") denominated in the token to be sent. Must match regex ^[0-9]+(\\.[0-9]+)?$ when present.',
   },
   leverage: {
     type: "number",

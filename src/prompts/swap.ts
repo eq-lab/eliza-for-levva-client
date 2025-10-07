@@ -1,3 +1,12 @@
+/**
+ * Swap parameter extraction prompt
+ * 
+ * @version 1.0.1
+ * @lastModified 2025-01-XX
+ * @changes v1.0.1: Added intent context support for improved extraction
+ * @changes v1.0.0: Initial implementation
+ */
+
 export const selectSwapDataFromMessagesPrompt = (ctx: {
   recentMessages: string;
   tokens: string;

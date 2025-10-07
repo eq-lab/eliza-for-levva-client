@@ -1,4 +1,18 @@
+/**
+ * Swap intent suggestions with progressive disclosure
+ *
+ * @version 2.0.0
+ * @lastModified 2025-01-XX
+ * @changes v2.0.0: Refactored to use helper functions from src/prompts/helpers
+ * @changes v1.0.0: Initial implementation with progressive token/amount selection
+ */
+
 import type { IntentContext } from "../../services/intent-manager";
+import {
+  generateIntentContextSection,
+  generateOutputFormat,
+  generateCommonInstructions,
+} from "../helpers";
 
 export interface SwapIntentSuggestionParams {
   intentContext: IntentContext;
@@ -54,21 +68,21 @@ export function generateSwapIntentSuggestionsPrompt(
     const fromSymbol = fromTokenSymbol || fromToken.slice(0, 8);
     const toSymbol = toTokenSymbol || toToken.slice(0, 8);
 
-    return `<task>Generate confirmation suggestions for swap - all parameters provided</task>
-<intentContext>
-Intent Type: SWAP
-From: ${fromSymbol}
-To: ${toSymbol}
-Amount: ${amount}
-Status: Ready for confirmation
-User Address: ${userAddress}
-Chain ID: ${chainId}
-</intentContext>
-<conversation>
-${conversation}
-</conversation>
-<instructions>
-Generate 3-5 natural, conversational suggestions for swap confirmation:
+    const intentContext = generateIntentContextSection({
+      intentType: "SWAP",
+      status: "Ready for confirmation",
+      userAddress,
+      chainId,
+      parameters: {
+        From: fromSymbol,
+        To: toSymbol,
+        Amount: amount,
+      },
+    });
+
+    const instructions = generateCommonInstructions({
+      suggestionType: "confirmation",
+      specificInstructions: `Generate 3-5 natural, conversational suggestions for swap confirmation:
 
 SUGGESTION PRIORITIES:
 1. Confirm and proceed with the swap
@@ -86,19 +100,16 @@ SUGGESTION FORMATS:
 Each suggestion should:
 - Be natural and conversational
 - Clearly indicate confirmation or modification intent
-- Reference the actual parameters when appropriate
-</instructions>
-<output>
-Respond using JSON format:
-{
-  "suggestions": [
-    {
-      "label": "Swap confirmation action",
-      "text": "Natural message that confirms or modifies swap"
-    }
-  ]
-}
-</output>`;
+- Reference the actual parameters when appropriate`,
+    });
+
+    return `<task>Generate confirmation suggestions for swap - all parameters provided</task>
+${intentContext}
+<conversation>
+${conversation}
+</conversation>
+${instructions}
+${generateOutputFormat()}`;
   }
 
   // Case 2: Both tokens selected, need amount
@@ -116,21 +127,20 @@ Respond using JSON format:
       amountContext = `\nUser has ${walletAsset.symbol} available in wallet.`;
     }
 
-    return `<task>Generate amount suggestions for swap</task>
-<intentContext>
-Intent Type: SWAP
-From: ${fromSymbol}
-To: ${toSymbol}
-Status: Amount selection needed
-</intentContext>
-<userWallet>
-${amountContext || "Wallet assets unknown"}
-</userWallet>
-<conversation>
-${conversation}
-</conversation>
-<instructions>
-Generate 3-5 natural, conversational suggestions for swap amount:
+    const intentContext = generateIntentContextSection({
+      intentType: "SWAP",
+      status: "Amount selection needed",
+      userAddress,
+      chainId,
+      parameters: {
+        From: fromSymbol,
+        To: toSymbol,
+      },
+    });
+
+    const instructions = generateCommonInstructions({
+      suggestionType: "next-step",
+      specificInstructions: `Generate 3-5 natural, conversational suggestions for swap amount:
 
 SUGGESTION PRIORITIES:
 1. Specific amounts (e.g., "100 ${fromSymbol}", "0.1 ${fromSymbol}")
@@ -149,19 +159,19 @@ Each suggestion should:
 - Be natural and conversational
 - Reference the actual from-token symbol
 - Provide a variety of amount options
-${walletAsset ? "- Consider the user's available balance" : ""}
-</instructions>
-<output>
-Respond using JSON format:
-{
-  "suggestions": [
-    {
-      "label": "Amount selection",
-      "text": "Natural message that specifies swap amount"
-    }
-  ]
-}
-</output>`;
+${walletAsset ? "- Consider the user's available balance" : ""}`,
+    });
+
+    return `<task>Generate amount suggestions for swap</task>
+${intentContext}
+<userWallet>
+${amountContext || "Wallet assets unknown"}
+</userWallet>
+<conversation>
+${conversation}
+</conversation>
+${instructions}
+${generateOutputFormat()}`;
   }
 
   // Case 3: Only fromToken selected, need toToken
@@ -179,20 +189,19 @@ Respond using JSON format:
         ? availablePopular.map((t) => t.symbol).join(", ")
         : "USDC, ETH, WETH, DAI";
 
-    return `<task>Generate destination token suggestions for swap</task>
-<intentContext>
-Intent Type: SWAP
-From: ${fromSymbol}
-Status: Destination token selection needed
-</intentContext>
-<availableTokens>
-Popular tokens: ${tokenList}
-</availableTokens>
-<conversation>
-${conversation}
-</conversation>
-<instructions>
-Generate 3-5 natural, conversational suggestions for destination token:
+    const intentContext = generateIntentContextSection({
+      intentType: "SWAP",
+      status: "Destination token selection needed",
+      userAddress,
+      chainId,
+      parameters: {
+        From: fromSymbol,
+      },
+    });
+
+    const instructions = generateCommonInstructions({
+      suggestionType: "next-step",
+      specificInstructions: `Generate 3-5 natural, conversational suggestions for destination token:
 
 SUGGESTION PRIORITIES:
 1. Popular stablecoins (USDC, USDT, DAI)
@@ -210,19 +219,19 @@ Each suggestion should:
 - Be natural and conversational
 - Reference actual from-token
 - Suggest commonly available destination tokens
-- Lead to amount selection next
-</instructions>
-<output>
-Respond using JSON format:
-{
-  "suggestions": [
-    {
-      "label": "Destination token selection",
-      "text": "Natural message that specifies swap destination"
-    }
-  ]
-}
-</output>`;
+- Lead to amount selection next`,
+    });
+
+    return `<task>Generate destination token suggestions for swap</task>
+${intentContext}
+<availableTokens>
+Popular tokens: ${tokenList}
+</availableTokens>
+<conversation>
+${conversation}
+</conversation>
+${instructions}
+${generateOutputFormat()}`;
   }
 
   // Case 4: Only toToken selected, need fromToken
@@ -238,20 +247,19 @@ Respond using JSON format:
       walletContext = `\nUser's wallet tokens: ${symbols}`;
     }
 
-    return `<task>Generate source token suggestions for swap</task>
-<intentContext>
-Intent Type: SWAP
-To: ${toSymbol}
-Status: Source token selection needed
-</intentContext>
-<userWallet>
-${walletContext || "Wallet assets unknown"}
-</userWallet>
-<conversation>
-${conversation}
-</conversation>
-<instructions>
-Generate 3-5 natural, conversational suggestions for source token:
+    const intentContext = generateIntentContextSection({
+      intentType: "SWAP",
+      status: "Source token selection needed",
+      userAddress,
+      chainId,
+      parameters: {
+        To: toSymbol,
+      },
+    });
+
+    const instructions = generateCommonInstructions({
+      suggestionType: "next-step",
+      specificInstructions: `Generate 3-5 natural, conversational suggestions for source token:
 
 SUGGESTION PRIORITIES:
 1. Tokens from user's wallet (if known)
@@ -268,45 +276,41 @@ ${walletTokens.length > 0 ? `- "Swap ${walletTokens[0].symbol} to ${toSymbol}" -
 Each suggestion should:
 - Be natural and conversational
 - Reference tokens from user's wallet when possible
-- Lead to amount selection next
-</instructions>
-<output>
-Respond using JSON format:
-{
-  "suggestions": [
-    {
-      "label": "Source token selection",
-      "text": "Natural message that specifies swap source"
-    }
-  ]
-}
-</output>`;
-  }
+- Lead to amount selection next`,
+    });
 
-  // Case 5: No tokens selected - suggest popular pairs or tokens from wallet
-  const walletTokens = walletAssets.filter((a) => a.amount > 0n).slice(0, 5);
-
-  let walletContext = "";
-  if (walletTokens.length > 0) {
-    const symbols = walletTokens.map((a) => a.symbol).join(", ");
-    walletContext = `\nUser's wallet tokens: ${symbols}`;
-  }
-
-  return `<task>Generate token selection suggestions for swap - no tokens specified yet</task>
-<intentContext>
-Intent Type: SWAP
-Status: Token pair selection needed
-User Address: ${userAddress}
-Chain ID: ${chainId}
-</intentContext>
+    return `<task>Generate source token suggestions for swap</task>
+${intentContext}
 <userWallet>
 ${walletContext || "Wallet assets unknown"}
 </userWallet>
 <conversation>
 ${conversation}
 </conversation>
-<instructions>
-Generate 3-5 natural, conversational suggestions for token pair selection:
+${instructions}
+${generateOutputFormat()}`;
+  }
+
+  // Case 5: No tokens selected - suggest popular pairs or tokens from wallet
+  const walletTokensCase5 = walletAssets.filter((a) => a.amount > 0n).slice(0, 5);
+
+  let walletContext = "";
+  if (walletTokensCase5.length > 0) {
+    const symbols = walletTokensCase5.map((a) => a.symbol).join(", ");
+    walletContext = `\nUser's wallet tokens: ${symbols}`;
+  }
+
+  const intentContext = generateIntentContextSection({
+    intentType: "SWAP",
+    status: "Token pair selection needed",
+    userAddress,
+    chainId,
+    parameters: {},
+  });
+
+  const instructions = generateCommonInstructions({
+    suggestionType: "next-step",
+    specificInstructions: `Generate 3-5 natural, conversational suggestions for token pair selection:
 
 SUGGESTION PRIORITIES:
 1. Popular swap pairs (ETH/USDC, WETH/DAI, etc.)
@@ -316,7 +320,7 @@ SUGGESTION PRIORITIES:
 SUGGESTION FORMATS:
 - "Swap ETH to USDC" - popular pair
 - "Convert WETH to DAI" - popular pair
-${walletTokens.length > 0 ? `- "Swap my ${walletTokens[0].symbol}" - from wallet` : ""}
+${walletTokensCase5.length > 0 ? `- "Swap my ${walletTokensCase5[0].symbol}" - from wallet` : ""}
 - "What tokens can I swap?" - inquiry
 - "Show me available swap pairs" - general inquiry
 
@@ -324,17 +328,17 @@ Each suggestion should:
 - Be natural and conversational
 - Suggest complete pairs when possible
 - Reference wallet tokens when available
-- Lead to token selection
-</instructions>
-<output>
-Respond using JSON format:
-{
-  "suggestions": [
-    {
-      "label": "Token pair selection",
-      "text": "Natural message that starts swap intent"
-    }
-  ]
-}
-</output>`;
+- Lead to token selection`,
+  });
+
+  return `<task>Generate token selection suggestions for swap - no tokens specified yet</task>
+${intentContext}
+<userWallet>
+${walletContext || "Wallet assets unknown"}
+</userWallet>
+<conversation>
+${conversation}
+</conversation>
+${instructions}
+${generateOutputFormat()}`;
 }

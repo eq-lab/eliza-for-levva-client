@@ -1,5 +1,19 @@
+/**
+ * Deposit intent suggestions with progressive disclosure
+ *
+ * @version 2.0.0
+ * @lastModified 2025-01-XX
+ * @changes v2.0.0: Refactored to use helper functions from src/prompts/helpers
+ * @changes v1.0.0: Initial implementation with progressive disclosure
+ */
+
 import type { IntentContext } from "../../services/intent-manager";
 import { generateIntentManagementSection } from "./intent-management";
+import {
+  generateIntentContextSection,
+  generateOutputFormat,
+  generateCommonInstructions,
+} from "../helpers";
 
 export interface DepositIntentSuggestionParams {
   intentContext: IntentContext;
@@ -93,22 +107,22 @@ export function generateDepositIntentSuggestionsPrompt(
   if (strategyId && tokenSymbol && amount && (!isPool || leverage)) {
     const strategyDisplay = strategyName || `Strategy #${strategyId}`;
 
-    return `<task>Generate edit/cancel suggestions for deposit - all parameters set</task>
-<intentContext>
-Intent Type: DEPOSIT
-Strategy: ${strategyDisplay}
-Token: ${tokenSymbol}
-Amount: ${amount}
-${isPool ? `Leverage: ${leverage}x` : ""}
-Status: All parameters set (confirmation handled in UI)
-User Address: ${userAddress}
-Chain ID: ${chainId}
-</intentContext>
-<conversation>
-${conversation}
-</conversation>
-<instructions>
-Generate 3-5 natural, conversational suggestions for editing or cancelling:
+    const intentContext = generateIntentContextSection({
+      intentType: "DEPOSIT",
+      status: "All parameters set (confirmation handled in UI)",
+      userAddress,
+      chainId,
+      parameters: {
+        Strategy: strategyDisplay,
+        Token: tokenSymbol,
+        Amount: amount,
+        ...(isPool && leverage ? { Leverage: `${leverage}x` } : {}),
+      },
+    });
+
+    const instructions = generateCommonInstructions({
+      suggestionType: "missing-info",
+      specificInstructions: `Generate 3-5 natural, conversational suggestions for editing or cancelling:
 
 IMPORTANT: DO NOT suggest confirmation - that is handled by the UI.
 Only provide suggestions for EDITING parameters or CANCELLING.
@@ -128,36 +142,35 @@ SUGGESTION FORMATS:
 Each suggestion should:
 - Be natural and conversational
 - Focus on parameter modification or cancellation
-- NOT include confirmation suggestions
-</instructions>
-<output>
-Respond using JSON format:
-{
-  "suggestions": [
-    {
-      "label": "Edit or cancel action",
-      "text": "Natural message that edits parameters or cancels"
-    }
-  ]
-}
-</output>`;
+- NOT include confirmation suggestions`,
+    });
+
+    return `<task>Generate edit/cancel suggestions for deposit - all parameters set</task>
+${intentContext}
+<conversation>
+${conversation}
+</conversation>
+${instructions}
+${generateOutputFormat()}`;
   }
 
   // Case 2: Pool strategy needs leverage (strategy + token + amount set, but no leverage)
   if (isPool && strategyId && tokenSymbol && amount && !leverage) {
-    return `<task>Generate leverage selection suggestions for pool deposit</task>
-<intentContext>
-Intent Type: DEPOSIT
-Strategy: ${strategyName || `Strategy #${strategyId}`} (Pool)
-Token: ${tokenSymbol}
-Amount: ${amount}
-Status: Leverage selection needed
-</intentContext>
-<conversation>
-${conversation}
-</conversation>
-<instructions>
-Generate 3-5 natural, conversational suggestions for leverage selection:
+    const intentContext = generateIntentContextSection({
+      intentType: "DEPOSIT",
+      status: "Leverage selection needed",
+      userAddress,
+      chainId,
+      parameters: {
+        Strategy: `${strategyName || `Strategy #${strategyId}`} (Pool)`,
+        Token: tokenSymbol,
+        Amount: amount,
+      },
+    });
+
+    const instructions = generateCommonInstructions({
+      suggestionType: "next-step",
+      specificInstructions: `Generate 3-5 natural, conversational suggestions for leverage selection:
 
 LEVERAGE OPTIONS (typically 1x-5x for pools):
 - 1x (no leverage) - safest, lower returns
@@ -174,19 +187,16 @@ SUGGESTION FORMATS:
 Each suggestion should:
 - Be natural and conversational
 - Clearly specify leverage preference
-- Consider risk tolerance
-</instructions>
-<output>
-Respond using JSON format:
-{
-  "suggestions": [
-    {
-      "label": "Leverage selection",
-      "text": "Natural message that selects leverage"
-    }
-  ]
-}
-</output>`;
+- Consider risk tolerance`,
+    });
+
+    return `<task>Generate leverage selection suggestions for pool deposit</task>
+${intentContext}
+<conversation>
+${conversation}
+</conversation>
+${instructions}
+${generateOutputFormat()}`;
   }
 
   // Case 3: Strategy + token selected, need amount
@@ -207,21 +217,20 @@ Respond using JSON format:
         : "";
     }
 
-    return `<task>Generate amount suggestions for deposit</task>
-<intentContext>
-Intent Type: DEPOSIT
-Strategy: ${strategyDisplay}
-Token: ${tokenSymbol}
-Status: Amount selection needed
-</intentContext>
-<userWallet>
-${amountContext || "Wallet assets unknown"}
-</userWallet>
-<conversation>
-${conversation}
-</conversation>
-<instructions>
-Generate 3-5 natural, conversational suggestions for deposit amount:
+    const intentContext = generateIntentContextSection({
+      intentType: "DEPOSIT",
+      status: "Amount selection needed",
+      userAddress,
+      chainId,
+      parameters: {
+        Strategy: strategyDisplay,
+        Token: tokenSymbol,
+      },
+    });
+
+    const instructions = generateCommonInstructions({
+      suggestionType: "next-step",
+      specificInstructions: `Generate 3-5 natural, conversational suggestions for deposit amount:
 
 SUGGESTION PRIORITIES:
 1. Specific amounts (e.g., "100 ${tokenSymbol}", "0.5 ${tokenSymbol}")
@@ -240,19 +249,19 @@ Each suggestion should:
 - Be natural and conversational
 - Reference the actual token symbol
 - Provide a variety of amount options
-${walletAsset ? "- Consider the user's available balance" : ""}
-</instructions>
-<output>
-Respond using JSON format:
-{
-  "suggestions": [
-    {
-      "label": "Amount selection",
-      "text": "Natural message that specifies deposit amount"
-    }
-  ]
-}
-</output>`;
+${walletAsset ? "- Consider the user's available balance" : ""}`,
+    });
+
+    return `<task>Generate amount suggestions for deposit</task>
+${intentContext}
+<userWallet>
+${amountContext || "Wallet assets unknown"}
+</userWallet>
+<conversation>
+${conversation}
+</conversation>
+${instructions}
+${generateOutputFormat()}`;
   }
 
   // Case 4: Strategy selected, need token (vault vs pool logic)
@@ -260,27 +269,25 @@ Respond using JSON format:
     const strategyDisplay = strategyName || `Strategy #${strategyId}`;
 
     // For vaults, token is determined by strategy
-    if (
-      isVault &&
-      selectedStrategy &&
-      selectedStrategy.vaultUnderlyingToken
-    ) {
+    if (isVault && selectedStrategy && selectedStrategy.vaultUnderlyingToken) {
       const vaultToken = getToken(selectedStrategy.vaultUnderlyingToken);
       const tokenSym =
         vaultToken?.symbol || selectedStrategy.vaultUnderlyingToken;
 
-      return `<task>Generate token confirmation suggestions for vault deposit</task>
-<intentContext>
-Intent Type: DEPOSIT
-Strategy: ${strategyDisplay} (Vault)
-Token: ${tokenSym} (vault-specific)
-Status: Token confirmation
-</intentContext>
-<conversation>
-${conversation}
-</conversation>
-<instructions>
-Vault strategies accept only their specific token (${tokenSym}).
+      const intentContext = generateIntentContextSection({
+        intentType: "DEPOSIT",
+        status: "Token confirmation",
+        userAddress,
+        chainId,
+        parameters: {
+          Strategy: `${strategyDisplay} (Vault)`,
+          Token: `${tokenSym} (vault-specific)`,
+        },
+      });
+
+      const instructions = generateCommonInstructions({
+        suggestionType: "next-step",
+        specificInstructions: `Vault strategies accept only their specific token (${tokenSym}).
 
 Generate 3-5 natural, conversational suggestions:
 
@@ -297,19 +304,16 @@ SUGGESTION FORMATS:
 
 Each suggestion should:
 - Reference the vault's specific token
-- Move conversation toward amount selection
-</instructions>
-<output>
-Respond using JSON format:
-{
-  "suggestions": [
-    {
-      "label": "Token confirmation",
-      "text": "Natural message about vault token"
-    }
-  ]
-}
-</output>`;
+- Move conversation toward amount selection`,
+      });
+
+      return `<task>Generate token confirmation suggestions for vault deposit</task>
+${intentContext}
+<conversation>
+${conversation}
+</conversation>
+${instructions}
+${generateOutputFormat()}`;
     }
 
     // For pools, user can choose any token they have
@@ -326,20 +330,19 @@ Respond using JSON format:
       walletContext = `\nUser's wallet tokens: ${walletTokens.join(", ")}`;
     }
 
-    return `<task>Generate token selection suggestions for pool deposit</task>
-<intentContext>
-Intent Type: DEPOSIT
-Strategy: ${strategyDisplay} (Pool)
-Status: Token selection needed
-</intentContext>
-<userWallet>
-${walletContext || "Wallet assets unknown"}
-</userWallet>
-<conversation>
-${conversation}
-</conversation>
-<instructions>
-Pool strategies accept multiple tokens. User can deposit any token they have.
+    const intentContext = generateIntentContextSection({
+      intentType: "DEPOSIT",
+      status: "Token selection needed",
+      userAddress,
+      chainId,
+      parameters: {
+        Strategy: `${strategyDisplay} (Pool)`,
+      },
+    });
+
+    const instructions = generateCommonInstructions({
+      suggestionType: "next-step",
+      specificInstructions: `Pool strategies accept multiple tokens. User can deposit any token they have.
 
 Generate 3-5 natural, conversational suggestions:
 
@@ -357,8 +360,18 @@ ${walletTokens.length > 0 ? `- "Deposit ${walletTokens[0]}" - from wallet` : ""}
 Each suggestion should:
 - Be natural and conversational
 - Reference actual tokens when possible
-- Lead to amount selection next
-</instructions>
+- Lead to amount selection next`,
+    });
+
+    return `<task>Generate token selection suggestions for pool deposit</task>
+${intentContext}
+<userWallet>
+${walletContext || "Wallet assets unknown"}
+</userWallet>
+<conversation>
+${conversation}
+</conversation>
+${instructions}
 ${generateIntentManagementSection(
   "DEPOSIT",
   true,
@@ -370,17 +383,7 @@ If user has all needed tokens:
 - Focus on deposit flow suggestions
 - No child intents needed`
 )}
-<output>
-Respond using JSON format:
-{
-  "suggestions": [
-    {
-      "label": "Token selection",
-      "text": "Natural message that specifies deposit token"
-    }
-  ]
-}
-</output>`;
+${generateOutputFormat()}`;
   }
 
   // Case 5: No strategy selected - suggest strategies
@@ -405,26 +408,17 @@ Respond using JSON format:
       topPools.map((s) => `- ${s.name} (${s.risk})`).join("\n");
   }
 
-  return `<task>Generate strategy selection suggestions for deposit</task>
-<intentContext>
-Intent Type: DEPOSIT
-Status: Strategy selection needed
-User Address: ${userAddress}
-Chain ID: ${chainId}
-</intentContext>
-<availableStrategies>
-${strategiesList || "No strategies available"}
+  const intentContext = generateIntentContextSection({
+    intentType: "DEPOSIT",
+    status: "Strategy selection needed",
+    userAddress,
+    chainId,
+    parameters: {},
+  });
 
-Available risk levels: ${availableRisks.join(", ")}
-</availableStrategies>
-<userPositions>
-${positions.length > 0 ? positions.map((p) => `Strategy #${p.strategyId}: $${p.balanceUsd.toFixed(2)}`).join("\n") : "No current positions"}
-</userPositions>
-<conversation>
-${conversation}
-</conversation>
-<instructions>
-Generate 3-5 natural, conversational suggestions for strategy selection:
+  const instructions = generateCommonInstructions({
+    suggestionType: "next-step",
+    specificInstructions: `Generate 3-5 natural, conversational suggestions for strategy selection:
 
 SUGGESTION PRIORITIES:
 1. Select by risk level ("ultra-safe", "safe", "brave")
@@ -442,17 +436,22 @@ SUGGESTION FORMATS:
 Each suggestion should:
 - Be natural and conversational
 - Reference actual available strategies or risk levels
-- Lead to strategy selection and next steps
-</instructions>
-<output>
-Respond using JSON format:
-{
-  "suggestions": [
-    {
-      "label": "Strategy selection",
-      "text": "Natural message that selects or asks about strategies"
-    }
-  ]
-}
-</output>`;
+- Lead to strategy selection and next steps`,
+  });
+
+  return `<task>Generate strategy selection suggestions for deposit</task>
+${intentContext}
+<availableStrategies>
+${strategiesList || "No strategies available"}
+
+Available risk levels: ${availableRisks.join(", ")}
+</availableStrategies>
+<userPositions>
+${positions.length > 0 ? positions.map((p) => `Strategy #${p.strategyId}: $${p.balanceUsd.toFixed(2)}`).join("\n") : "No current positions"}
+</userPositions>
+<conversation>
+${conversation}
+</conversation>
+${instructions}
+${generateOutputFormat()}`;
 }

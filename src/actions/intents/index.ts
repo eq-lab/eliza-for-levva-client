@@ -13,10 +13,7 @@
  */
 
 // Export intent handlers for use by actions
-export {
-  handleWithdrawIntent,
-  generateWithdrawSuggestions,
-} from "./withdraw";
+export { handleWithdrawIntent, generateWithdrawSuggestions } from "./withdraw";
 export {
   handleSwapIntent,
   generateSwapSuggestions,

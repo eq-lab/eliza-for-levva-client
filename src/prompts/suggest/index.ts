@@ -39,6 +39,10 @@ export {
   exchangePairsPrompt,
   type ExchangePairsParams,
 } from "./exchange-pairs";
+export {
+  swapContinuationPrompt,
+  type SwapContinuationParams,
+} from "./swap-continuation";
 
 // Position action suggestions (help initiate DEPOSIT/WITHDRAW intents)
 export {
@@ -53,3 +57,10 @@ export {
   depositOpportunitiesPrompt,
   type DepositOpportunitiesParams,
 } from "./deposit-opportunities";
+
+// Wallet/Portfolio analysis suggestions
+// Removed filler suggestions (2025-01-07):
+// - portfolio-optimization.ts → Use deposit-opportunities instead
+// - investment-opportunities.ts → Use deposit-opportunities instead
+// - market-insights.ts → Generic questions, no actionable insights
+// - send-tokens.ts → Placeholder addresses, use send-intent instead

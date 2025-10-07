@@ -1,4 +1,18 @@
+/**
+ * Withdrawal intent suggestions with progressive disclosure
+ *
+ * @version 2.0.0
+ * @lastModified 2025-01-XX
+ * @changes v2.0.0: Refactored to use helper functions from src/prompts/helpers
+ * @changes v1.0.0: Initial implementation with request/claim flow
+ */
+
 import type { IntentContext } from "../../services/intent-manager";
+import {
+  generateIntentContextSection,
+  generateOutputFormat,
+  generateCommonInstructions,
+} from "../helpers";
 
 export interface WithdrawIntentSuggestionParams {
   intentContext: IntentContext;
@@ -79,15 +93,41 @@ export function generateWithdrawIntentSuggestionsPrompt(
       pendingWithdrawals.map((pw) => [pw.strategyId, true])
     );
 
+    const intentContext = generateIntentContextSection({
+      intentType: "WITHDRAW",
+      status: "Position selection needed",
+      userAddress,
+      chainId,
+      parameters: {
+        Strategy: "Not selected",
+        Amount: "N/A",
+        Step: withdrawalStep || "request",
+      },
+    });
+
+    const instructions = generateCommonInstructions({
+      suggestionType: "next-step",
+      specificInstructions: `Generate 4 suggestions to help user select which position to withdraw from:
+
+PRIORITIZATION:
+1. If there are pending withdrawals, include a "Check withdrawal status" suggestion as first option
+2. Show largest position by USD value
+3. Show a medium-sized position (if 3+ positions available)
+4. Show smallest position OR suggest custom position selection
+
+FORMATTING:
+- Use natural language: "Withdraw from [Strategy Name]"
+- Include context when helpful: "Withdraw from [Strategy] ($XXX available)"
+- For pending withdrawals: "Check my pending withdrawals" or "Claim ready withdrawals"
+
+Each suggestion should:
+- Be conversational and clear
+- Reference actual strategy names when possible
+- Indicate if position has pending withdrawal`,
+    });
+
     return `<task>Generate position selection suggestions for withdrawal - user hasn't specified which strategy</task>
-<intentState>
-Type: WITHDRAW
-Strategy: Not selected
-Amount: N/A
-Step: ${withdrawalStep || "request"}
-User Address: ${userAddress}
-Chain ID: ${chainId}
-</intentState>
+${intentContext}
 <availablePositions>
 ${positions
   .map((pos) => {
@@ -104,36 +144,8 @@ ${hasPendingWithdrawals ? `User has ${pendingWithdrawals.length} pending withdra
 <conversation>
 ${conversation}
 </conversation>
-<instructions>
-Generate 4 suggestions to help user select which position to withdraw from:
-
-PRIORITIZATION:
-1. If there are pending withdrawals, include a "Check withdrawal status" suggestion as first option
-2. Show largest position by USD value
-3. Show a medium-sized position (if 3+ positions available)
-4. Show smallest position OR suggest custom position selection
-
-FORMATTING:
-- Use natural language: "Withdraw from [Strategy Name]"
-- Include context when helpful: "Withdraw from [Strategy] ($XXX available)"
-- For pending withdrawals: "Check my pending withdrawals" or "Claim ready withdrawals"
-
-Each suggestion should:
-- Be conversational and clear
-- Reference actual strategy names when possible
-- Indicate if position has pending withdrawal
-</instructions>
-<output>
-Respond using JSON format:
-{
-  "suggestions": [
-    {
-      "label": "Position selection",
-      "text": "Natural message selecting a position"
-    }
-  ]
-}
-</output>`;
+${instructions}
+${generateOutputFormat()}`;
   }
 
   // CASE 2: Strategy selected, need amount
@@ -158,21 +170,22 @@ Respond using JSON format:
 </output>`;
     }
 
-    return `<task>Generate amount suggestions for withdrawal - user has selected strategy but not amount</task>
-<intentState>
-Type: WITHDRAW
-Strategy: ${strategyName} (ID: ${returnData.strategyId})
-Amount: Not selected
-Available Balance: ${position.balance} tokens ($${position.balanceUsd.toFixed(2)})
-Step: ${withdrawalStep || "request"}
-User Address: ${userAddress}
-Chain ID: ${chainId}
-</intentState>
-<conversation>
-${conversation}
-</conversation>
-<instructions>
-Generate 4-5 suggestions for withdrawal amounts:
+    const intentContext = generateIntentContextSection({
+      intentType: "WITHDRAW",
+      status: "Amount selection needed",
+      userAddress,
+      chainId,
+      parameters: {
+        Strategy: `${strategyName} (ID: ${returnData.strategyId})`,
+        Amount: "Not selected",
+        "Available Balance": `${position.balance} tokens ($${position.balanceUsd.toFixed(2)})`,
+        Step: withdrawalStep || "request",
+      },
+    });
+
+    const instructions = generateCommonInstructions({
+      suggestionType: "next-step",
+      specificInstructions: `Generate 4-5 suggestions for withdrawal amounts:
 
 STANDARD OPTIONS (always include):
 1. "Withdraw all from [Strategy]" - withdraw 100%
@@ -187,19 +200,16 @@ Each suggestion should:
 - Be natural and conversational
 - Reference the strategy name
 - Use percentage-based language
-- Lead to confirmation next
-</instructions>
-<output>
-Respond using JSON format:
-{
-  "suggestions": [
-    {
-      "label": "Amount selection",
-      "text": "Natural message with amount"
-    }
-  ]
-}
-</output>`;
+- Lead to confirmation next`,
+    });
+
+    return `<task>Generate amount suggestions for withdrawal - user has selected strategy but not amount</task>
+${intentContext}
+<conversation>
+${conversation}
+</conversation>
+${instructions}
+${generateOutputFormat()}`;
   }
 
   // CASE 3: Both strategy and amount selected - only show edit/cancel
@@ -210,21 +220,21 @@ Respond using JSON format:
     const amountDisplay =
       returnData.amount === "all" ? "ALL" : String(returnData.amount);
 
-    return `<task>Generate edit/cancel suggestions for withdrawal - all parameters set</task>
-<intentState>
-Type: WITHDRAW
-Strategy: ${strategyName} (ID: ${returnData.strategyId})
-Amount: ${amountDisplay}
-Step: ${withdrawalStep || "request"}
-Status: All parameters set (confirmation handled in UI)
-User Address: ${userAddress}
-Chain ID: ${chainId}
-</intentState>
-<conversation>
-${conversation}
-</conversation>
-<instructions>
-Generate 3-5 natural, conversational suggestions for editing or cancelling:
+    const intentContext = generateIntentContextSection({
+      intentType: "WITHDRAW",
+      status: "All parameters set (confirmation handled in UI)",
+      userAddress,
+      chainId,
+      parameters: {
+        Strategy: `${strategyName} (ID: ${returnData.strategyId})`,
+        Amount: amountDisplay,
+        Step: withdrawalStep || "request",
+      },
+    });
+
+    const instructions = generateCommonInstructions({
+      suggestionType: "missing-info",
+      specificInstructions: `Generate 3-5 natural, conversational suggestions for editing or cancelling:
 
 IMPORTANT: DO NOT suggest confirmation - that is handled by the UI.
 Only provide suggestions for EDITING parameters or CANCELLING.
@@ -242,37 +252,36 @@ SUGGESTION FORMATS:
 Each suggestion should:
 - Be natural and conversational
 - Focus on parameter modification or cancellation
-- NOT include confirmation suggestions
-</instructions>
-<output>
-Respond using JSON format:
-{
-  "suggestions": [
-    {
-      "label": "Edit or cancel action",
-      "text": "Natural message that edits parameters or cancels"
-    }
-  ]
-}
-</output>`;
+- NOT include confirmation suggestions`,
+    });
+
+    return `<task>Generate edit/cancel suggestions for withdrawal - all parameters set</task>
+${intentContext}
+<conversation>
+${conversation}
+</conversation>
+${instructions}
+${generateOutputFormat()}`;
   }
 
   // CASE 4: Withdrawal in claim step - suggest claiming or status check
   if (withdrawalStep === "claim") {
-    return `<task>Generate finalization suggestions for active withdrawal request</task>
-<intentState>
-Type: WITHDRAW
-Strategy: ${returnData.strategyId ? `ID ${returnData.strategyId}` : "Specified"}
-Step: ${withdrawalStep}
-Status: Pending withdrawal ready to claim
-User Address: ${userAddress}
-Chain ID: ${chainId}
-</intentState>
-<conversation>
-${conversation}
-</conversation>
-<instructions>
-Generate suggestions for claiming finalized withdrawals:
+    const intentContext = generateIntentContextSection({
+      intentType: "WITHDRAW",
+      status: "Pending withdrawal ready to claim",
+      userAddress,
+      chainId,
+      parameters: {
+        Strategy: returnData.strategyId
+          ? `ID ${returnData.strategyId}`
+          : "Specified",
+        Step: withdrawalStep,
+      },
+    });
+
+    const instructions = generateCommonInstructions({
+      suggestionType: "confirmation",
+      specificInstructions: `Generate suggestions for claiming finalized withdrawals:
 
 PRIORITIES:
 1. Claim the withdrawal (if ready)
@@ -282,19 +291,17 @@ PRIORITIES:
 Each suggestion should:
 - Be action-oriented
 - Clearly indicate claiming vs checking status
-- Be conversational
-</instructions>
-<output>
-Respond using JSON format:
-{
-  "suggestions": [
-    {
-      "label": "Claim action",
-      "text": "Natural message about claiming"
-    }
-  ]
-}
-</output>`;
+- Be conversational`,
+      includeCancellation: true,
+    });
+
+    return `<task>Generate finalization suggestions for active withdrawal request</task>
+${intentContext}
+<conversation>
+${conversation}
+</conversation>
+${instructions}
+${generateOutputFormat()}`;
   }
 
   // Fallback: Generic withdrawal suggestions

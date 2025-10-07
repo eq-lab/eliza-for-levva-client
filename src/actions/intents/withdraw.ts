@@ -90,7 +90,7 @@ async function handleRequestRedeem(
   runtime: IAgentRuntime,
   address: `0x${string}`,
   strategy: StrategyEntry,
-  amount: number | "all"
+  amount: string
 ): Promise<Content> {
   const levvaService = runtime.getService<LevvaService>(
     LEVVA_SERVICE.LEVVA_COMMON
@@ -128,7 +128,8 @@ async function handleRequestRedeem(
   if (amount === "all") {
     amountOut = balance?.amount ?? 0n;
   } else {
-    amountOut = parseUnits(amount.toString(), lpToken.decimals);
+    // amount is already a string after type standardization
+    amountOut = parseUnits(amount, lpToken.decimals);
   }
 
   if (amountOut > (balance?.amount ?? 0n)) {

@@ -1,5 +1,5 @@
 import { formatUnits, isHex } from "viem";
-import { Action, Memory } from "@elizaos/core";
+import { Action } from "@elizaos/core";
 import { INTENT_TYPE, LEVVA_ACTIONS, LEVVA_SERVICE } from "../constants/enum";
 import { LEVVA_PROVIDER_NAME, LevvaProviderState } from "../providers";
 import { selectProviderState } from "../providers/util";
@@ -389,184 +389,14 @@ ${news
 };
 
 export const suggest: Suggestion[] = [
-  {
-    name: "portfolio-optimization",
-    description:
-      "Suggest portfolio optimization opportunities based on current holdings and risk analysis",
-    getPrompt: async (runtime, key, message?: Memory) => {
-      const service = runtime.getService<LevvaService>(
-        LEVVA_SERVICE.LEVVA_COMMON
-      );
-      if (!service) return "";
-
-      const { address, chainId } = key;
-
-      try {
-        const [assets, positions, strategies] = await Promise.all([
-          service.getWalletAssets({ chainId, address }),
-          service.getUserPositions(address, chainId),
-          service.strategy.getStrategies(chainId),
-        ]);
-
-        const totalValue = assets.reduce(
-          (sum, asset) => sum + Number(asset.value) / 1e18,
-          0
-        );
-        const activePositions = positions.filter((p) => p.balance > 0);
-        const hasPositions = activePositions.length > 0;
-
-        // ETH detection
-        const ethAsset = assets.find(
-          (asset) =>
-            asset.token === ETH_NULL_ADDR || asset.address === ETH_NULL_ADDR
-        );
-        const hasEth = ethAsset ? ethAsset.amount > 0n : false;
-
-        return `Generate portfolio optimization suggestions based on:
-
-Portfolio Value: $${totalValue.toFixed(2)}
-Active Positions: ${activePositions.length}
-Available Assets: ${assets.length} tokens
-${hasEth ? "Has ETH: Available for wrapping to WETH" : ""}
-${hasPositions ? `Current Strategies: ${activePositions.map((p) => `Strategy ${p.strategyId}`).join(", ")}` : "No active positions"}
-
-Suggest 3-4 optimization actions like:
-- Diversification opportunities
-- Risk rebalancing suggestions  
-- New strategy recommendations
-- ETH/WETH conversion opportunities
-- Position management actions`;
-      } catch (error) {
-        runtime.logger.error(
-          "Error in portfolio-optimization suggestion:",
-          error
-        );
-        return "Suggest general portfolio optimization strategies";
-      }
-    },
-  },
-  {
-    name: "investment-opportunities",
-    description:
-      "Highlight specific investment opportunities based on portfolio analysis",
-    getPrompt: async (runtime, key, message?: Memory) => {
-      const service = runtime.getService<LevvaService>(
-        LEVVA_SERVICE.LEVVA_COMMON
-      );
-      if (!service) return "";
-
-      const { address, chainId } = key;
-
-      try {
-        const [assets, strategies] = await Promise.all([
-          service.getWalletAssets({ chainId, address }),
-          service.strategy.getStrategies(chainId),
-        ]);
-
-        const significantAssets = assets
-          .filter((a) => a.value > 10) // Assets worth more than $10
-          .slice(0, 3);
-
-        const availableStrategies = strategies.slice(0, 5);
-
-        return `Generate investment opportunity suggestions based on:
-
-Significant Holdings: ${significantAssets.map((a) => `Token ${a.token} ($${(Number(a.value) / 1e18).toFixed(2)})`).join(", ")}
-Available Strategies: ${availableStrategies.map((s) => `${(s.name && s.name.trim()) || `Strategy ${s.id}`} (${(s.risk && s.risk.trim()) || "Unknown Risk"})`).join(", ")}
-
-Suggest specific investment actions like:
-- "Deposit 50% of USDC into Ultra-Safe Strategy"
-- "Explore Brave strategies for higher yields"
-- "Wrap ETH and deposit into WETH strategy"
-- "Start with $100 in Safe strategy"`;
-      } catch (error) {
-        runtime.logger.error(
-          "Error in investment-opportunities suggestion:",
-          error
-        );
-        return "Suggest general investment opportunities";
-      }
-    },
-  },
-  {
-    name: "risk-assessment",
-    description:
-      "Provide risk analysis and recommendations for portfolio balance",
-    getPrompt: async () => {
-      return `Generate risk assessment suggestions focusing on:
-
-- Portfolio concentration analysis
-- Diversification recommendations
-- Risk level balance (ultra-safe vs brave strategies)
-- Asset allocation optimization
-- Position sizing guidance
-
-Provide actionable risk management suggestions.`;
-    },
-  },
-  {
-    name: "market-insights",
-    description:
-      "Share relevant market insights and news affecting user's portfolio",
-    getPrompt: async (runtime) => {
-      const service = runtime.getService<LevvaService>(
-        LEVVA_SERVICE.LEVVA_COMMON
-      );
-      if (!service) return "";
-
-      try {
-        const news = await service.getCryptoNews();
-        const recentNews = news.slice(0, 3);
-
-        return `Generate market insight suggestions based on recent news:
-
-${recentNews.map((n) => `- ${n.description}`).join("\n")}
-
-Suggest actions like:
-- "How does this news affect my portfolio?"
-- "Should I adjust my strategy based on market conditions?"
-- "What opportunities does this create?"
-- "How can I protect my portfolio from market volatility?"`;
-      } catch (error) {
-        runtime.logger.error("Error in market-insights suggestion:", error);
-        return "Suggest general market analysis and portfolio protection strategies";
-      }
-    },
-  },
-  {
-    name: "send-tokens",
-    description:
-      "Suggest token transfer and send operations based on available assets",
-    getPrompt: async (runtime, key) => {
-      const service = runtime.getService<LevvaService>(
-        LEVVA_SERVICE.LEVVA_COMMON
-      );
-      if (!service) return "";
-
-      const { address, chainId } = key;
-
-      try {
-        const assets = await service.getWalletAssets({ chainId, address });
-        const significantAssets = assets
-          .filter((a) => a.value > 1) // Assets worth more than $1
-          .slice(0, 5);
-
-        return `Generate token transfer suggestions based on available assets:
-
-Available Tokens: ${significantAssets.map((a) => `Token ${a.token} ($${(Number(a.value) / 1e18).toFixed(2)})`).join(", ")}
-
-Suggest transfer actions like:
-- "Send 10 USDC to [address]"
-- "Transfer 0.1 ETH to a friend"
-- "Send half of my WETH to another wallet"
-- "Pay someone with my tokens"
-- "Move tokens to another address"
-
-Include examples with specific amounts and emphasize the need for recipient addresses.`;
-      } catch (error) {
-        runtime.logger.error("Error in send-tokens suggestion:", error);
-        return "Suggest general token transfer and send operations";
-      }
-    },
-  },
+  // Removed 4 filler suggestions that provided no value:
+  // - portfolio-optimization → Use deposit-opportunities instead
+  // - investment-opportunities → Use deposit-opportunities instead
+  // - market-insights → Generic questions, no actionable insights
+  // - send-tokens → Placeholder addresses, use send-intent instead
+  //
+  // Remaining actionable suggestions are defined in their respective action files:
+  // - deposit-opportunities (in deposit.ts)
+  // - position-diversification (in position.ts)
+  // - position-management (in position.ts)
 ];
