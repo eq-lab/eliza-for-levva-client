@@ -65,11 +65,9 @@ IntentManager.registerIntent({
     "add to position",
     "fund",
     "contribute",
-    "strategy",
-    "earning strategy",
-    "farming strategy",
-    "select strategy",
-    "suggest strategy",
+    // Removed strategy-related keywords - too generic:
+    // "strategy", "earning strategy", "farming strategy", "select strategy", "suggest strategy"
+    // These can trigger on informational queries like "show me strategies"
   ],
   handler: handleDepositIntent,
   generateSuggestions: generateDepositSuggestions,

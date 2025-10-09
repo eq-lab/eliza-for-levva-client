@@ -6,6 +6,7 @@ import {
 } from "../actions/intents/withdraw";
 import { DepositData, formatDepositIntent } from "../actions/intents/deposit";
 import { LEVVA_ACTIONS, LEVVA_SERVICE } from "../constants/enum";
+import { INTENT_CONFIDENCE_THRESHOLD } from "../constants/intent";
 import {
   ExtractedDataForWithdraw,
   extractWithdrawDataFromMessagePrompt,
@@ -101,13 +102,14 @@ export const positionParamsProvider: Provider = {
         LEVVA_ACTIONS.MANAGE_POSITIONS
       );
 
-      // Use helper function to handle intent detection and creation
+      // Use helper function to handle intent detection and creation with global threshold
       intentContext = await intentService.handleIntentDetectionAndCreation(
         message,
         LEVVA_ACTIONS.MANAGE_POSITIONS,
         userId,
         channelId,
-        intentContext
+        intentContext,
+        INTENT_CONFIDENCE_THRESHOLD
       );
 
       if (intentContext) {
