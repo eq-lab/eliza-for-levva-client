@@ -1,10 +1,9 @@
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
-import { randomUUID } from "crypto";
 import {
   setupChatTest,
   teardownChatTest,
   type ChatTestContext,
-  TEST_CONFIG,
+  sendMessageAndWaitForComplete,
 } from "./setup";
 
 describe("Response Quality Integration Tests", () => {
@@ -27,77 +26,41 @@ describe("Response Quality Integration Tests", () => {
     it("should not duplicate position information in MANAGE_POSITIONS responses", async () => {
       if (!context) throw new Error("Test context not initialized");
 
-      const { client, socket, userId, agentId, channelId } = context;
+      // Cleanup before querying agent
+      await context.client.levva.cleanupChannel(
+        context.channelId,
+        context.userId
+      );
+      await context.client.messaging.clearChannelHistory(context.channelId);
 
-      // Clear channel to start fresh
-      await client.messaging.clearChannelHistory(channelId);
-
-      // Send position request using the working pattern
-      socket.sendMessage(
-        "Show me my positions",
-        channelId,
-        randomUUID(),
-        "client_chat",
-        undefined,
-        randomUUID(),
-        {
-          channelType: "DM",
-          isDm: true,
-          targetUserId: agentId,
-          userAddressId: userId,
-          chainId: TEST_CONFIG.chainId,
-        }
+      // Send position request and wait for complete response
+      const responses = await sendMessageAndWaitForComplete(
+        context,
+        "Show me my positions"
       );
 
-      // Collect all responses for this conversation
-      const responses: any[] = [];
-      let positionResponseReceived = false;
+      // Find position response
+      const positionResponse = responses.find((message) =>
+        message.actions?.includes("MANAGE_POSITIONS")
+      );
 
-      // Wait for MANAGE_POSITIONS response
-      const responsePromise = new Promise<void>((resolve) => {
-        const detach = socket.evtMessageBroadcast.attach((data) => {
-          if (data.senderId === agentId) {
-            responses.push(data);
-
-            console.log("=== RECEIVED RESPONSE ===");
-            console.log(`Actions: ${data.actions?.join(", ") || "none"}`);
-            console.log(`Text: ${data.text}`);
-            console.log("=== END RESPONSE ===");
-
-            // Check if this is a MANAGE_POSITIONS action
-            if (data.actions?.includes("MANAGE_POSITIONS")) {
-              positionResponseReceived = true;
-              detach.detach();
-              resolve();
-            }
-          }
-        });
-
-        // Timeout after 15 seconds
-        setTimeout(() => {
-          detach.detach();
-          resolve();
-        }, 15000);
+      console.log("=== RECEIVED RESPONSES ===");
+      responses.forEach((message) => {
+        console.log(`Actions: ${message.actions?.join(", ") || "none"}`);
+        console.log(`Text: ${message.text}`);
       });
+      console.log("=== END RESPONSES ===");
 
-      await responsePromise;
-
-      expect(positionResponseReceived).toBe(true);
+      expect(positionResponse).toBeDefined();
       expect(responses.length).toBeGreaterThan(0);
 
-      // Find the MANAGE_POSITIONS response
-      const positionResponse = responses.find((r) =>
-        r.actions?.includes("MANAGE_POSITIONS")
-      );
-      expect(positionResponse).toBeDefined();
-
-      const responseText = positionResponse.text;
+      const responseText = positionResponse?.text;
 
       // Check for duplication issues
-      const strategyMentions = (responseText.match(/Strategy \d+/g) || [])
+      const strategyMentions = (responseText?.match(/Strategy \d+/g) || [])
         .length;
       const totalValueMentions = (
-        responseText.match(/Total Portfolio Value/gi) || []
+        responseText?.match(/Total Portfolio Value/gi) || []
       ).length;
 
       // Each strategy should be mentioned at most once (no duplication)
@@ -106,9 +69,9 @@ describe("Response Quality Integration Tests", () => {
       expect(totalValueMentions).toBeLessThanOrEqual(1); // Should have single total value
 
       // Check for logical consistency in withdrawal status
-      const hasPendingInDetails = responseText.includes("Pending withdrawals");
+      const hasPendingInDetails = responseText?.includes("Pending withdrawals");
       const summaryDeniesWithdrawals = responseText
-        .toLowerCase()
+        ?.toLowerCase()
         .includes("no pending withdrawals");
 
       // Should not have contradictory withdrawal status
@@ -117,7 +80,7 @@ describe("Response Quality Integration Tests", () => {
       }
 
       // Check formatting quality
-      const excessiveNewlines = responseText.includes("\n\n\n\n\n\n");
+      const excessiveNewlines = responseText?.includes("\n\n\n\n\n\n");
       expect(excessiveNewlines).toBe(false);
 
       console.log("Position response validation results:", {
@@ -125,45 +88,45 @@ describe("Response Quality Integration Tests", () => {
         totalValueMentions,
         hasPendingInDetails,
         summaryDeniesWithdrawals,
-        responseLength: responseText.length,
+        responseLength: responseText?.length,
         hasExcessiveNewlines: excessiveNewlines,
       });
-    }, 30000);
+    }, 60000);
 
     it("should maintain consistency across multiple position queries", async () => {
-      const { socket, userId, channelId } = context;
+      if (!context) throw new Error("Test context not initialized");
 
-      // Clear previous messages
-      await client.messaging.clearChannelHistory(channelId);
+      // Cleanup before querying agent
+      await context.client.levva.cleanupChannel(
+        context.channelId,
+        context.userId
+      );
+      await context.client.messaging.clearChannelHistory(context.channelId);
 
       // First query
-      const response1 = await socket.sendMessage({
-        channelId,
-        userId,
-        text: "What are my current positions?",
-      });
+      const response1 = await sendMessageAndWaitForComplete(
+        context,
+        "What are my current positions?"
+      );
 
       // Second query (should not duplicate information from first)
-      const response2 = await socket.sendMessage({
-        channelId,
-        userId,
-        text: "Show me my portfolio",
-      });
+      const response2 = await sendMessageAndWaitForComplete(
+        context,
+        "Show me my portfolio"
+      );
 
-      expect(response1).toBeDefined();
-      expect(response2).toBeDefined();
+      expect(response1.length).toBeGreaterThan(0);
+      expect(response2.length).toBeGreaterThan(0);
+      const response1Text = response1.map((r) => r.text).join("\n");
+      const response2Text = response2.map((r) => r.text).join("\n");
 
       console.log("=== FIRST RESPONSE ===");
-      console.log(response1.text);
+      console.log(response1Text);
       console.log("=== SECOND RESPONSE ===");
-      console.log(response2.text);
+      console.log(response2Text);
       console.log("=== END RESPONSES ===");
 
-      // Second response should not repeat detailed position data from first
-      // It should either reference the previous response or provide new value
-      const response1Text = response1.text;
-      const response2Text = response2.text;
-
+      // TODO: I think we should check from all messages in response
       // Check that second response doesn't just repeat the same detailed data
       const response1HasDetails =
         response1Text.includes("$") && response1Text.includes("Balance:");
@@ -191,25 +154,28 @@ describe("Response Quality Integration Tests", () => {
           response2Text.toLowerCase().includes("as you can see") ||
           response2Text.toLowerCase().includes("building on"),
       });
-    }, 30000);
+    }, 60000);
   });
 
   describe("Strategy Response Quality", () => {
     it("should not duplicate strategy information in SELECT_STRATEGY responses", async () => {
-      const { socket, userId, channelId } = context;
+      if (!context) throw new Error("Test context not initialized");
 
-      await client.messaging.clearChannelHistory(channelId);
+      // Cleanup before querying agent
+      await context.client.levva.cleanupChannel(
+        context.channelId,
+        context.userId
+      );
+      await context.client.messaging.clearChannelHistory(context.channelId);
 
-      const response = await socket.sendMessage({
-        channelId,
-        userId,
-        text: "What investment strategies do you recommend?",
-      });
+      const responses = await sendMessageAndWaitForComplete(
+        context,
+        "What investment strategies do you recommend?"
+      );
 
-      expect(response).toBeDefined();
-      expect(response.text).toBeDefined();
+      expect(responses.length).toBeGreaterThan(0);
 
-      const responseText = response.text;
+      const responseText = responses.map((r) => r.text).join("\n");
       console.log("=== STRATEGY RESPONSE ===");
       console.log(responseText);
       console.log("=== END RESPONSE ===");
@@ -235,25 +201,28 @@ describe("Response Quality Integration Tests", () => {
         braveMentions,
         responseLength: responseText.length,
       });
-    }, 30000);
+    }, 60000);
   });
 
   describe("Swap Response Quality", () => {
     it("should not duplicate swap information in SWAP_TOKENS responses", async () => {
-      const { socket, userId, channelId } = context;
+      if (!context) throw new Error("Test context not initialized");
 
-      await client.messaging.clearChannelHistory(channelId);
+      // Cleanup before querying agent
+      await context.client.levva.cleanupChannel(
+        context.channelId,
+        context.userId
+      );
+      await context.client.messaging.clearChannelHistory(context.channelId);
 
-      const response = await socket.sendMessage({
-        channelId,
-        userId,
-        text: "I want to swap 100 USDC for ETH",
-      });
+      const responses = await sendMessageAndWaitForComplete(
+        context,
+        "I want to swap 100 USDC for ETH"
+      );
 
-      expect(response).toBeDefined();
-      expect(response.text).toBeDefined();
+      expect(responses.length).toBeGreaterThan(0);
 
-      const responseText = response.text;
+      const responseText = responses.map((r) => r.text).join("\n");
       console.log("=== SWAP RESPONSE ===");
       console.log(responseText);
       console.log("=== END RESPONSE ===");
@@ -278,25 +247,28 @@ describe("Response Quality Integration Tests", () => {
         amountMentions,
         responseLength: responseText.length,
       });
-    }, 30000);
+    }, 60000);
   });
 
   describe("Wallet Response Quality", () => {
     it("should not duplicate wallet information in ANALYZE_WALLET responses", async () => {
-      const { socket, userId, channelId } = context;
+      if (!context) throw new Error("Test context not initialized");
 
-      await client.messaging.clearChannelHistory(channelId);
+      // Cleanup before querying agent
+      await context.client.levva.cleanupChannel(
+        context.channelId,
+        context.userId
+      );
+      await context.client.messaging.clearChannelHistory(context.channelId);
 
-      const response = await socket.sendMessage({
-        channelId,
-        userId,
-        text: "Analyze my wallet and suggest improvements",
-      });
+      const responses = await sendMessageAndWaitForComplete(
+        context,
+        "Analyze my wallet and suggest improvements"
+      );
 
-      expect(response).toBeDefined();
-      expect(response.text).toBeDefined();
+      expect(responses.length).toBeGreaterThan(0);
 
-      const responseText = response.text;
+      const responseText = responses.map((r) => r.text).join("\n");
       console.log("=== WALLET RESPONSE ===");
       console.log(responseText);
       console.log("=== END RESPONSE ===");
@@ -319,6 +291,6 @@ describe("Response Quality Integration Tests", () => {
         addressMentions,
         responseLength: responseText.length,
       });
-    }, 30000);
+    }, 60000);
   });
 });

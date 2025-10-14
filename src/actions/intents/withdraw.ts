@@ -337,13 +337,52 @@ export const handleWithdrawIntent: IntentHandler = async (
     };
   }
 
-  const { strategy, strategyId, amount, withdrawalStep } = withdrawParams;
+  const { strategyId, amount, withdrawalStep } = withdrawParams;
+
+  // Fetch strategy object if strategyId is provided
+  let strategy: StrategyEntry | undefined;
+  if (strategyId) {
+    strategy = params?.strategies?.find((s) => s.id === strategyId);
+  }
 
   if (!strategyId || !strategy) {
-    // Show available positions to help user choose
-    const positionsSummary = params?.positionsSummary || "No active positions found";
-    const totalValue = params?.totalPositionValue 
-      ? `\n**Total Portfolio Value**: $${params.totalPositionValue.toFixed(2)}`
+    // Build position summary with enhanced fallback logic
+    let positionsSummary = params?.positionsSummary;
+
+    // Fallback: build from userPositions if summary is empty or the default error message
+    if (
+      !positionsSummary ||
+      positionsSummary.trim() === "" ||
+      positionsSummary === "No active positions found" ||
+      positionsSummary === "Error loading positions"
+    ) {
+      if (params?.userPositions && params.userPositions.length > 0) {
+        // Build summary from raw position data using standard formatting
+        positionsSummary = params.userPositions
+          .map((pos, idx) => {
+            const strategy = params.strategies?.find(
+              (s) => s.id === pos.strategyId
+            );
+            const strategyName = strategy?.name || `Strategy ${pos.strategyId}`;
+            const assetSymbol =
+              strategy?.vault?.underlyingToken?.symbol || "tokens";
+            const balanceDisplay = `${pos.balance.toFixed(4)} ${assetSymbol}`;
+
+            // Format: "Strategy Name (Risk level strategy): Amount TOKEN Deposited"
+            const riskLevel = strategy?.strategy
+              ? `${strategy.strategy.charAt(0).toUpperCase() + strategy.strategy.slice(1)} strategy`
+              : "Strategy";
+
+            return `${idx + 1}. ${strategyName} (${riskLevel}): ${balanceDisplay} Deposited`;
+          })
+          .join("\n");
+      } else {
+        positionsSummary = "No active positions found";
+      }
+    }
+
+    const totalValue = params?.totalPositionValue
+      ? `\n\n**Total Portfolio Value**: $${params.totalPositionValue.toFixed(2)}`
       : "";
 
     const errorContent = await rephrase({
@@ -354,6 +393,7 @@ export const handleWithdrawIntent: IntentHandler = async (
       },
       // state,
       prevActions,
+      skipRephrase: true, // Preserve exact position data
     });
 
     await callback(errorContent);
@@ -377,11 +417,7 @@ export const handleWithdrawIntent: IntentHandler = async (
     };
   }
 
-  // should not happen because matched in provider
-  if (!strategy) {
-    throw new Error(`Strategy not found(id: ${strategyId})`);
-  }
-
+  // At this point, we have both strategyId and strategy object
   const withdrawal = params?.withdrawalRequests.find(
     (r) => r.strategyId === strategy.id
   );

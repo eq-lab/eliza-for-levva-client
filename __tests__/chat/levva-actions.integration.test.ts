@@ -1,6 +1,11 @@
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
-import { randomUUID } from "crypto";
-import { setupChatTest, teardownChatTest, type ChatTestContext, TEST_CONFIG } from "./setup";
+import {
+  setupChatTest,
+  teardownChatTest,
+  type ChatTestContext,
+  sendMessageAndWaitForComplete,
+  checkTimeout,
+} from "./setup";
 
 describe("Levva Actions Integration Tests", () => {
   let context: ChatTestContext | undefined;
@@ -21,162 +26,89 @@ describe("Levva Actions Integration Tests", () => {
   describe("Core Levva Actions", () => {
     it("should handle wallet analysis request", async () => {
       if (!context) throw new Error("Test context not initialized");
-      
-      const { client, socket, userId, agentId, channelId } = context;
-      
-      await client.messaging.clearChannelHistory(channelId);
 
-      const responsePromise = new Promise((resolve) => {
-        const detach = socket.evtMessageBroadcast.attach((data) => {
-          if (data.senderId === agentId && data.actions?.includes("ANALYZE_WALLET")) {
-            detach.detach();
-            resolve(data);
-          }
-        });
-        setTimeout(() => {
-          detach.detach();
-          resolve(null);
-        }, 10000);
-      });
+      // Cleanup before querying agent
+      await context.client.levva.cleanupChannel(
+        context.channelId,
+        context.userId
+      );
+      await context.client.messaging.clearChannelHistory(context.channelId);
 
-      socket.sendMessage(
-        "Analyze my wallet",
-        channelId,
-        randomUUID(),
-        "client_chat",
-        undefined,
-        randomUUID(),
-        {
-          channelType: "DM",
-          isDm: true,
-          targetUserId: agentId,
-          userAddressId: userId,
-          chainId: TEST_CONFIG.chainId,
-        }
+      const data = await sendMessageAndWaitForComplete(
+        context,
+        "Analyze my wallet"
       );
 
-      const response = await responsePromise;
-      expect(response).toBeDefined();
-    }, 15000);
+      expect(checkTimeout(data)).toBe(false);
+      expect(data.length).toBeGreaterThan(1);
+      // todo test criteria
+    }, 60000);
 
     it("should handle position management request", async () => {
       if (!context) throw new Error("Test context not initialized");
-      
-      const { client, socket, userId, agentId, channelId } = context;
-      
-      await client.messaging.clearChannelHistory(channelId);
 
-      const responsePromise = new Promise((resolve) => {
-        const detach = socket.evtMessageBroadcast.attach((data) => {
-          if (data.senderId === agentId && data.actions?.includes("MANAGE_POSITIONS")) {
-            detach.detach();
-            resolve(data);
-          }
-        });
-        setTimeout(() => {
-          detach.detach();
-          resolve(null);
-        }, 10000);
-      });
+      // Cleanup before querying agent
+      await context.client.levva.cleanupChannel(
+        context.channelId,
+        context.userId
+      );
+      await context.client.messaging.clearChannelHistory(context.channelId);
 
-      socket.sendMessage(
-        "Show me my positions",
-        channelId,
-        randomUUID(),
-        "client_chat",
-        undefined,
-        randomUUID(),
-        {
-          channelType: "DM",
-          isDm: true,
-          targetUserId: agentId,
-          userAddressId: userId,
-          chainId: TEST_CONFIG.chainId,
-        }
+      const data = await sendMessageAndWaitForComplete(
+        context,
+        "Show me my positions"
       );
 
-      const response = await responsePromise;
-      expect(response).toBeDefined();
-    }, 15000);
+      expect(checkTimeout(data)).toBe(false);
+      expect(data.length).toBeGreaterThan(1);
+      // todo test criteria
+    }, 60000);
 
     it("should handle swap request", async () => {
       if (!context) throw new Error("Test context not initialized");
-      
-      const { client, socket, userId, agentId, channelId } = context;
-      
-      await client.messaging.clearChannelHistory(channelId);
 
-      const responsePromise = new Promise((resolve) => {
-        const detach = socket.evtMessageBroadcast.attach((data) => {
-          if (data.senderId === agentId && data.actions?.includes("SWAP_TOKENS")) {
-            detach.detach();
-            resolve(data);
-          }
-        });
-        setTimeout(() => {
-          detach.detach();
-          resolve(null);
-        }, 10000);
-      });
+      // Cleanup before querying agent
+      await context.client.levva.cleanupChannel(
+        context.channelId,
+        context.userId
+      );
+      await context.client.messaging.clearChannelHistory(context.channelId);
 
-      socket.sendMessage(
-        "I want to swap 100 USDC for ETH",
-        channelId,
-        randomUUID(),
-        "client_chat",
-        undefined,
-        randomUUID(),
-        {
-          channelType: "DM",
-          isDm: true,
-          targetUserId: agentId,
-          userAddressId: userId,
-          chainId: TEST_CONFIG.chainId,
-        }
+      const data = await sendMessageAndWaitForComplete(
+        context,
+        "I want to swap 100 USDC for ETH"
       );
 
-      const response = await responsePromise;
-      expect(response).toBeDefined();
-    }, 15000);
+      const messagesStr = data.map((message) => message.text).join("\n");
+      expect(checkTimeout(data)).toBe(false);
+      expect(data.length).toBeGreaterThan(1);
+
+      const hasCallData = data.some((message) =>
+        message.attachments?.some(
+          (attachment) => attachment.id === "calls.json"
+        )
+      );
+      expect(hasCallData, `Messages: ${messagesStr}`).toBe(true);
+    }, 60000);
 
     it("should handle strategy recommendation request", async () => {
       if (!context) throw new Error("Test context not initialized");
-      
-      const { client, socket, userId, agentId, channelId } = context;
-      
-      await client.messaging.clearChannelHistory(channelId);
 
-      const responsePromise = new Promise((resolve) => {
-        const detach = socket.evtMessageBroadcast.attach((data) => {
-          if (data.senderId === agentId && data.actions?.includes("SELECT_STRATEGY")) {
-            detach.detach();
-            resolve(data);
-          }
-        });
-        setTimeout(() => {
-          detach.detach();
-          resolve(null);
-        }, 10000);
-      });
+      // Cleanup before querying agent
+      await context.client.levva.cleanupChannel(
+        context.channelId,
+        context.userId
+      );
+      await context.client.messaging.clearChannelHistory(context.channelId);
 
-      socket.sendMessage(
-        "What investment strategies do you recommend?",
-        channelId,
-        randomUUID(),
-        "client_chat",
-        undefined,
-        randomUUID(),
-        {
-          channelType: "DM",
-          isDm: true,
-          targetUserId: agentId,
-          userAddressId: userId,
-          chainId: TEST_CONFIG.chainId,
-        }
+      const data = await sendMessageAndWaitForComplete(
+        context,
+        "What investment strategies do you recommend?"
       );
 
-      const response = await responsePromise;
-      expect(response).toBeDefined();
-    }, 15000);
+      expect(checkTimeout(data)).toBe(false);
+      expect(data.length).toBeGreaterThan(1);
+      // todo test criteria
+    }, 60000);
   });
 });

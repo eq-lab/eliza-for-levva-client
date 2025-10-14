@@ -37,9 +37,6 @@ describe("Actions", () => {
   const analyzeWalletAction = plugin.actions?.find(
     (action) => action.name === "ANALYZE_WALLET"
   );
-  const withdrawAction = plugin.actions?.find(
-    (action) => action.name === "WITHDRAW"
-  );
 
   it("should pass core action tests", async () => {
     if (plugin.actions && plugin.actions.length > 0) {
@@ -92,7 +89,7 @@ describe("Actions", () => {
 
     it("should have at least one example", () => {
       if (managePositionsAction) {
-        expect(managePositionsAction.examples.length).toBeGreaterThan(0);
+        expect(managePositionsAction.examples?.length).toBeGreaterThan(0);
       }
     });
 
@@ -145,19 +142,6 @@ describe("Actions", () => {
     });
   });
 
-  describe("WITHDRAW Action", () => {
-    it("should exist in the plugin", () => {
-      expect(withdrawAction).toBeDefined();
-    });
-
-    it("should have withdrawal-related similes", () => {
-      if (withdrawAction) {
-        expect(withdrawAction.similes).toContain("REDEEM");
-        expect(withdrawAction.similes).toContain("CASH_OUT");
-      }
-    });
-  });
-
   describe("Action Integration", () => {
     it("should have all expected Levva actions", () => {
       const expectedActions = [
@@ -165,7 +149,6 @@ describe("Actions", () => {
         "SWAP_TOKENS",
         "SELECT_STRATEGY",
         "ANALYZE_WALLET",
-        "WITHDRAW",
       ];
 
       const actualActionNames = plugin.actions?.map((a) => a.name) || [];

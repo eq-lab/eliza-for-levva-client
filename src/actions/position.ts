@@ -190,6 +190,44 @@ Would you like to explore any of these investment opportunities?`;
       thought =
         "User has active positions. Should show current status and suggest management actions.";
 
+      // DEFENSIVE: Build position summary from raw data if positionsSummary is empty or invalid
+      let positionsSummary = positionParams.positionsSummary;
+
+      if (
+        !positionsSummary ||
+        positionsSummary.trim() === "" ||
+        positionsSummary === "No active positions" ||
+        positionsSummary === "Error loading positions"
+      ) {
+        if (
+          positionParams.userPositions &&
+          positionParams.userPositions.length > 0
+        ) {
+          // Rebuild summary from raw position data using standard formatting
+          positionsSummary = positionParams.userPositions
+            .map((pos, idx) => {
+              const strategy = positionParams.strategies?.find(
+                (s) => s.id === pos.strategyId
+              );
+              const strategyName =
+                strategy?.name || `Strategy ${pos.strategyId}`;
+              const assetSymbol =
+                strategy?.vault?.underlyingToken?.symbol || "tokens";
+              const balanceDisplay = `${pos.balance.toFixed(4)} ${assetSymbol}`;
+
+              // Format: "Strategy Name (Risk level strategy): Amount TOKEN Deposited"
+              const riskLevel = strategy?.strategy
+                ? `${strategy.strategy.charAt(0).toUpperCase() + strategy.strategy.slice(1)} strategy`
+                : "Strategy";
+
+              return `${idx + 1}. ${strategyName} (${riskLevel}): ${balanceDisplay} Deposited`;
+            })
+            .join("\n");
+        } else {
+          positionsSummary = "No active positions";
+        }
+      }
+
       const managementSuggestions: string[] = [];
 
       if (positionParams.hasPositions) {
@@ -226,7 +264,7 @@ Would you like to explore any of these investment opportunities?`;
       }
 
       text = `## Your Position Summary
-${positionParams.positionsSummary}
+${positionsSummary}
 
 **Total Portfolio Value**: ${composedState.values.totalValue}
 
@@ -261,6 +299,7 @@ ${availableStrategies
       content,
       state: composedState,
       prevActions,
+      skipRephrase: true, // Preserve exact position data and actions
     });
     await callback(responseContent);
 
@@ -351,8 +390,13 @@ export const action: Action = {
     "manage my portfolio",
     "position management",
     "withdraw",
+    "I want to withdraw",
+    "want to withdraw",
+    "need to withdraw",
     "redeem",
     "cash out",
+    "I want to cash out",
+    "I'd like to cash out",
     "exit position",
     "claim",
     "liquidate",
@@ -377,6 +421,36 @@ export const action: Action = {
         name: "{{name2}}",
         content: {
           text: "Here's your current position summary:\n\n{{positionsSummary}}\n\nTotal Portfolio Value: {{totalValue}}\n\nLet me know if you want to manage these positions or need help with anything else!",
+          actions: ["MANAGE_POSITIONS"],
+        },
+      },
+    ],
+    [
+      {
+        name: "{{name1}}",
+        content: {
+          text: "I want to withdraw",
+        },
+      },
+      {
+        name: "{{name2}}",
+        content: {
+          text: "I can help you withdraw from your positions. Let me show you your current positions:\n\n{{positionsSummary}}\n\nWhich position would you like to withdraw from?",
+          actions: ["MANAGE_POSITIONS"],
+        },
+      },
+    ],
+    [
+      {
+        name: "{{name1}}",
+        content: {
+          text: "I'd like to cash out",
+        },
+      },
+      {
+        name: "{{name2}}",
+        content: {
+          text: "I'll help you cash out. Here are your positions:\n\n{{positionsSummary}}\n\nPlease let me know which one you'd like to withdraw from and how much.",
           actions: ["MANAGE_POSITIONS"],
         },
       },

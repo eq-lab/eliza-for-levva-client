@@ -47,7 +47,7 @@ export const checkSimpleReply = (
   if (shouldSimpleReply) {
     return {
       ...EMPTY_RESULT,
-      text: `# Simple Reply Mode\n${dataDescription} is not needed for the current response. Focus on the user's primary request and provide a natural conversational reply without referencing ${dataDescription.toLowerCase().replace(' data', '')}-specific information.`,
+      text: `# Simple Reply Mode\n${dataDescription} is not needed for the current response. Focus on the user's primary request and provide a natural conversational reply without referencing ${dataDescription.toLowerCase().replace(" data", "")}-specific information.`,
     };
   }
 

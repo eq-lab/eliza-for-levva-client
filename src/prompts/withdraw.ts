@@ -1,6 +1,6 @@
 /**
  * Withdrawal parameter extraction prompt
- * 
+ *
  * @version 1.1.0
  * @lastModified 2025-01-XX
  * @changes v1.1.0: Standardized amount field to string type (was number | "all")

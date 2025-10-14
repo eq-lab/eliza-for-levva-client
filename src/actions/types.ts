@@ -22,8 +22,8 @@ export interface Suggestion {
   name: string;
   description: string;
   getPrompt: (
-    runtime: IAgentRuntime, 
-    key: PromptParams, 
+    runtime: IAgentRuntime,
+    key: PromptParams,
     message?: Memory
   ) => Promise<string>;
   model?: ModelTypeName;

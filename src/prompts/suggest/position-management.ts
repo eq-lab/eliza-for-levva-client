@@ -84,6 +84,20 @@ Each suggestion should:
 - Consider deposit opportunities alongside withdrawal options
 - Include actionable next steps that lead to deposit intents
 - Balance growth opportunities with risk management
+
+**CRITICAL: Generate USER MESSAGES, not agent responses**
+The "text" field should be what the USER would TYPE to the agent, not what the agent would say back.
+
+✅ CORRECT examples:
+- "I want to add 50 USDC to Brave strategy"
+- "Withdraw from ultra-safe position"
+- "Show me strategy performance"
+- "Wrap my ETH to WETH"
+
+❌ WRONG examples (these are agent responses):
+- "Consider increasing your allocation to..."
+- "You could withdraw some funds from..."
+- "To balance your portfolio's risk exposure..."
 </instructions>
 <output>
 Respond using JSON format:
@@ -91,7 +105,7 @@ Respond using JSON format:
   "suggestions": [
     {
       "label": "Short, specific action",
-      "text": "Natural message that would initiate deposit intent or position action"
+      "text": "What the USER would type/say to initiate this action"
     }
   ]
 }

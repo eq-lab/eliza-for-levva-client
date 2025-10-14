@@ -14,6 +14,7 @@ import {
   generateOutputFormat,
   generateCommonInstructions,
 } from "../helpers";
+import { formatUnits } from "viem";
 
 export interface DepositIntentSuggestionParams {
   intentContext: IntentContext;
@@ -209,12 +210,30 @@ ${generateOutputFormat()}`;
       return token && token.symbol.toLowerCase() === tokenSymbol.toLowerCase();
     });
 
-    let amountContext = "";
+    // Calculate actual token amounts based on balance if available
+    const amounts = [1, 0.75, 0.5, 0.25];
+    let calculatedAmounts: string[] = [];
+    let hasBalance = false;
+
     if (walletAsset) {
       const token = getToken(walletAsset.token);
-      amountContext = token
-        ? `\nUser has ${token.symbol} available in wallet.`
-        : "";
+      if (token) {
+        const balance = parseFloat(
+          formatUnits(walletAsset.amount, token.decimals)
+        );
+        if (balance > 0) {
+          hasBalance = true;
+          calculatedAmounts = amounts.map((pct) => (balance * pct).toFixed(6));
+        }
+      }
+    }
+
+    const [fullAmount = "", amount75 = "", amount50 = "", amount25 = ""] =
+      calculatedAmounts;
+
+    let amountContext = "";
+    if (hasBalance) {
+      amountContext = `\nUser has ${fullAmount} ${tokenSymbol} available in wallet.`;
     }
 
     const intentContext = generateIntentContextSection({
@@ -225,31 +244,47 @@ ${generateOutputFormat()}`;
       parameters: {
         Strategy: strategyDisplay,
         Token: tokenSymbol,
+        "Available Balance": hasBalance
+          ? `${fullAmount} ${tokenSymbol}`
+          : "Unknown",
       },
     });
 
     const instructions = generateCommonInstructions({
       suggestionType: "next-step",
-      specificInstructions: `Generate 3-5 natural, conversational suggestions for deposit amount:
+      specificInstructions: `Generate 3-5 natural, conversational suggestions for deposit amount.
 
-SUGGESTION PRIORITIES:
-1. Specific amounts (e.g., "100 ${tokenSymbol}", "0.5 ${tokenSymbol}")
-2. Percentage-based amounts (e.g., "50% of my ${tokenSymbol}", "all my ${tokenSymbol}")
-3. Round numbers that make sense for the token
-4. Ask about recommended amounts
+CRITICAL: The token symbol is "${tokenSymbol}" - use ONLY this exact symbol, nothing else.
+${hasBalance ? `User has ${fullAmount} ${tokenSymbol} available in wallet.` : ""}
 
-SUGGESTION FORMATS:
-- "Deposit 100 ${tokenSymbol}" - specific amount
-- "I want to deposit 0.5 ${tokenSymbol}" - specific amount
-- "Deposit 25% of my ${tokenSymbol}" - percentage-based
-- "Invest all my ${tokenSymbol}" - maximum amount
+LABEL FORMAT (use specific amounts, NOT generic labels):
+${
+  hasBalance
+    ? `- "Full balance" - for depositing all ${tokenSymbol}
+- "75% of balance" - for depositing 75% of ${tokenSymbol}
+- "50% of balance" - for depositing 50% of ${tokenSymbol}
+- "Partial amount" - for a smaller specific amount`
+    : `- Use descriptive labels with actual amounts when possible`
+}
+
+TEXT FORMAT (use "${tokenSymbol}" exactly as shown and ACTUAL amounts):
+${
+  hasBalance
+    ? `- "Deposit ${fullAmount} ${tokenSymbol}" - full balance
+- "I want to deposit ${amount75} ${tokenSymbol}" - 75% of balance
+- "Deposit ${amount50} ${tokenSymbol}" - 50% of balance
+- "Deposit ${amount25} ${tokenSymbol}" - 25% of balance`
+    : `- "Deposit 100 ${tokenSymbol}" - specific amount
+- "I want to deposit 50 ${tokenSymbol}" - specific amount
+- "Invest all my ${tokenSymbol}" - maximum amount`
+}
 - "What amount do you recommend?" - ask for guidance
 
 Each suggestion should:
 - Be natural and conversational
-- Reference the actual token symbol
-- Provide a variety of amount options
-${walletAsset ? "- Consider the user's available balance" : ""}`,
+- Use ONLY the token symbol "${tokenSymbol}" (no extra characters or variations)
+- Provide specific amounts based on balance when available
+- Lead to transaction creation`,
     });
 
     return `<task>Generate amount suggestions for deposit</task>
@@ -420,21 +455,24 @@ ${generateOutputFormat()}`;
     suggestionType: "next-step",
     specificInstructions: `Generate 3-5 natural, conversational suggestions for strategy selection:
 
+CRITICAL: All suggestions MUST include the word "deposit" to clearly indicate intent to deposit.
+
 SUGGESTION PRIORITIES:
 1. Select by risk level ("ultra-safe", "safe", "brave")
 2. Select by strategy name (specific strategies)
 3. Ask about strategy recommendations
 4. Inquire about strategy types (vault vs pool)
 
-SUGGESTION FORMATS:
-- "Show me ultra-safe strategies" - by risk level
-- "I want a brave strategy" - by risk preference
-- "Invest in [Strategy Name]" - by specific strategy
-- "What strategies do you recommend?" - ask for guidance
-- "Tell me about vaults vs pools" - learn more
+SUGGESTION FORMATS (must include "deposit"):
+- "Deposit into ultra-safe strategy" - by risk level
+- "I want to deposit into brave strategy" - by risk preference
+- "Deposit into [Strategy Name]" - by specific strategy
+- "What deposit strategies do you recommend?" - ask for guidance
+- "Tell me about deposit options" - learn more
 
 Each suggestion should:
 - Be natural and conversational
+- **MUST include "deposit" in the text**
 - Reference actual available strategies or risk levels
 - Lead to strategy selection and next steps`,
   });

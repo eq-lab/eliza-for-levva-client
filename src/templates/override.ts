@@ -13,7 +13,7 @@ Current Available Actions:
 - **ANALYZE_WALLET**: Comprehensive wallet/portfolio analysis, asset breakdown, risk assessment, and token transfers
 - **SWAP_TOKENS**: Token swapping with intent-based multi-step flows via Kyber and Pendle
 - **SELECT_STRATEGY**: Investment strategy recommendations based on risk tolerance and portfolio analysis  
-- **MANAGE_POSITIONS**: Position management including deposits, withdrawals, and portfolio monitoring
+- **MANAGE_POSITIONS**: View positions, withdraw from positions, cash out funds, claim completed withdrawals, deposit to strategies, and manage portfolio
 - **REPLY**: Conversational responses and acknowledgments
 - **IGNORE**: Skip response (use sparingly)
 
