@@ -290,8 +290,84 @@ describe("Withdrawal Suggestions Integration", () => {
             expect(hasCustomAmountSuggestion).toBe(false);
           },
         },
+        {
+          // STEP 3: Specify amount for withdrawal
+          message: "Withdraw 2 USDC",
+          validate: (responses, suggestions) => {
+            console.log("\n🎯 STEP 3 VALIDATION:");
+
+            // Check responses
+            expect(responses.length).toBeGreaterThan(0);
+
+            // Should ask for confirmation or show transaction details
+            const allText = responses
+              .map((r) => r.text)
+              .join(" ")
+              .toLowerCase();
+
+            console.log(
+              `  ✅ Response mentions withdrawal: ${allText.includes("withdraw")}`
+            );
+
+            // Should NOT ask for amount again
+            expect(allText).not.toContain("how much");
+          },
+        },
+        {
+          // STEP 4: Cancel the withdrawal
+          message: "cancel",
+          validate: (responses, suggestions) => {
+            console.log("\n🎯 STEP 4 VALIDATION (Cancel):");
+
+            // Check responses
+            expect(responses.length).toBeGreaterThan(0);
+
+            // Should acknowledge cancellation
+            const allText = responses
+              .map((r) => r.text)
+              .join(" ")
+              .toLowerCase();
+
+            console.log(
+              `  ✅ Response acknowledges cancel: ${allText.includes("cancel")}`
+            );
+            expect(allText).toMatch(/cancel/);
+          },
+        },
+        {
+          // STEP 5: Send unrelated message - EXPECTED: intent-unaware behavior
+          // ACTUAL BUG: System creates a new withdrawal intent
+          message: "Show my positions",
+          validate: (responses, suggestions) => {
+            console.log("\n🎯 STEP 5 VALIDATION (Fallback to intent-unaware):");
+
+            // Check responses
+            expect(responses.length).toBeGreaterThan(0);
+
+            const allText = responses
+              .map((r) => r.text)
+              .join(" ")
+              .toLowerCase();
+
+            console.log(
+              `  📊 Response contains portfolio info: ${allText.includes("portfolio") || allText.includes("value")}`
+            );
+
+            // EXPECTED: Should show portfolio value WITHOUT starting a new withdrawal intent
+            // Should NOT ask for withdrawal parameters
+            console.log(
+              `  ❌ BUG CHECK - Response asks about withdrawal: ${allText.includes("which position") || allText.includes("withdraw from")}`
+            );
+
+            expect(allText).not.toContain("which position");
+            expect(allText).not.toContain("withdraw from");
+            expect(allText).not.toContain(
+              "how much would you like to withdraw"
+            );
+          },
+        },
       ]);
-    }, 90000); // 90 second timeout for multi-step flow
+    }, 150000); // 120 second timeout for multi-step flow with cancel
   });
 
   describe("Suggestion System Debugging", () => {

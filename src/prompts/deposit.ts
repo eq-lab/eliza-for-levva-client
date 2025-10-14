@@ -67,7 +67,7 @@ const dataDescription: DataDescription<ExtractedDataForDeposit> = {
   thought: {
     type: "string",
     description:
-      "Analysis of the user's deposit request and parameter extraction",
+      "Analysis of the user's deposit request and parameter extraction. IMPORTANT: If user mentions a DIFFERENT value for an existing parameter in <returnData>, explicitly state in thought that you are OVERRIDING the previous value (e.g., 'User changed strategy from ultra-safe to custom, overriding strategyId' or 'User changed token from USDC to WETH, overriding tokenSymbol')",
   },
 };
 
@@ -139,6 +139,11 @@ ${currentMessage}
 <instructions>
 Analyze the user message and extract deposit-related parameters using the provided context.
 
+⚠️ **CRITICAL PARAMETER OVERRIDE RULE**: When the user explicitly mentions a NEW value for any parameter (strategy, token, amount, leverage), you MUST extract and return that parameter to OVERRIDE the old value in <returnData>. For example:
+- User says "I want to deposit WETH instead" → Extract tokenSymbol="WETH" (overrides previous USDC)
+- User says "use custom strategy" → Extract strategyRisk="custom" (overrides previous strategy)
+- User mentions contract "0xCF9bdc..." → Look it up in <availableStrategies>, extract corresponding strategyId/name/risk (overrides previous strategy)
+
 CRITICAL DEPOSIT LOGIC:
 - **Strategy Detection**: Extract strategy by name, risk level ("ultra-safe", "safe", "brave"), or ID
 - **Token Detection**: 
@@ -156,8 +161,12 @@ CONTEXT-AWARE EXTRACTION:
 - **Conversation History**: Use previous messages to fill missing parameters
 - **Inherited Data**: Leverage data from previous intent interactions
 - **Return Data**: Build on previously extracted parameters
+- **CRITICAL - Parameter Overriding**: If the user EXPLICITLY mentions a NEW value for a parameter that was previously set in <returnData>, you MUST return the NEW value to OVERRIDE the old one. For example:
+  - If returnData has strategyId=1 (ultra-safe) and user says "I want to use custom strategy", extract strategyRisk="custom" to override
+  - If returnData has tokenSymbol="USDC" and user says "I want to deposit WETH instead", extract tokenSymbol="WETH" to override
+  - If user says "use contract 0xCF9bdc..." when returnData already has a different strategy, extract the new strategyId or use strategyName matching that contract
 - **Smart Inference**: If user says "deposit into ultra-safe" and conversation shows USDC discussion, infer USDC
-- **Avoid Redundancy**: Don't ask for info that's already available in context
+- **Avoid Redundancy**: Don't ask for info that's already available in context AND not being changed
 
 RETURN FORMAT CONSTRAINTS:
 - amount MUST be a numeric string matching regex ^[0-9]+(\.[0-9]+)?$ when present.
@@ -167,8 +176,11 @@ RETURN FORMAT CONSTRAINTS:
 
 EXTRACTION PRIORITY:
 1. **Current Message**: Direct parameter extraction from user's latest message
+   - If user mentions a CONTRACT ADDRESS (e.g., "0xCF9bdc..."), look it up in <availableStrategies> and extract the corresponding strategyId, strategyName, and strategyRisk
+   - If user mentions a strategy NAME or RISK (e.g., "custom strategy", "ultra-safe"), extract the corresponding identifiers
+   - If user explicitly changes a parameter that was already in <returnData>, extract the NEW value to override
 2. **Conversation Context**: Fill gaps using conversation history
-3. **Inherited/Return Data**: Use previously extracted or inherited parameters
+3. **Inherited/Return Data**: Use previously extracted or inherited parameters ONLY if user has not specified a different value
 4. **Smart Defaults**: Infer reasonable defaults from available context
 5. **Portfolio Matching**: Match mentioned tokens with user's actual holdings
 
@@ -182,7 +194,9 @@ STRATEGY MATCHING:
 - Match strategy names case-insensitively
 - Match risk profiles: "ultra-safe", "safe", "brave", "custom"
 - Use strategy ID if explicitly mentioned
+- **Contract Address Matching**: If user mentions a contract address (e.g., "0xCF9bdc..."), look it up in <availableStrategies> to find matching strategy ID and name
 - Consider strategy descriptions for fuzzy matching
+- **When user changes strategy**: If <returnData> has an existing strategy but user mentions a DIFFERENT strategy (by name, risk, ID, or contract), extract the NEW strategy identifiers to override
 
 TOKEN MATCHING:
 - **For VAULT strategies**: Only extract token if user explicitly mentions it (for validation against vault's underlyingToken)

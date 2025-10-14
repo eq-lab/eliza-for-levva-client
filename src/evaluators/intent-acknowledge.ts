@@ -77,7 +77,7 @@ async function handleCancellation(
   message: Memory,
   activeIntentContext: IntentContext
 ) {
-  logger.info("Processing cancellation request for specific intent", {
+  runtime.logger.info("Processing cancellation request for specific intent", {
     messageId: message.id,
     intentId: activeIntentContext.id,
     intentType: activeIntentContext.type,
@@ -98,19 +98,19 @@ async function handleCancellation(
     if (activeIntentContext.status === "ACTIVE") {
       await intentManager.cancelIntent(activeIntentContext);
 
-      logger.info("Successfully cancelled active intent", {
+      runtime.logger.info("Successfully cancelled active intent", {
         intentId: activeIntentContext.id,
         intentType: activeIntentContext.type,
         domain: activeIntentContext.domain,
       });
     } else {
-      logger.warn("Intent is not in ACTIVE status", {
+      runtime.logger.warn("Intent is not in ACTIVE status", {
         intentId: activeIntentContext.id,
         status: activeIntentContext.status,
       });
     }
   } catch (error) {
-    logger.error("Error handling cancellation:", error);
+    runtime.logger.error("Error handling cancellation:", error);
   }
 }
 
@@ -119,12 +119,15 @@ async function handleTransactionConfirmation(
   message: Memory,
   activeIntentContext: IntentContext
 ) {
-  logger.info("Processing transaction confirmation for specific intent", {
-    messageId: message.id,
-    intentId: activeIntentContext.id,
-    intentType: activeIntentContext.type,
-    domain: activeIntentContext.domain,
-  });
+  runtime.logger.info(
+    "Processing transaction confirmation for specific intent",
+    {
+      messageId: message.id,
+      intentId: activeIntentContext.id,
+      intentType: activeIntentContext.type,
+      domain: activeIntentContext.domain,
+    }
+  );
 
   try {
     const receipt = getTransactionReceipt(message.content.text || "")?.receipt;
@@ -198,7 +201,7 @@ async function handleTransactionConfirmation(
         break;
       }
       default:
-        logger.warn("Unknown intent type for completion handling", {
+        runtime.logger.warn("Unknown intent type for completion handling", {
           intentType: activeIntentContext.type,
           intentId: activeIntentContext.id,
         });
@@ -212,7 +215,7 @@ async function handleTransactionConfirmation(
         break;
     }
   } catch (error) {
-    logger.error("Error handling transaction confirmation:", error);
+    runtime.logger.error("Error handling transaction confirmation:", error);
   }
 }
 
@@ -241,21 +244,21 @@ async function handleIntentCompletion(
     ) {
       await intentManager.completeIntent(activeIntentContext);
 
-      logger.info("Completed specific intent after transaction", {
+      runtime.logger.info("Completed specific intent after transaction", {
         intentId: activeIntentContext.id,
         intentType: activeIntentContext.type,
         domain: activeIntentContext.domain,
         transactionHash: receipt.transactionHash,
       });
     } else {
-      logger.debug("Intent is not transaction-related or not active", {
+      runtime.logger.debug("Intent is not transaction-related or not active", {
         domain: activeIntentContext.domain,
         status: activeIntentContext.status,
         transactionRelatedDomains,
       });
     }
   } catch (error) {
-    logger.error("Error handling intent completion:", error);
+    runtime.logger.error("Error handling intent completion:", error);
   }
 }
 
@@ -289,7 +292,7 @@ export const intentAcknowledgeEvaluator: Evaluator = {
     const isCancel = isCancelRequest(content);
     const hasTxConfirmation = content.includes("Tx confirmation:");
 
-    logger.info("Processing intent acknowledgment", {
+    runtime.logger.info("Processing intent acknowledgment", {
       messageId: message.id,
       isCancel,
       hasTxConfirmation,
@@ -322,7 +325,7 @@ export const intentAcknowledgeEvaluator: Evaluator = {
         return;
       }
 
-      logger.info("Found active intent context", {
+      runtime.logger.info("Found active intent context", {
         intentId: activeIntentContext.id,
         intentType: activeIntentContext.type,
         domain: activeIntentContext.domain,
@@ -346,7 +349,7 @@ export const intentAcknowledgeEvaluator: Evaluator = {
         "No valid intent acknowledgment found; check why validation failed"
       );
     } catch (error) {
-      logger.error("Error processing intent acknowledgment:", error);
+      runtime.logger.error("Error processing intent acknowledgment:", error);
     }
   },
 };
