@@ -109,7 +109,7 @@ export function generateOutputFormat(additionalFields?: string): string {
   "suggestions": [
     {
       "label": "Short descriptive label",
-      "text": "Natural user message for this action"
+      "text": "What the USER would type/say to the agent"
     }
   ]${additionalFields ? `,\n${additionalFields}` : ""}
 }`;
@@ -117,6 +117,15 @@ export function generateOutputFormat(additionalFields?: string): string {
   return `<output>
 Respond using JSON format like this:
 ${baseFormat}
+
+**CRITICAL: The "text" field MUST be what the USER would say/type, NOT what the agent would respond.**
+
+Examples:
+✅ CORRECT: "Withdraw 100 USDC from Brave strategy"
+❌ WRONG: "Consider withdrawing from your Brave strategy to rebalance..."
+
+✅ CORRECT: "I want to deposit into the safe yield strategy"
+❌ WRONG: "You could deposit into the safe yield strategy for stable returns"
 
 Your response should include the valid JSON block and nothing else.
 </output>`;

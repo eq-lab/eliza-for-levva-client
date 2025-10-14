@@ -179,6 +179,13 @@ export class IntentManager extends Service {
   }
 
   /**
+   * Get all registered intents across all domains
+   */
+  static getRegisteredIntents(): Map<string, IntentRegistration> {
+    return this.intentRegistry;
+  }
+
+  /**
    * Validate if detected intent belongs to the expected domain
    */
   static validateIntentForDomain(
@@ -362,7 +369,79 @@ export class IntentManager extends Service {
   ) {
     const cacheKey = `intent_${domain}_${userId}_${channelId}`;
     const intent = await this.runtime.getCache<IntentContext>(cacheKey);
+    
+    // DEBUG LOGGING
+    this.runtime.logger.debug(
+      `[getActiveIntentByDomain] Domain: ${domain}, CacheKey: ${cacheKey}, Found: ${!!intent}, Status: ${intent?.status}, ID: ${intent?.id}`
+    );
+    
     return intent?.status === "ACTIVE" ? intent : undefined;
+  }
+
+  /**
+   * Get all active intents for a channel across all possible userIds
+   * This is used for cleanup to find orphaned intents
+   */
+  async getAllActiveIntentsInChannel(channelId: string): Promise<IntentContext[]> {
+    const activeIntents: IntentContext[] = [];
+    
+    // Get all registered domains
+    const allDomains = Array.from(IntentManager.getRegisteredIntents().values())
+      .map((registration) => registration.domain)
+      .filter((domain, index, self) => self.indexOf(domain) === index);
+    
+    // For each domain, we need to check common userId patterns
+    // This is a workaround since we can't do wildcard cache lookups
+    // We'll check for the "unknown" userId specifically (common orphan case)
+    const userIdsToCheck = ["unknown", "user"];
+    
+    for (const domain of allDomains) {
+      for (const userId of userIdsToCheck) {
+        const cacheKey = `intent_${domain}_${userId}_${channelId}`;
+        try {
+          const intent = await this.runtime.getCache<IntentContext>(cacheKey);
+          if (intent?.status === "ACTIVE" && intent.channelId === channelId) {
+            activeIntents.push(intent);
+            this.runtime.logger.debug(
+              `[getAllActiveIntentsInChannel] Found orphaned intent: ${intent.id} (userId: ${intent.userId})`
+            );
+          }
+        } catch (error) {
+          // Cache key doesn't exist, continue
+        }
+      }
+    }
+    
+    return activeIntents;
+  }
+
+  async getActiveIntentsByChannel(channelId: string): Promise<IntentContext[]> {
+    const intents: IntentContext[] = [];
+
+    // Get all registered intent types
+    const allIntentTypes = Array.from(IntentManager.intentRegistry.values());
+
+    // Check cache for each intent type and domain combination
+    for (const registration of allIntentTypes) {
+      // Since we don't have userId here, we need to scan cache keys
+      // This is a simplified approach - in production you might want to maintain a channel index
+      const cacheKey = `intent_${registration.domain}_*_${channelId}`;
+      // Note: This requires a pattern-based cache lookup which might not be available
+      // For now, we'll rely on the fact that intents are stored with predictable keys
+
+      // Try to get from cache - this is a workaround since we don't have pattern matching
+      // In a real implementation, you'd want to maintain a separate index of channelId -> intentIds
+      try {
+        const intent = await this.runtime.getCache<IntentContext>(cacheKey);
+        if (intent?.status === "ACTIVE" && intent.channelId === channelId) {
+          intents.push(intent);
+        }
+      } catch (error) {
+        // Cache key might not exist, continue
+      }
+    }
+
+    return intents;
   }
 
   async getActiveIntentByReply(
@@ -532,8 +611,17 @@ export class IntentManager extends Service {
   }
 
   async cancelIntent(intent: IntentContext) {
+    this.runtime.logger.debug(
+      `[cancelIntent] Cancelling intent ${intent.id} (${intent.type}) in domain ${intent.domain}`
+    );
+    
+    // Mark as CANCELLED (not delete) for audit trail
     intent.status = "CANCELLED";
     await this.storeIntent(intent);
+    
+    this.runtime.logger.debug(
+      `[cancelIntent] Marked intent ${intent.id} as CANCELLED`
+    );
 
     // Cancel any child intents
     if (intent.childIntentIds && intent.childIntentIds.length > 0) {
@@ -620,6 +708,14 @@ export class IntentManager extends Service {
       });
 
       const analysis = response as LLMIntentAnalysis;
+
+      // LOG THE ACTUAL LLM RESPONSE
+      this.runtime.logger.info(
+        `[INTENT-DETECTION] Domain: ${domain}, Message: "${message.content.text}"`
+      );
+      this.runtime.logger.info(
+        `[INTENT-DETECTION] LLM Response: selectedIntent=${analysis.selectedIntent}, confidence=${analysis.confidence}, reasoning="${analysis.reasoning}"`
+      );
 
       const result = {
         intentType: analysis.selectedIntent,

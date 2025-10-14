@@ -16,6 +16,7 @@ import chanRoute from "./routes/chan";
 import levvaUserRoute from "./routes/levva-user";
 import suggestRoute from "./routes/suggest";
 import clearSuggestRoute from "./routes/clear-suggest";
+import cleanupRoute from "./routes/cleanup";
 import { BrowserService } from "./services/browser";
 import { LevvaService } from "./services/levva/class";
 import { IntentManager } from "./services/intent-manager";
@@ -72,6 +73,7 @@ const plugin: Plugin = {
   routes: [
     calldataRoute,
     chanRoute,
+    cleanupRoute,
     clearSuggestRoute,
     levvaUserRoute,
     suggestRoute,

@@ -115,16 +115,56 @@ PRIORITIZATION:
 3. Show a medium-sized position (if 3+ positions available)
 4. Show smallest position OR suggest custom position selection
 
-FORMATTING:
-- Use natural language: "Withdraw from [Strategy Name]"
-- Include context when helpful: "Withdraw from [Strategy] ($XXX available)"
-- For pending withdrawals: "Check my pending withdrawals" or "Claim ready withdrawals"
+LABEL FORMAT:
+- Use strategy name with risk level (capitalize first letter)
+- Format: "[Risk Level]([Strategy Name]) Strategy"
+- Risk levels: brave, safe, ultra-safe, custom, optimal
+- Examples:
+  • "Brave(Maximised long-term growth) Strategy"
+  • "Custom(Origin WETH Vault) Strategy"
+  • "Safe(Safe yield) Strategy"
+  • "Ultra-safe(Conservative returns) Strategy"
+
+TEXT FORMAT (what USER would type):
+- Simple, natural user message without dollar amounts
+- Format: "Withdraw from [Strategy Name]" or "I want to withdraw from [Strategy Name]"
+- Examples:
+  ✅ "Withdraw from Origin WETH Vault"
+  ✅ "I want to withdraw from Safe yield"
+  ❌ "Withdraw from Safe yield ($6.86 available)" (Don't include amounts!)
+  ❌ "Consider withdrawing from..." (Don't use agent language!)
+
+For pending withdrawals:
+- Label: "Check Withdrawal Status"
+- Text: "Check my pending withdrawals" or "What's the status of my withdrawals?"
 
 Each suggestion should:
-- Be conversational and clear
-- Reference actual strategy names when possible
-- Indicate if position has pending withdrawal`,
+- Have a clear, strategy-specific label
+- Use natural user language in text (no dollar amounts!)
+- Indicate pending status in label if applicable: "[Strategy Name] (Pending withdrawal)"`,
     });
+
+    // Create example output for clarity
+    const exampleOutput = `{
+  "suggestions": [
+    {
+      "label": "Custom(Origin WETH Vault) Strategy",
+      "text": "Withdraw from Origin WETH Vault"
+    },
+    {
+      "label": "Safe(Safe yield) Strategy",
+      "text": "I want to withdraw from Safe yield"
+    },
+    {
+      "label": "Brave(Maximised long-term growth) Strategy",
+      "text": "Withdraw from Maximised long-term growth"
+    },
+    {
+      "label": "Cancel",
+      "text": "Never mind"
+    }
+  ]
+}`;
 
     return `<task>Generate position selection suggestions for withdrawal - user hasn't specified which strategy</task>
 ${intentContext}
@@ -133,8 +173,9 @@ ${positions
   .map((pos) => {
     const strategy = strategies.find((s) => s.id === pos.strategyId);
     const strategyName = strategy?.name || `Strategy ${pos.strategyId}`;
+    const riskLevel = strategy?.risk || "Unknown";
     const hasPending = positionsWithPendingMap.has(pos.strategyId);
-    return `${strategyName} (ID: ${pos.strategyId}): ${pos.balance} tokens ($${pos.balanceUsd.toFixed(2)}) ${hasPending ? "[Has pending withdrawal]" : "[Available]"}`;
+    return `${strategyName} | Risk: ${riskLevel} | Balance: ${pos.balance} tokens ($${pos.balanceUsd.toFixed(2)}) ${hasPending ? "[Has pending withdrawal]" : "[Available for withdrawal]"}`;
   })
   .join("\n")}
 </availablePositions>
@@ -145,7 +186,16 @@ ${hasPendingWithdrawals ? `User has ${pendingWithdrawals.length} pending withdra
 ${conversation}
 </conversation>
 ${instructions}
-${generateOutputFormat()}`;
+<output>
+Generate suggestions in JSON format based on ACTUAL positions above.
+
+EXAMPLE FORMAT (use actual data, not these examples):
+${exampleOutput}
+
+CRITICAL REMINDERS:
+- Label: Use actual strategy names and risk levels from availablePositions
+- Text: What the USER would type (no dollar amounts!)
+</output>`;
   }
 
   // CASE 2: Strategy selected, need amount
@@ -183,24 +233,46 @@ ${generateOutputFormat()}`;
       },
     });
 
+    // Calculate actual token amounts based on balance
+    const amounts = [1, 0.75, 0.5, 0.25];
+    const fullAmount = position.balance;
+    const calculatedAmounts = amounts.map(
+      (pct) => Math.floor(fullAmount * pct * 100) / 100
+    );
+    const [, amount75, amount50, amount25] = calculatedAmounts;
+
     const instructions = generateCommonInstructions({
       suggestionType: "next-step",
-      specificInstructions: `Generate 4-5 suggestions for withdrawal amounts:
+      specificInstructions: `Generate 4 suggestions for withdrawal amounts using ACTUAL token amounts:
 
-STANDARD OPTIONS (always include):
-1. "Withdraw all from [Strategy]" - withdraw 100%
-2. "Withdraw 75% from [Strategy]" - withdraw 75%
-3. "Withdraw 50% from [Strategy]" - withdraw 50%
-4. "Withdraw 25% from [Strategy]" - withdraw 25%
+IMPORTANT: Use real token amounts, NOT percentages in the text field.
 
-OPTIONAL:
-5. "Let me specify a custom amount" - for precise control
+Available balance: ${fullAmount} tokens ($${position.balanceUsd.toFixed(2)})
+
+LABEL FORMAT:
+- "Withdraw all from [Strategy Name]"
+- "Withdraw 75% from [Strategy Name]"
+- "Withdraw 50% from [Strategy Name]"
+- "Withdraw 25% from [Strategy Name]"
+
+TEXT FORMAT (what USER would type):
+- Use actual calculated amounts based on balance
+- Format: "Withdraw [amount] tokens from [Strategy Name]"
+- Examples:
+  • "Withdraw ${fullAmount} tokens from ${strategyName}"
+  • "Withdraw ${amount75} tokens from ${strategyName}"
+  • "Withdraw ${amount50} tokens from ${strategyName}"
+  • "Withdraw ${amount25} tokens from ${strategyName}"
+
+DO NOT include:
+- "Specify a custom amount" suggestion (users can type custom amounts directly)
+- Percentage signs in text field
+- Dollar amounts in text field
 
 Each suggestion should:
-- Be natural and conversational
-- Reference the strategy name
-- Use percentage-based language
-- Lead to confirmation next`,
+- Have a clear label with percentage indication
+- Use actual token amounts in text field
+- Be natural and conversational`,
     });
 
     return `<task>Generate amount suggestions for withdrawal - user has selected strategy but not amount</task>

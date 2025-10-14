@@ -1,6 +1,8 @@
-import { randomUUID } from "crypto";
+import { randomUUID, UUID } from "crypto";
 import { AgentClient } from "../utils/client/client";
-import { SocketIOManager, MessageBroadcastData } from "../utils/client/socket";
+import { SocketIOManager } from "../utils/socket/manager";
+import type { MessageBroadcastData } from "../utils/socket/types";
+import type { ClientEntity } from "../utils/socket/entity";
 
 // Test configuration - using actual values from example.ts
 export const SECRET =
@@ -11,29 +13,48 @@ export const TEST_CONFIG = {
   baseUrl: process.env.ELIZA_BASE_URL || "http://localhost:3001",
   secret: SECRET,
   address: ADDRESS as `0x${string}`,
-  chainId: 8453,
+  chainId: 1, // Ethereum mainnet - where test positions exist
   timeout: 30000, // 30 seconds timeout for responses
-};
+} as const;
 
 export interface ChatTestContext {
   client: AgentClient;
-  socket: SocketIOManager;
-  userId: string;
-  agentId: string;
-  channelId: string;
+  socket: ClientEntity;
+  userId: UUID;
+  agentId: UUID;
+  channelId: UUID;
+}
+
+/**
+ * Check if the ElizaOS server is running
+ */
+export async function isServerRunning(): Promise<boolean> {
+  try {
+    const response = await fetch(
+      `${TEST_CONFIG.baseUrl}/api/levva/status?address=${TEST_CONFIG.address}`
+    );
+    return response?.ok ?? false;
+  } catch {
+    return false;
+  }
 }
 
 export async function setupChatTest(): Promise<ChatTestContext> {
+  if (!isServerRunning()) {
+    throw new Error("Server is not running");
+  }
+
   // Configure socket manager
-  SocketIOManager.config = {
+  SocketIOManager.configure({
     baseUrl: TEST_CONFIG.baseUrl,
-  };
+  });
 
   // Create client and socket instances
   const client = AgentClient.getOrCreateInstance({
     baseUrl: TEST_CONFIG.baseUrl,
   });
-  const socket = SocketIOManager.getInstance();
+
+  const manager = SocketIOManager.getInstance();
 
   // Get or create user - this returns the Levva user ID (database ID for the address)
   const levvaUser = await client.levva.getUserId({
@@ -61,8 +82,7 @@ export async function setupChatTest(): Promise<ChatTestContext> {
   });
   const channelId = channel.id;
 
-  // Initialize socket connection
-  socket.initialize(userId);
+  const socket = manager.initClient(userId);
   await socket.joinChannel(channelId);
 
   return { client, socket, userId, agentId, channelId };
@@ -74,55 +94,61 @@ export function teardownChatTest(context: ChatTestContext | undefined) {
   }
 }
 
+const NULL_UUID = "00000000-0000-0000-0000-000000000000";
+
+const TIMEOUT_MESSAGE: MessageBroadcastData = {
+  id: NULL_UUID,
+  senderId: NULL_UUID,
+  channelId: NULL_UUID,
+  content: { text: "Timeout waiting for agent response" },
+  createdAt: Date.now(),
+  senderName: "agent",
+  text: "Timeout waiting for agent response",
+  source: "client_chat",
+  name: "agent",
+};
+
+export const checkTimeout = (data: MessageBroadcastData[]): boolean => {
+  const [last] = data.slice(-1);
+
+  if (last?.text.includes("Timeout waiting for agent response")) {
+    return true;
+  }
+
+  return false;
+};
+
 // Helper to send message and wait for agent's complete response
 export async function sendMessageAndWaitForComplete(
   context: ChatTestContext,
   text: string
 ): Promise<MessageBroadcastData[]> {
   const { socket, agentId, channelId, userId } = context;
+  const data: MessageBroadcastData[] = [];
 
-  return new Promise((resolve, reject) => {
-    const agentMessages: MessageBroadcastData[] = [];
+  const messageId = await socket.sendMessage(
+    text,
+    channelId,
+    randomUUID(),
+    "client_chat",
+    undefined,
+    {
+      userAddressId: userId,
+      chainId: TEST_CONFIG.chainId,
+      isDm: true,
+      targetUserId: agentId,
+    }
+  );
 
-    const timeout = setTimeout(() => {
-      messageDetach.detach();
-      completeDetach.detach();
-      reject(new Error(`Timeout waiting for agent response to: "${text}"`));
-    }, TEST_CONFIG.timeout);
+  for await (const message of socket.getRepliesIterator(messageId)) {
+    data.push(message);
+  }
 
-    // Listen for all agent messages
-    const messageDetach = socket.evtMessageBroadcast.attach((data) => {
-      if (data.senderId === agentId && data.channelId === channelId) {
-        agentMessages.push(data);
-      }
-    });
+  if (socket.isTimedOut) {
+    data.push(TIMEOUT_MESSAGE);
+  }
 
-    // Wait for messageComplete event
-    const completeDetach = socket.evtMessageComplete.attach((data) => {
-      if (data.channelId === channelId && agentMessages.length > 0) {
-        clearTimeout(timeout);
-        messageDetach.detach();
-        completeDetach.detach();
-        resolve(agentMessages);
-      }
-    });
-
-    // Send the message
-    socket.sendMessage(
-      text,
-      channelId,
-      randomUUID(),
-      "client_chat",
-      undefined,
-      randomUUID(),
-      {
-        userAddressId: userId,
-        chainId: TEST_CONFIG.chainId,
-        isDm: true,
-        targetUserId: agentId,
-      }
-    );
-  });
+  return data;
 }
 
 // Helper function to calculate text similarity
@@ -137,4 +163,63 @@ export function calculateTextSimilarity(text1: string, text2: string): number {
   const union = new Set([...set1, ...set2]);
 
   return intersection.size / union.size;
+}
+
+/**
+ * Helper function to run multi-step conversation flow tests
+ *
+ * @param context - Test context with client and channel info
+ * @param steps - Array of test steps to execute sequentially
+ * @returns Promise that resolves when all steps are complete
+ */
+export async function runMultiStepFlow(
+  context: ChatTestContext,
+  steps: Array<{
+    message: string;
+    validate: (responses: any[], suggestions: any[]) => void | Promise<void>;
+  }>
+): Promise<void> {
+  for (let i = 0; i < steps.length; i++) {
+    const step = steps[i];
+    console.log(
+      `\n📤 STEP ${i + 1}/${steps.length}: Sending: "${step.message}"`
+    );
+
+    // Send message and wait for responses
+    const responses = await sendMessageAndWaitForComplete(
+      context,
+      step.message
+    );
+    console.log(`📊 Received ${responses.length} responses`);
+
+    // Log responses
+    responses.forEach((response, j) => {
+      console.log(
+        `\n  ${j + 1}. Action: ${response.actions?.join(", ") || "NONE"}`
+      );
+      console.log(
+        `     Text: ${response.text?.substring(0, 150)}${response.text?.length > 150 ? "..." : ""}`
+      );
+    });
+
+    // Wait for suggestions to be generated
+    console.log("\n⏳ Waiting for suggestions to be generated...");
+    await new Promise((resolve) => setTimeout(resolve, 5000));
+
+    // Get suggestions
+    const suggestionsResponse = await context.client.levva.getSuggestions(
+      ADDRESS,
+      context.channelId,
+      TEST_CONFIG.chainId
+    );
+
+    const suggestions = suggestionsResponse.suggestions || [];
+    console.log(`\n💡 Suggestions (${suggestions.length}):`);
+    suggestions.forEach((suggestion, j) => {
+      console.log(`  ${j + 1}. "${suggestion.label}" - ${suggestion.text}`);
+    });
+
+    // Run validation for this step
+    await step.validate(responses, suggestions);
+  }
 }

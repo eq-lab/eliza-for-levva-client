@@ -6,7 +6,18 @@ export default defineConfig({
     environment: "node",
     globals: true,
     testTimeout: 60000,
-    exclude: ["**/e2e/**", "**/node_modules/**"],
+    exclude: [
+      "**/e2e/**",
+      "**/node_modules/**",
+      //"**/*.integration.test.ts", // Exclude integration tests by default
+    ],
+    // Run integration tests sequentially to avoid channel conflicts
+    pool: "forks",
+    poolOptions: {
+      forks: {
+        singleFork: true,
+      },
+    },
   },
   resolve: {
     alias: {

@@ -16,6 +16,7 @@ interface RephraseParams {
   state?: State;
   model?: ModelTypeName;
   prevActions?: string;
+  skipRephrase?: boolean;
 }
 
 export const rephrase = async ({
@@ -24,6 +25,7 @@ export const rephrase = async ({
   state,
   model,
   prevActions,
+  skipRephrase = false,
 }: RephraseParams) => {
   const {
     actions,
@@ -32,6 +34,14 @@ export const rephrase = async ({
     thought: initialThought,
     source,
   } = content;
+
+  // Skip LLM rephrasing if flag is set (preserves exact content like position data)
+  if (skipRephrase) {
+    runtime.logger.debug(
+      "[REPHRASE] Skipping rephrase - preserving original content"
+    );
+    return content;
+  }
 
   try {
     // Use new consistent prompt format

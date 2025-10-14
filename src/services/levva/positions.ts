@@ -57,7 +57,12 @@ export const formatPositionsSummary = (
       );
       const pendingNote = hasPendingWithdrawals ? " - Pending withdrawals" : "";
 
-      return `${strategy?.strategy} ${strategyName}: $${pos.balanceUsd.toFixed(2)} (Balance: ${balanceDisplay})${pendingNote}`;
+      // Format: "Strategy Name (Risk level strategy): Amount TOKEN Deposited"
+      const riskLevel = strategy?.strategy
+        ? `${strategy.strategy.charAt(0).toUpperCase() + strategy.strategy.slice(1)} strategy`
+        : "Strategy";
+
+      return `${strategyName} (${riskLevel}): ${balanceDisplay} deposited${pendingNote}`;
     })
     .join("\n");
 };

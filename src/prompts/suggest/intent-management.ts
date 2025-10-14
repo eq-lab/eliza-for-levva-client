@@ -1,6 +1,6 @@
 /**
  * Generate intent management section for prompts
- * 
+ *
  * Provides LLM with instructions for:
  * - Cancel intent options
  * - Child intent suggestions (contextually appropriate)
@@ -8,7 +8,7 @@
 
 /**
  * Generate full intent management section for prompt
- * 
+ *
  * @param intentType - The current intent type (e.g., "DEPOSIT", "SWAP")
  * @param allowCancel - Whether to allow cancellation (default: true)
  * @param childIntentGuidance - Optional guidance on when to suggest child intents
@@ -46,4 +46,3 @@ Guidelines for child intent suggestions:
   section += "</intentManagement>\n";
   return section;
 }
-

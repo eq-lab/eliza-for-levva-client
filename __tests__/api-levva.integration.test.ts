@@ -95,7 +95,7 @@ describe("Levva API Integration Tests", () => {
       expect(strategy).toHaveProperty("description");
       expect(strategy).toHaveProperty("vault");
       expect(strategy.vault).toHaveProperty("publicChainId");
-      expect(strategy.vault.publicChainId).toBe(testChainId);
+      expect(strategy.vault?.publicChainId).toBe(testChainId);
     }
   }, 10000); // 10 second timeout for real API calls
 

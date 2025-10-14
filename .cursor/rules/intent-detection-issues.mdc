@@ -1,0 +1,518 @@
+---
+description: Common intent detection issues, patterns, and solutions for debugging ElizaOS intents
+globs: ["src/services/intent-manager.ts", "src/prompts/intent.ts", "src/routes/cleanup.ts", "src/util/generate.ts"]
+alwaysApply: false
+---
+
+# Intent Detection Issues and Solutions
+
+## 🎯 Purpose
+
+Detailed solutions for common intent detection problems. For the overall workflow, see `@intent-detection-debugging`.
+
+## ⚙️ Test Configuration Pitfalls
+
+### Configuration Issue: ChainId Mismatch
+
+**Symptoms**:
+- API returns empty arrays despite user having data
+- "No active positions" when positions exist
+- Tests pass locally but fail in CI/CD
+- Data exists on different network than test expects
+
+**Root Cause**: Test configuration uses wrong chainId for test data
+
+**Real Example** (from Oct 2024 debugging session):
+```typescript
+// ❌ WRONG - test data on mainnet, config uses Base
+export const TEST_CONFIG = {
+  chainId: 8453, // Base network
+  address: "0x40b88b09610487A26b18FB52DBe319D1268fCa22" // Has positions on mainnet
+}
+
+// API calls with chainId: 8453 return empty []
+// User actually has 4 positions on chainId: 1
+```
+
+**Solution**:
+```typescript
+// ✅ CORRECT - match chainId to where test data exists
+export const TEST_CONFIG = {
+  baseUrl: process.env.ELIZA_BASE_URL || "http://localhost:3001",
+  secret: SECRET,
+  address: ADDRESS as `0x${string}`,
+  chainId: 1, // Ethereum mainnet - where test positions exist
+  timeout: 30000,
+} as const;
+```
+
+**Best Practices**:
+1. **Use constants, never hardcode**: Replace all `1`, `8453`, `42161` with `TEST_CONFIG.chainId`
+2. **Document where test data lives**: Add comments explaining which network has the test data
+3. **Verify test data exists**: Add startup checks to validate positions/balances exist
+4. **Environment-specific configs**: Use `.env` files for different test environments
+
+```typescript
+// ✅ Good - uses constant
+const positions = await getUserPositions(ADDRESS, TEST_CONFIG.chainId);
+const suggestions = await getSuggestions(ADDRESS, channelId, TEST_CONFIG.chainId);
+
+// ❌ Bad - hardcoded value
+const positions = await getUserPositions(ADDRESS, 1);
+const suggestions = await getSuggestions(ADDRESS, channelId, 1);
+```
+
+**Verification**:
+```bash
+# Check which chain has your test data
+# Mainnet (1)
+curl "https://api.levva.fi/user-positions?address=0x40b88b09610487A26b18FB52DBe319D1268fCa22&chainId=1"
+
+# Base (8453)
+curl "https://api.levva.fi/user-positions?address=0x40b88b09610487A26b18FB52DBe319D1268fCa22&chainId=8453"
+
+# Arbitrum (42161)
+curl "https://api.levva.fi/user-positions?address=0x40b88b09610487A26b18FB52DBe319D1268fCa22&chainId=42161"
+```
+
+### Data Preservation: The skipRephrase Pattern
+
+**Problem**: LLM rephrasing corrupts structured data (positions, balances, addresses)
+
+**Symptoms**:
+- Position details get paraphrased incorrectly
+- Token amounts change or get rounded
+- Strategy names get altered
+- Action arrays get lost
+
+**Solution**: Add `skipRephrase` flag to bypass LLM rephrasing
+
+```typescript
+// In src/util/generate.ts
+interface RephraseParams {
+  runtime: IAgentRuntime;
+  content: Content;
+  state?: State;
+  model?: ModelTypeName;
+  prevActions?: string;
+  skipRephrase?: boolean; // NEW: bypass LLM rephrasing
+}
+
+export const rephrase = async ({
+  runtime,
+  content,
+  state,
+  model,
+  prevActions,
+  skipRephrase = false,
+}: RephraseParams) => {
+  // Skip LLM rephrasing if flag is set (preserves exact content)
+  if (skipRephrase) {
+    runtime.logger.debug("[REPHRASE] Skipping rephrase - preserving original content");
+    return content;
+  }
+  // ... normal rephrasing
+};
+```
+
+**Usage in intent handlers**:
+```typescript
+// ✅ Use skipRephrase when displaying structured data
+const responseContent = {
+  text: positionsSummary, // Structured data with balances, addresses, etc.
+  actions: ["MANAGE_POSITIONS"],
+};
+
+const rephrased = await rephrase({
+  runtime,
+  content: responseContent,
+  state,
+  skipRephrase: true, // CRITICAL: Preserve exact position data
+});
+
+return {
+  text: "Generated withdrawal parameter request with positions",
+  success: true,
+  data: { actionName: "MANAGE_POSITIONS", intentType: "WITHDRAW" },
+};
+```
+
+**When to use skipRephrase**:
+- ✅ Displaying position balances and values
+- ✅ Showing wallet assets with amounts
+- ✅ Transaction details with addresses
+- ✅ Strategy information with APYs
+- ✅ Any response with action arrays that must be preserved
+- ❌ Natural language responses without critical data
+- ❌ Conversational messages
+- ❌ Error messages
+
+### Defensive Programming: Fallback Logic Pattern
+
+**Principle**: Always have a fallback when displaying critical user data
+
+**Problem**: Formatted summaries can fail, causing "No data" errors even when raw data exists
+
+**Solution**: Rebuild formatted data from raw source if primary format is missing
+
+```typescript
+// ✅ GOOD - Defensive fallback in withdraw intent handler
+// src/actions/intents/withdraw.ts
+if (!strategyId || !strategy) {
+  // Build position summary with enhanced fallback logic
+  let positionsSummary = params?.positionsSummary;
+  
+  // FALLBACK: If summary is empty or error message, rebuild from raw data
+  if (
+    !positionsSummary ||
+    positionsSummary.trim() === "" ||
+    positionsSummary.includes("No active positions found")
+  ) {
+    if (params?.userPositions && params.userPositions.length > 0) {
+      // Rebuild summary from raw positions
+      positionsSummary = params.userPositions
+        .map((position) => {
+          const strategy = params.strategies?.find((s) => s.id === position.strategyId);
+          const strategyName = strategy?.name || `Strategy ${position.strategyId}`;
+          const riskLevel = strategy?.riskLevel || "Strategy";
+          return `${strategyName} (${riskLevel} strategy): ${position.balance} deposited`;
+        })
+        .join("\n");
+    }
+  }
+  
+  // Now we have reliable positionsSummary
+  const errorContent = {
+    text: `I see you want to withdraw. Here are your positions:\n\n${positionsSummary}`,
+    actions: ["MANAGE_POSITIONS"],
+  };
+  // ...
+}
+```
+
+**Pattern**: Primary → Fallback → Error
+```typescript
+// Step 1: Try primary formatted data
+let displayData = params?.formattedData;
+
+// Step 2: Fallback to raw data reconstruction
+if (!displayData && params?.rawData) {
+  displayData = reconstructFromRaw(params.rawData);
+}
+
+// Step 3: Only then show error
+if (!displayData) {
+  displayData = "No data available";
+}
+```
+
+**Where to apply**:
+- Position summaries in withdraw/deposit handlers
+- Wallet asset displays
+- Strategy listings
+- Transaction history
+- Any user-facing data display
+
+## 🐛 Common Issues and Solutions
+
+### Issue 1: Informational Requests Triggering Intents
+
+**Symptoms**:
+- "Analyze my portfolio" triggers SEND intent
+- "Show my positions" triggers WITHDRAW intent
+- Generic queries start transaction flows
+
+**Root Cause**: LLM prompt lacks explicit negative examples
+
+**Solution**: Update `src/prompts/intent.ts`
+
+```typescript
+// Add CRITICAL RULE at top of instructions
+0. **CRITICAL RULE**: Informational requests are NOT intents
+   - "Analyze", "Show", "Review", "Check", "Display", "Tell me", "What" → NO INTENT (return undefined)
+   - Return undefined for informational requests, even if they mention domain keywords
+
+// Add NEGATIVE EXAMPLES
+**NEGATIVE EXAMPLES** (return selectedIntent: undefined, confidence < 0.3):
+- "Analyze my wallet" → selectedIntent: undefined, confidence: 0.2
+- "Show me my positions" → selectedIntent: undefined, confidence: 0.2
+- "Review my portfolio" → selectedIntent: undefined, confidence: 0.2
+
+// Add FINAL CHECK
+**FINAL CHECK** before selecting an intent:
+- Does the message contain an ACTION VERB from the keywords?
+- If NO action verb → return selectedIntent: undefined, confidence < 0.3
+- If message starts with "Analyze", "Show", "Review" → return undefined
+```
+
+**Verification**:
+```bash
+# Check intent detection results
+grep "INTENT-DETECTION.*LLM Response" dev.log | tail -10
+
+# Should show selectedIntent=undefined for informational requests
+```
+
+### Issue 2: Orphaned Intents Interfering with New Flows
+
+**Symptoms**:
+- Test cleanup doesn't fully reset state
+- Intents from previous tests affect current test
+- Suggestions show intent from different domain
+- Logs show `userId: "unknown"` or mismatched userId
+
+**Root Cause**: Cleanup route only cancels intents for current userId, missing orphaned intents from other sessions
+
+**Solution**: Add orphaned intent cleanup
+
+```typescript
+// In src/services/intent-manager.ts - Add new method
+async getAllActiveIntentsInChannel(channelId: string): Promise<IntentContext[]> {
+  const activeIntents: IntentContext[] = [];
+  
+  const allDomains = Array.from(IntentManager.getRegisteredIntents().values())
+    .map((registration) => registration.domain)
+    .filter((domain, index, self) => self.indexOf(domain) === index);
+  
+  // Check common orphaned userId patterns
+  const userIdsToCheck = ["unknown", "user"];
+  
+  for (const domain of allDomains) {
+    for (const userId of userIdsToCheck) {
+      const cacheKey = `intent_${domain}_${userId}_${channelId}`;
+      try {
+        const intent = await this.runtime.getCache<IntentContext>(cacheKey);
+        if (intent?.status === "ACTIVE" && intent.channelId === channelId) {
+          activeIntents.push(intent);
+          this.runtime.logger.debug(
+            `[getAllActiveIntentsInChannel] Found orphaned intent: ${intent.id} (userId: ${intent.userId})`
+          );
+        }
+      } catch (error) {
+        // Cache key doesn't exist, continue
+      }
+    }
+  }
+  
+  return activeIntents;
+}
+```
+
+```typescript
+// In src/routes/cleanup.ts - Update cleanup logic
+// After cancelling current user's intents...
+
+// Clean up orphaned intents
+try {
+  const orphanedIntents = await intentManager.getAllActiveIntentsInChannel(channelId);
+  
+  if (orphanedIntents.length > 0) {
+    logger.info(`[CLEANUP] Found ${orphanedIntents.length} orphaned intent(s)`);
+    
+    for (const intent of orphanedIntents) {
+      if (intent.userId !== userId) {
+        await intentManager.cancelIntent(intent);
+        cleanupStats.cancelledIntents++;
+        logger.info(
+          `[CLEANUP] Cancelled orphaned ${intent.type} intent (ID: ${intent.id}) with userId: ${intent.userId}`
+        );
+      }
+    }
+  }
+} catch (error) {
+  logger.warn("[CLEANUP] Error cleaning up orphaned intents:", error);
+}
+```
+
+**Verification**:
+```bash
+# Check cleanup logs
+grep "CLEANUP.*orphaned" dev.log | tail -20
+
+# Verify no stale intents after cleanup
+grep "getActiveIntentByDomain.*Status: ACTIVE" dev.log | tail -20
+```
+
+### Issue 3: Intent Detection Confidence Too Low
+
+**Symptoms**:
+- Valid action requests don't trigger intents
+- User says "I want to deposit" but no DEPOSIT intent created
+- Confidence scores below 0.75 threshold
+
+**Root Cause**: LLM prompt doesn't have enough positive examples or context
+
+**Solution**: Add explicit positive examples and context handling
+
+```typescript
+// In src/prompts/intent.ts
+**POSITIVE EXAMPLES** (these should trigger intents with high confidence):
+- "Send 10 USDC to 0x..." → SEND intent, confidence 0.9
+- "I want to withdraw from my position" → WITHDRAW intent, confidence 0.85
+- "Deposit into ultra-safe strategy" → DEPOSIT intent, confidence 0.9
+- "Swap 100 USDC for ETH" → SWAP intent, confidence 0.9
+
+1. **Context Analysis**: Use conversation context to understand what the agent was asking for
+   - If agent asked "What amount would you like to deposit?" and user responds with a number → DEPOSIT intent
+   - If agent asked "How much would you like to withdraw?" and user responds with a number → WITHDRAW intent
+```
+
+### Issue 4: Cancelled Intents Still Active
+
+**Symptoms**:
+- `getActiveIntentByDomain` returns intent with `status: "CANCELLED"`
+- Suggestions evaluator picks up cancelled intents
+- Cleanup doesn't fully clear intents
+
+**Root Cause**: `getActiveIntentByDomain` filter not working or intents not properly marked
+
+**Solution**: Ensure proper cancellation and filtering
+
+```typescript
+// In src/services/intent-manager.ts
+async cancelIntent(intent: IntentContext) {
+  this.runtime.logger.debug(
+    `[cancelIntent] Cancelling intent ${intent.id} (${intent.type}) in domain ${intent.domain}`
+  );
+  
+  // Mark as CANCELLED (not delete) for audit trail
+  intent.status = "CANCELLED";
+  await this.storeIntent(intent);
+  
+  // Cancel child intents
+  if (intent.childIntentIds?.length > 0) {
+    for (const childId of intent.childIntentIds) {
+      const childIntent = await this.getIntentById(childId);
+      if (childIntent?.status === "ACTIVE") {
+        await this.cancelIntent(childIntent);
+      }
+    }
+  }
+}
+
+async getActiveIntentByDomain(
+  userId: string,
+  channelId: string,
+  domain: LEVVA_ACTIONS
+) {
+  const cacheKey = `intent_${domain}_${userId}_${channelId}`;
+  const intent = await this.runtime.getCache<IntentContext>(cacheKey);
+  
+  // CRITICAL: Only return if status is ACTIVE
+  return intent?.status === "ACTIVE" ? intent : undefined;
+}
+```
+
+**Verification**:
+```bash
+# Check intent status in logs
+grep "cancelIntent.*AFTER" dev.log | tail -10
+
+# Verify filter works
+grep "getActiveIntentByDomain.*Found.*Status" dev.log | tail -20
+```
+
+### Issue 5: Stale Intent from Wrong Domain
+
+**Symptoms**:
+- SEND action shows WITHDRAW suggestions
+- SWAP action shows DEPOSIT suggestions
+- Suggestions don't match current action
+
+**Root Cause**: Suggestions evaluator checks all domains and picks first active intent, ignoring current action
+
+**Solution**: Prioritize current action's domain
+
+```typescript
+// In src/evaluators/suggestions.ts
+// Check action's domain FIRST
+if (actionLookup) {
+  const intent = await intentManager.getActiveIntentByDomain(
+    userAddressId,
+    channelId,
+    actionLookup as any
+  );
+  
+  if (intent?.status === "ACTIVE") {
+    activeIntent = intent;
+    logger.info(`[SUGGESTIONS] ✅ Found active intent in primary domain: ${intent.type}`);
+  }
+}
+
+// Then check fallback domains
+if (!activeIntent) {
+  const domainsToCheck = allDomains.filter(d => d !== actionLookup);
+  logger.info(`[SUGGESTIONS] Checking fallback domains: ${domainsToCheck.join(", ")}`);
+  
+  for (const domain of domainsToCheck) {
+    const intent = await intentManager.getActiveIntentByDomain(
+      userAddressId,
+      channelId,
+      domain as any
+    );
+    
+    if (intent?.status === "ACTIVE") {
+      activeIntent = intent;
+      logger.warn(
+        `[SUGGESTIONS] ⚠️ Found active intent in FALLBACK domain (may be stale): ${intent.type} in ${intent.domain}`
+      );
+      break;
+    }
+  }
+}
+```
+
+## 🔧 Diagnostic Tools
+
+### Check Intent State
+```bash
+# See all intent detection results
+grep "INTENT-DETECTION.*LLM Response" dev.log | tail -20
+
+# Check active intents by domain
+grep "getActiveIntentByDomain.*MANAGE_POSITIONS" dev.log | tail -10
+
+# Find orphaned intents
+grep "userId.*unknown" dev.log | grep -i intent | tail -10
+```
+
+### Monitor Cleanup Effectiveness
+```bash
+# Check cleanup execution
+grep "CLEANUP.*Channel.*cleanup complete" dev.log | tail -5
+
+# Verify orphan cleanup
+grep "CLEANUP.*orphaned" dev.log | tail -10
+
+# Count cancelled intents
+grep "CLEANUP.*Cancelled.*intent" dev.log | tail -20
+```
+
+### Trace Suggestion Generation
+```bash
+# See which intent is used for suggestions
+grep "SUGGESTIONS.*Found active intent" dev.log | tail -10
+
+# Check fallback domain usage (potential stale intents)
+grep "SUGGESTIONS.*FALLBACK domain" dev.log | tail -10
+
+# Verify no active intent scenario
+grep "SUGGESTIONS.*No active intent found" dev.log | tail -10
+```
+
+## 🎯 Success Criteria
+
+A well-functioning intent system should:
+
+1. **Conservative Detection**: Only trigger intents for clear action requests
+2. **Clean State**: No orphaned intents between test runs
+3. **Accurate Suggestions**: Suggestions match the active intent
+4. **High Confidence**: Valid action requests score > 0.75
+5. **Proper Cleanup**: Tests fully reset state
+6. **Audit Trail**: Cancelled intents marked as CANCELLED, not deleted
+
+## 📚 Related Rules
+
+- `@intent-detection-debugging` - Overall workflow and TDD cycle
+- `@intent-testing-patterns` - Test templates and patterns
+- `@llm-prompt-debugging` - LLM prompt best practices

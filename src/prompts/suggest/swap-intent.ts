@@ -13,6 +13,7 @@ import {
   generateOutputFormat,
   generateCommonInstructions,
 } from "../helpers";
+import { formatUnits } from "viem";
 
 export interface SwapIntentSuggestionParams {
   intentContext: IntentContext;
@@ -32,6 +33,7 @@ export interface SwapIntentSuggestionParams {
     symbol: string;
     amount: bigint;
     value: bigint;
+    decimals?: number;
   }>;
   availableTokens: Array<{
     address: string;
@@ -138,28 +140,55 @@ ${generateOutputFormat()}`;
       },
     });
 
+    // Calculate actual token amounts based on balance if available
+    const amounts = [1, 0.75, 0.5, 0.25];
+    let calculatedAmounts: string[] = [];
+
+    if (walletAsset) {
+      const balance = parseFloat(
+        formatUnits(walletAsset.amount, walletAsset.decimals ?? 18)
+      );
+      calculatedAmounts = amounts.map((pct) => (balance * pct).toFixed(6));
+    }
+
+    const [fullAmount = "", amount75 = "", amount50 = "", amount25 = ""] =
+      calculatedAmounts;
+
     const instructions = generateCommonInstructions({
       suggestionType: "next-step",
-      specificInstructions: `Generate 3-4 natural, conversational suggestions for swap amount:
+      specificInstructions: `Generate 3-4 natural, conversational suggestions for swap amount.
 
-SUGGESTION PRIORITIES:
-1. Specific amounts (e.g., "100 ${fromSymbol}", "0.1 ${fromSymbol}")
-2. Percentage-based amounts (e.g., "50% of my ${fromSymbol}", "all my ${fromSymbol}")
-3. Round numbers that make sense for the token
-4. Ask about recommended amounts
+CRITICAL: The token symbol is "${fromSymbol}" - use ONLY this exact symbol, nothing else.
+${walletAsset ? `User has ${fromSymbol} available in wallet (balance: ${fullAmount} ${fromSymbol}).` : ""}
 
-SUGGESTION FORMATS:
-- "I want to swap 100 ${fromSymbol}" - specific amount
-- "Let me swap 0.5 ${fromSymbol}" - specific amount
-- "Swap 25% of my ${fromSymbol}" - percentage-based
-- "I'd like to swap all my ${fromSymbol}" - maximum amount
+LABEL FORMAT (use specific amounts, NOT generic labels):
+${
+  walletAsset
+    ? `- "Full balance" - for swapping all ${fromSymbol}
+- "75% of balance" - for swapping 75% of ${fromSymbol}
+- "50% of balance" - for swapping 50% of ${fromSymbol}
+- "Partial amount" - for a smaller specific amount`
+    : `- Use descriptive labels with actual amounts when possible`
+}
+
+TEXT FORMAT (use "${fromSymbol}" exactly as shown and ACTUAL amounts):
+${
+  walletAsset
+    ? `- "I want to swap ${fullAmount} ${fromSymbol}" - full balance
+- "Swap ${amount75} ${fromSymbol}" - 75% of balance
+- "Swap ${amount50} ${fromSymbol}" - 50% of balance
+- "I want to swap ${amount25} ${fromSymbol}" - 25% of balance`
+    : `- "I want to swap 100 ${fromSymbol}" - specific amount
+- "Swap 50 ${fromSymbol}" - specific amount
+- "Swap all my ${fromSymbol}" - maximum amount`
+}
 - "What amount should I swap?" - ask for guidance
 
 Each suggestion should:
 - Be natural and conversational
-- Reference the actual from-token symbol
-- Provide a variety of amount options
-${walletAsset ? "- Consider the user's available balance" : ""}`,
+- Use ONLY the token symbol "${fromSymbol}" (no extra characters or variations)
+- Provide specific amounts based on balance when available
+- Lead to confirmation step`,
     });
 
     return `<task>Generate amount suggestions for swap</task>
@@ -292,7 +321,9 @@ ${generateOutputFormat()}`;
   }
 
   // Case 5: No tokens selected - suggest popular pairs or tokens from wallet
-  const walletTokensCase5 = walletAssets.filter((a) => a.amount > 0n).slice(0, 5);
+  const walletTokensCase5 = walletAssets
+    .filter((a) => a.amount > 0n)
+    .slice(0, 5);
 
   let walletContext = "";
   if (walletTokensCase5.length > 0) {
@@ -312,23 +343,28 @@ ${generateOutputFormat()}`;
     suggestionType: "next-step",
     specificInstructions: `Generate 3-5 natural, conversational suggestions for token pair selection:
 
-SUGGESTION PRIORITIES:
-1. Popular swap pairs (ETH/USDC, WETH/DAI, etc.)
-2. Tokens from user's wallet (if known)
-3. General swap inquiries
+CRITICAL: Use EXACT token symbols without modifications or extra characters.
+${walletTokensCase5.length > 0 ? `User wallet tokens: ${walletTokensCase5.map((t) => t.symbol).join(", ")}` : ""}
 
-SUGGESTION FORMATS:
-- "Swap ETH to USDC" - popular pair
-- "Convert WETH to DAI" - popular pair
-${walletTokensCase5.length > 0 ? `- "Swap my ${walletTokensCase5[0].symbol}" - from wallet` : ""}
-- "What tokens can I swap?" - inquiry
-- "Show me available swap pairs" - general inquiry
+LABEL FORMAT (be specific, include actual token pairs):
+- "ETH → USDC pair" - for ETH to USDC swap
+- "WETH → DAI pair" - for WETH to DAI swap
+- "Swap ${walletTokensCase5.length > 0 ? walletTokensCase5[0].symbol : "wallet token"}" - for wallet tokens
+- "General swap inquiry" - for questions
+- "Cancel swap" - for cancellation
+
+TEXT FORMAT (user-facing, use EXACT symbols):
+- "Swap ETH to USDC" - popular pair (label: "ETH → USDC pair")
+- "Convert WETH to DAI" - popular pair (label: "WETH → DAI pair")
+${walletTokensCase5.length > 0 ? `- "Swap my ${walletTokensCase5[0].symbol}" - from wallet (label: "Swap ${walletTokensCase5[0].symbol}")` : ""}
+- "What tokens can I swap?" - inquiry (label: "General swap inquiry")
+- "Show me available swap pairs" - general inquiry (label: "General swap inquiry")
 
 Each suggestion should:
-- Be natural and conversational
-- Suggest complete pairs when possible
-- Reference wallet tokens when available
-- Lead to token selection`,
+- Use EXACT token symbols as provided (no modifications like "LUSDCus")
+- Have specific, descriptive labels that include the actual tokens
+- Be natural and conversational in the text field
+- Lead to next step in swap flow`,
   });
 
   return `<task>Generate token selection suggestions for swap - no tokens specified yet</task>

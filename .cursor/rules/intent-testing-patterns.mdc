@@ -1,0 +1,428 @@
+---
+description: Test patterns, templates, and helpers for ElizaOS intent testing
+globs: ["__tests__/suggestions/**/*.ts", "__tests__/chat/setup.ts"]
+alwaysApply: false
+---
+
+# Intent Testing Patterns and Templates
+
+## 🎯 Purpose
+
+Test templates and patterns for intent integration testing. For debugging workflow, see `@intent-detection-debugging`. For specific issues, see `@intent-detection-issues`.
+
+## 🧪 Integration Test Patterns
+
+### Multi-Step Intent Flow Test
+
+**Pattern**: Test complete user journey from initial request through parameter collection to completion.
+
+```typescript
+import { runMultiStepFlow } from "../chat/setup";
+
+describe("[Intent Type] Integration", () => {
+  it("should guide through [intent] with progressive suggestions", async () => {
+    // Clean up before test
+    await context.client.levva.cleanupChannel(
+      context.channelId,
+      context.userId
+    );
+    
+    await runMultiStepFlow(context, [
+      {
+        // STEP 1: Initial request
+        message: "I want to [action]",
+        validate: (responses, suggestions) => {
+          // Verify responses contain expected action
+          const hasActionResponse = responses.some(
+            (r) => r.rawMessage?.actions?.includes("[ACTION_NAME]")
+          );
+          expect(hasActionResponse).toBe(true);
+          
+          // Verify suggestions are relevant to first step
+          const hasRelevantSuggestions = suggestions.some(
+            (s) => s.text.toLowerCase().includes("[keyword]")
+          );
+          expect(hasRelevantSuggestions).toBe(true);
+          
+          // Should NOT have completion suggestions yet
+          const hasCompletionSuggestions = suggestions.some(
+            (s) => s.text.toLowerCase().includes("complete")
+          );
+          expect(hasCompletionSuggestions).toBe(false);
+        },
+      },
+      {
+        // STEP 2: Provide parameter
+        message: "[specific parameter value]",
+        validate: (responses, suggestions) => {
+          // Verify progression to next step
+          const hasNextStepSuggestions = suggestions.some(
+            (s) => s.text.toLowerCase().includes("[next keyword]")
+          );
+          expect(hasNextStepSuggestions).toBe(true);
+          
+          // Verify cancel option always available
+          const hasCancelOption = suggestions.some(
+            (s) => s.label.toLowerCase().includes("cancel")
+          );
+          expect(hasCancelOption).toBe(true);
+        },
+      },
+    ]);
+  });
+});
+```
+
+**Real Example - Withdrawal Flow**:
+```typescript
+await runMultiStepFlow(context, [
+  {
+    // STEP 1: User requests withdrawal
+    message: "I want to withdraw",
+    validate: (responses, suggestions) => {
+      // Verify withdrawal intent started
+      const hasManagePositions = responses.some(
+        (r) => r.rawMessage?.actions?.includes("MANAGE_POSITIONS")
+      );
+      expect(hasManagePositions).toBe(true);
+      
+      // Should show position-specific suggestions
+      const hasPositionSuggestions = suggestions.filter(
+        (s) => s.text.toLowerCase().includes("withdraw") &&
+              s.text.toLowerCase().includes("from")
+      );
+      expect(hasPositionSuggestions.length).toBeGreaterThan(0);
+    },
+  },
+  {
+    // STEP 2: User selects position
+    message: "Withdraw from Safe yield",
+    validate: (responses, suggestions) => {
+      // Should show amount suggestions
+      const hasAmountSuggestions = suggestions.filter(
+        (s) => s.text.toLowerCase().includes("withdraw") &&
+              /\d+/.test(s.text) // Has numbers
+      );
+      expect(hasAmountSuggestions.length).toBeGreaterThan(0);
+      
+      // Should NOT have "specify custom amount" (users can type directly)
+      const hasCustomAmountSuggestion = suggestions.some(
+        (s) => s.text.toLowerCase().includes("custom amount")
+      );
+      expect(hasCustomAmountSuggestion).toBe(false);
+    },
+  },
+]);
+```
+
+### Informational vs Action Test
+
+**Pattern**: Verify informational requests don't trigger transaction intents.
+
+```typescript
+it("should NOT trigger [ACTION] intent for informational requests", async () => {
+  // Clean up before test
+  await context.client.levva.cleanupChannel(channelId, userId);
+  await context.client.messaging.clearChannelHistory(channelId);
+  
+  // Send informational request
+  const responses = await sendMessageAndWaitForComplete(
+    context,
+    "Analyze my [domain-specific-thing]"
+  );
+  
+  // Wait for suggestions
+  await new Promise((resolve) => setTimeout(resolve, 3000));
+  
+  const suggestionsResponse = await context.client.levva.getSuggestions(
+    userAddress,
+    channelId,
+    chainId
+  );
+  
+  const suggestions = suggestionsResponse.suggestions;
+  
+  // CRITICAL: Should NOT have action-specific suggestions
+  const hasActionSuggestions = suggestions.some(
+    (s) => s.text.toLowerCase().includes("[action-keyword]")
+  );
+  expect(hasActionSuggestions).toBe(false);
+  
+  // Should have informational suggestions instead
+  const hasInfoSuggestions = suggestions.some(
+    (s) => s.text.toLowerCase().includes("position") ||
+          s.text.toLowerCase().includes("strategy") ||
+          s.text.toLowerCase().includes("portfolio")
+  );
+  expect(hasInfoSuggestions).toBe(true);
+  
+  // Verify no intent was created
+  console.log("\n🔍 Suggestions for informational request:");
+  suggestions.forEach((s, i) => {
+    console.log(`  ${i + 1}. "${s.label}" - ${s.text}`);
+  });
+});
+```
+
+**Real Example - Portfolio Analysis**:
+```typescript
+it("should NOT trigger SEND intent for general portfolio analysis", async () => {
+  await context.client.levva.cleanupChannel(channelId, userId);
+  await context.client.messaging.clearChannelHistory(channelId);
+  
+  const responses = await sendMessageAndWaitForComplete(
+    context,
+    "Analyze my portfolio"
+  );
+  
+  await new Promise((resolve) => setTimeout(resolve, 3000));
+  
+  const suggestionsResponse = await context.client.levva.getSuggestions(
+    ADDRESS,
+    channelId,
+    TEST_CONFIG.chainId
+  );
+  
+  const suggestions = suggestionsResponse.suggestions;
+  
+  // Should NOT have SEND suggestions
+  const hasSendSuggestions = suggestions.some(
+    (s) => s.text.toLowerCase().includes("send") ||
+          s.text.toLowerCase().includes("transfer")
+  );
+  expect(hasSendSuggestions).toBe(false);
+  
+  // Should have portfolio-related suggestions
+  const hasPortfolioSuggestions = suggestions.some(
+    (s) => s.text.toLowerCase().includes("position") ||
+          s.text.toLowerCase().includes("strategy")
+  );
+  expect(hasPortfolioSuggestions).toBe(true);
+});
+```
+
+### Test Setup and Teardown
+
+```typescript
+import { setupChatTest, teardownChatTest, ChatTestContext } from "./setup";
+
+describe("[Intent Type] Suggestions Integration", () => {
+  let context: ChatTestContext;
+  
+  beforeEach(async () => {
+    context = await setupChatTest();
+    
+    // Additional setup if needed
+    await context.client.levva.cleanupChannel(
+      context.channelId,
+      context.userId
+    );
+  });
+  
+  afterEach(async () => {
+    await teardownChatTest(context);
+  });
+  
+  // Tests...
+});
+```
+
+## 📋 Test Helper Functions
+
+### runMultiStepFlow
+
+**Purpose**: Execute multi-step conversations and validate each step.
+
+**Location**: `__tests__/chat/setup.ts`
+
+**Usage**:
+```typescript
+await runMultiStepFlow(context, [
+  {
+    message: "User message",
+    validate: async (responses, suggestions) => {
+      // Validation logic
+      expect(responses.length).toBeGreaterThan(0);
+      expect(suggestions.length).toBeGreaterThan(0);
+    },
+  },
+  // More steps...
+]);
+```
+
+**Features**:
+- Automatically waits for agent responses
+- Fetches suggestions after each step
+- Provides both responses and suggestions to validator
+- Cleans up between steps if needed
+
+### sendMessageAndWaitForComplete
+
+**Purpose**: Send a message and wait for all agent responses.
+
+**Location**: `__tests__/chat/setup.ts`
+
+**Usage**:
+```typescript
+const responses = await sendMessageAndWaitForComplete(
+  context,
+  "User message text"
+);
+
+console.log(`Received ${responses.length} responses`);
+responses.forEach((r, i) => {
+  console.log(`${i + 1}. Action: ${r.rawMessage?.actions?.[0] || "NONE"}`);
+  console.log(`   Text: ${r.text?.substring(0, 100)}...`);
+});
+```
+
+**Returns**: Array of agent responses with metadata.
+
+## ✅ Checklist for New Intent Tests
+
+### Test File Structure
+- [ ] Import required helpers from `../chat/setup`
+- [ ] Use `describe` block for intent type
+- [ ] Set up `beforeEach` with cleanup
+- [ ] Set up `afterEach` with teardown
+
+### Test Coverage
+- [ ] **Multi-step flow test**: Complete user journey
+- [ ] **Informational request test**: Verify intent doesn't trigger
+- [ ] **Parameter validation**: Each step has correct suggestions
+- [ ] **Cancel flow**: User can cancel at any step
+- [ ] **Edge cases**: Empty data, invalid params, etc.
+
+### Validation Checks
+- [ ] Verify correct action in responses (`MANAGE_POSITIONS`, `SWAP_TOKENS`, etc.)
+- [ ] Check suggestion relevance to current step
+- [ ] Ensure progressive disclosure (don't show all params at once)
+- [ ] Validate suggestion format (user-facing text, not agent-facing)
+- [ ] Confirm cancel option always available
+- [ ] Check no "custom amount/value" suggestions (users can type)
+
+### Cleanup and State
+- [ ] Call `cleanupChannel` before each test
+- [ ] Use `TEST_CONFIG.chainId` instead of hardcoded values
+- [ ] Verify no stale intents after cleanup
+- [ ] Test timeout set appropriately (30s+ for integration tests)
+
+## 📝 Key Files Reference
+
+### Test Files
+- `__tests__/chat/setup.ts` - Test helpers and configuration
+  - `setupChatTest()` - Initialize test context
+  - `teardownChatTest()` - Cleanup after test
+  - `runMultiStepFlow()` - Multi-step conversation helper
+  - `sendMessageAndWaitForComplete()` - Send message and wait
+  - `TEST_CONFIG` - Test configuration (chainId, address, etc.)
+
+- `__tests__/suggestions/*.integration.test.ts` - Intent flow tests
+  - `withdrawal.integration.test.ts` - WITHDRAW intent tests
+  - `deposit.integration.test.ts` - DEPOSIT intent tests
+  - `swap.integration.test.ts` - SWAP intent tests
+  - `send.integration.test.ts` - SEND intent tests
+
+### Source Files (Test Targets)
+- `src/services/intent-manager.ts` - Intent lifecycle management
+- `src/prompts/intent.ts` - Intent detection prompt
+- `src/evaluators/suggestions.ts` - Suggestion generation
+- `src/routes/cleanup.ts` - Channel cleanup endpoint
+- `src/actions/intents/*.ts` - Intent handlers
+
+### Configuration
+- `__tests__/chat/setup.ts::TEST_CONFIG` - Test environment config
+  ```typescript
+  export const TEST_CONFIG = {
+    baseUrl: process.env.ELIZA_BASE_URL || "http://localhost:3001",
+    secret: SECRET,
+    address: ADDRESS as `0x${string}`,
+    chainId: 1, // Always use constant, never hardcode
+    timeout: 30000,
+  } as const;
+  ```
+
+## 🎯 Test Quality Guidelines
+
+### Good Test Characteristics
+- ✅ **Isolated**: Each test cleans up before/after
+- ✅ **Deterministic**: Same input always produces same result
+- ✅ **Fast**: Use appropriate timeouts, don't wait unnecessarily
+- ✅ **Readable**: Clear test names and validation messages
+- ✅ **Maintainable**: Use helpers, avoid duplication
+
+### Bad Test Patterns
+- ❌ **Flaky**: Depends on timing or external state
+- ❌ **Brittle**: Breaks when unrelated code changes
+- ❌ **Slow**: Unnecessary waits or delays
+- ❌ **Vague**: Unclear what's being tested
+- ❌ **Duplicated**: Copy-pasted code instead of helpers
+
+### Debugging Failed Tests
+
+```bash
+# 1. Check test output for specific failure
+bun test __tests__/suggestions/[intent].integration.test.ts -t "test name"
+
+# 2. Check server logs
+grep "INTENT-DETECTION\|SUGGESTIONS\|CLEANUP" dev.log | tail -100
+
+# 3. Verify cleanup worked
+grep "CLEANUP.*cleanup complete" dev.log | tail -5
+
+# 4. Check for stale intents
+grep "FALLBACK domain" dev.log | tail -10
+
+# 5. Verify correct chainId
+grep "chainId" dev.log | grep -v "8453\|42161" | tail -20
+```
+
+## 🚀 Quick Reference
+
+### Running Tests
+```bash
+# All suggestion tests
+bun run test:suggestions
+
+# Specific intent
+bun test __tests__/suggestions/withdraw.integration.test.ts
+
+# Specific test case
+bun test __tests__/suggestions/withdraw.integration.test.ts -t "multi-step"
+
+# With verbose output
+bun test __tests__/suggestions/withdraw.integration.test.ts --verbose
+```
+
+### Common Test Scenarios
+
+**Scenario 1: Test new intent flow**
+```typescript
+// 1. Add test file: __tests__/suggestions/[intent].integration.test.ts
+// 2. Use runMultiStepFlow template
+// 3. Add both multi-step and informational tests
+// 4. Run and iterate
+```
+
+**Scenario 2: Debug failing test**
+```typescript
+// 1. Add console.logs in validate functions
+// 2. Check server logs (dev.log)
+// 3. Verify cleanup with grep commands
+// 4. Use @intent-detection-debugging workflow
+```
+
+**Scenario 3: Test data setup**
+```typescript
+// 1. Verify test data exists on correct chain (chainId: 1)
+// 2. Use TEST_CONFIG.chainId everywhere
+// 3. Add API verification in test setup
+// 4. Document required test data
+```
+
+## 📚 Related Rules
+
+- `@intent-detection-debugging` - Overall debugging workflow
+- `@intent-detection-issues` - Common problems and solutions
+- `@test-organization` - General test patterns
+- `@action-patterns` - Action implementation patterns

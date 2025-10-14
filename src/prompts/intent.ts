@@ -76,6 +76,12 @@ ${contextSection}
 ${intentList}
 </availableIntents>
 <instructions>
+0. **CRITICAL RULE**: Informational requests are NOT intents
+   - "Analyze", "Show", "Review", "Check", "Display", "Tell me", "What" → NO INTENT (return undefined)
+   - These words mean the user wants INFORMATION, not to perform a transaction
+   - Even if the domain is ANALYZE_WALLET, this does NOT mean every message should be a SEND intent
+   - Return undefined for informational requests, even if they mention "wallet" or "portfolio"
+
 1. **Context Analysis**: Use conversation context to understand what the agent was asking for
    - If agent asked "What amount would you like to deposit?" and user responds with a number → DEPOSIT intent
    - If agent asked "How much would you like to withdraw?" and user responds with a number → WITHDRAW intent
@@ -83,8 +89,9 @@ ${intentList}
 
 2. **Message Analysis**: Analyze the user's current message for explicit intent keywords
    - Look for direct ACTION words (deposit, withdraw, swap, send, etc.)
-   - "Review", "check", "show", "view" alone are NOT action words - they are informational requests
-   - Only trigger intents when user clearly expresses desire to PERFORM an action
+   - "Review", "check", "show", "view", "analyze", "display", "tell me" alone are NOT action words - they are informational requests
+   - "Analyze my wallet" or "Analyze my portfolio" = informational, NOT a send/transfer action
+   - Only trigger intents when user clearly expresses desire to PERFORM an action (not just view information)
    - Consider the context of numbers and amounts based on what was previously asked
 
 3. **Intent Selection**: Select the most appropriate intent from available options
@@ -92,6 +99,21 @@ ${intentList}
    - Prioritize conversation context over isolated message analysis
    - If user provides requested information (amount, strategy, etc.), continue the active flow
    - Return undefined if the message is informational (review, check, show status)
+   
+   **NEGATIVE EXAMPLES** (return selectedIntent: undefined, confidence < 0.3):
+   - "Analyze my wallet" → selectedIntent: undefined, confidence: 0.2
+   - "Analyze my portfolio" → selectedIntent: undefined, confidence: 0.2
+   - "Show me my assets" → selectedIntent: undefined, confidence: 0.2
+   - "Check my balance" → selectedIntent: undefined, confidence: 0.2
+   - "Review my positions" → selectedIntent: undefined, confidence: 0.2
+   - "What do I have?" → selectedIntent: undefined, confidence: 0.2
+   - "Display my holdings" → selectedIntent: undefined, confidence: 0.2
+   
+   **POSITIVE EXAMPLES** (these should trigger intents with high confidence):
+   - "Send 10 USDC to 0x..." → SEND intent, confidence 0.9
+   - "I want to withdraw from my position" → WITHDRAW intent, confidence 0.85
+   - "Deposit into ultra-safe strategy" → DEPOSIT intent, confidence 0.9
+   - "Swap 100 USDC for ETH" → SWAP intent, confidence 0.9
 
 4. **Confidence Scoring**: 
    - High (0.8-1.0): Clear intent from context AND explicit action keywords (e.g., "withdraw 100 USDC")
@@ -99,11 +121,27 @@ ${intentList}
    - Low (0.3-0.5): Informational request, not an action (e.g., "show positions", "check status")
    - Very Low (0.0-0.2): No intent indication
 
-**CRITICAL**: "Review my positions", "Show my portfolio", "Check my status" should have confidence < 0.75
+**CRITICAL**: These are INFORMATIONAL requests, NOT action intents (confidence < 0.5):
+   - "Review my positions"
+   - "Show my portfolio"
+   - "Check my status"
+   - "Analyze my wallet"
+   - "Analyze my portfolio"
+   - "Display my assets"
 
 5. **Value Extraction**: Extract relevant parameters (amounts, tokens, addresses, etc.)
 
 6. **Flow Continuity**: Favor continuing existing conversation flows over starting new ones
+
+**FINAL CHECK** before selecting an intent:
+- Does the message contain an ACTION VERB from the keywords (send, transfer, deposit, withdraw, swap)?
+- If NO action verb → return selectedIntent: undefined, confidence < 0.3
+- If message starts with "Analyze", "Show", "Review", "Check", "Display" → return selectedIntent: undefined, confidence < 0.3
+- Only return a specific intent type if you're CERTAIN the user wants to PERFORM a transaction
+
+**REMINDER**: It is VALID and CORRECT to return selectedIntent: undefined
+- Most messages should return undefined (informational requests)
+- Only clear action requests should return a specific intent type
 </instructions>
 <keys>
 ${formatKeys(dataDescription)}

@@ -1,9 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import {
-  getUserPositions,
-  getWithdrawalRequests,
-  getStrategies,
-} from "../src/api/levva";
+import { getUserPositions, getWithdrawalRequests } from "../src/api/levva";
 import {
   userPositionsResponseSchema,
   withdrawalRequestsResponseSchema,
@@ -20,6 +16,7 @@ describe("Levva API", () => {
 
     beforeEach(() => {
       vi.clearAllMocks();
+      // @ts-expect-error - moock type conflict
       global.fetch = mockFetch;
     });
 
@@ -69,9 +66,9 @@ describe("Levva API", () => {
 
       it("should handle network errors", async () => {
         mockFetch.mockRejectedValueOnce(new Error("Network error"));
-        await expect(getUserPositions(testAddress, testChainId)).rejects.toThrow(
-          "Network error"
-        );
+        await expect(
+          getUserPositions(testAddress, testChainId)
+        ).rejects.toThrow("Network error");
       });
     });
 

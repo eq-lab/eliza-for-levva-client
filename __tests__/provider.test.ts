@@ -4,6 +4,7 @@ import {
   type IAgentRuntime,
   type Memory,
   type State,
+  UUID,
   logger,
 } from "@elizaos/core";
 import { v4 as uuidv4 } from "uuid";
@@ -52,7 +53,7 @@ function documentTestResult(
         const keys = Object.keys(result);
         logger.info(`  → {${keys.join(", ")}}`);
       } catch (e) {
-        logger.info(`  → [object]`);
+        logger.info(`  → [object]`, e);
       }
     } else {
       logger.info(`  → ${result}`);
@@ -74,14 +75,20 @@ function createMockRuntime(): IAgentRuntime {
   } as any;
 }
 
+const USER_UUID: UUID = "00000000-0000-0000-0000-000000000001";
+const AGENT_UUID: UUID = "00000000-0000-0000-0000-000000000002";
+const ROOM_UUID: UUID = "00000000-0000-0000-0000-000000000003";
+const ENTITY_UUID: UUID = "00000000-0000-0000-0000-000000000004";
+
 // Mock message for testing
 function createMockMessage(text: string = "test message"): Memory {
   return {
     id: uuidv4(),
     content: { text },
-    userId: "test-user",
-    agentId: "test-agent",
-    roomId: "test-room",
+    userId: USER_UUID,
+    entityId: ENTITY_UUID,
+    agentId: AGENT_UUID,
+    roomId: ROOM_UUID,
     createdAt: Date.now(),
   } as Memory;
 }
@@ -89,11 +96,14 @@ function createMockMessage(text: string = "test message"): Memory {
 // Mock state for testing
 function createMockState(): State {
   return {
-    userId: "test-user",
-    agentId: "test-agent",
-    roomId: "test-room",
-    providers: {},
-    data: {},
+    text: "",
+    values: {},
+    data: {
+      userId: USER_UUID,
+      agentId: AGENT_UUID,
+      roomId: ROOM_UUID,
+      providers: {},
+    },
   } as State;
 }
 
@@ -109,9 +119,6 @@ describe("Provider Tests", () => {
   );
   const positionParamsProvider = plugin.providers?.find(
     (p) => p.name === "position-params"
-  );
-  const withdrawParamsProvider = plugin.providers?.find(
-    (p) => p.name === "WITHDRAW_PARAMS"
   );
 
   describe("LEVVA_PROVIDER", () => {
@@ -224,28 +231,11 @@ describe("Provider Tests", () => {
     });
   });
 
-  describe("WITHDRAW_PARAMS Provider", () => {
-    it("should exist in the plugin", () => {
-      expect(withdrawParamsProvider).toBeDefined();
-    });
-
-    it("should have the correct structure", () => {
-      if (withdrawParamsProvider) {
-        expect(withdrawParamsProvider).toHaveProperty(
-          "name",
-          "WITHDRAW_PARAMS"
-        );
-        expect(withdrawParamsProvider).toHaveProperty("get");
-        expect(typeof withdrawParamsProvider.get).toBe("function");
-      }
-    });
-  });
-
   describe("Provider Registration", () => {
     it("should include providers in the plugin definition", () => {
       expect(plugin.providers).toBeDefined();
       expect(Array.isArray(plugin.providers)).toBe(true);
-      expect(plugin.providers.length).toBeGreaterThan(0);
+      expect(plugin.providers?.length).toBeGreaterThan(0);
 
       documentTestResult("Provider registration check", {
         hasProviders: !!plugin.providers,

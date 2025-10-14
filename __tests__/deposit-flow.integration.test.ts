@@ -6,7 +6,7 @@ import {
   ChatTestContext,
 } from "./chat/setup";
 
-describe.sequential("Deposit Flow Integration", () => {
+describe("Deposit Flow Integration", () => {
   let context: ChatTestContext;
 
   beforeAll(async () => {
