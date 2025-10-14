@@ -13,6 +13,7 @@ export interface ExtractedDataForDeposit {
   strategyId?: number;
   strategyName?: string;
   strategyRisk?: string;
+  contractAddress?: string;
   tokenSymbol?: string;
   tokenAddress?: string;
   amount?: string; // numeric string only (e.g., "100" or "0.5")
@@ -36,6 +37,12 @@ const dataDescription: DataDescription<ExtractedDataForDeposit> = {
     type: "string",
     description:
       'The risk profile of the strategy: "ultra-safe", "safe", "brave", or "custom"',
+    default: "null",
+  },
+  contractAddress: {
+    type: "string",
+    description:
+      "The contract address of the strategy/vault if provided (e.g., 0xCF9bdc...)",
     default: "null",
   },
   tokenSymbol: {
@@ -164,7 +171,12 @@ CONTEXT-AWARE EXTRACTION:
 - **CRITICAL - Parameter Overriding**: If the user EXPLICITLY mentions a NEW value for a parameter that was previously set in <returnData>, you MUST return the NEW value to OVERRIDE the old one. For example:
   - If returnData has strategyId=1 (ultra-safe) and user says "I want to use custom strategy", extract strategyRisk="custom" to override
   - If returnData has tokenSymbol="USDC" and user says "I want to deposit WETH instead", extract tokenSymbol="WETH" to override
-  - If user says "use contract 0xCF9bdc..." when returnData already has a different strategy, extract the new strategyId or use strategyName matching that contract
+  - If user says "deposit into 0xCF9bdc..." when returnData already has a different strategy, extract contractAddress="0xCF9bdc..." to override
+- **EXTRACTION PRIORITY** (extract ONLY what user explicitly mentions):
+  - If user provides contract address (e.g., "0xCF9bdc...") → Extract ONLY contractAddress, DO NOT extract strategyId/strategyName/strategyRisk
+  - If user provides strategy ID → Extract ONLY strategyId, DO NOT extract strategyName/strategyRisk/contractAddress
+  - If user provides strategy name → Extract ONLY strategyName, DO NOT extract strategyRisk/strategyId/contractAddress
+  - If user provides risk level → Extract ONLY strategyRisk, DO NOT extract other strategy identifiers
 - **Smart Inference**: If user says "deposit into ultra-safe" and conversation shows USDC discussion, infer USDC
 - **Avoid Redundancy**: Don't ask for info that's already available in context AND not being changed
 
@@ -176,9 +188,11 @@ RETURN FORMAT CONSTRAINTS:
 
 EXTRACTION PRIORITY:
 1. **Current Message**: Direct parameter extraction from user's latest message
-   - If user mentions a CONTRACT ADDRESS (e.g., "0xCF9bdc..."), look it up in <availableStrategies> and extract the corresponding strategyId, strategyName, and strategyRisk
-   - If user mentions a strategy NAME or RISK (e.g., "custom strategy", "ultra-safe"), extract the corresponding identifiers
+   - If user mentions a CONTRACT ADDRESS (e.g., "0xCF9bdc..."), extract ONLY contractAddress (highest priority identifier)
+   - If user mentions a strategy ID, extract ONLY strategyId
+   - If user mentions a strategy NAME or RISK (e.g., "custom strategy", "ultra-safe"), extract the corresponding identifier
    - If user explicitly changes a parameter that was already in <returnData>, extract the NEW value to override
+   - DO NOT extract multiple strategy identifiers - only the one explicitly mentioned
 2. **Conversation Context**: Fill gaps using conversation history
 3. **Inherited/Return Data**: Use previously extracted or inherited parameters ONLY if user has not specified a different value
 4. **Smart Defaults**: Infer reasonable defaults from available context
@@ -191,12 +205,13 @@ CONFIDENCE SCORING:
 - **Very Low (0.0-0.1)**: Insufficient information to proceed
 
 STRATEGY MATCHING:
-- Match strategy names case-insensitively
-- Match risk profiles: "ultra-safe", "safe", "brave", "custom"
-- Use strategy ID if explicitly mentioned
-- **Contract Address Matching**: If user mentions a contract address (e.g., "0xCF9bdc..."), look it up in <availableStrategies> to find matching strategy ID and name
-- Consider strategy descriptions for fuzzy matching
-- **When user changes strategy**: If <returnData> has an existing strategy but user mentions a DIFFERENT strategy (by name, risk, ID, or contract), extract the NEW strategy identifiers to override
+- **Priority Order**: contractAddress > strategyId > strategyName > strategyRisk
+- **Contract Address** (highest priority): If user provides "0xCF9bdc...", extract ONLY contractAddress
+- **Strategy ID** (2nd priority): If user provides numeric ID, extract ONLY strategyId  
+- **Strategy Name** (3rd priority): Match names case-insensitively, extract ONLY strategyName
+- **Risk Profile** (lowest priority): Match "ultra-safe", "safe", "brave", "custom", extract ONLY strategyRisk
+- **IMPORTANT**: Extract ONLY the identifier type user mentions - do not extract multiple strategy identifiers
+- **When user changes strategy**: If <returnData> has existing strategy but user mentions DIFFERENT one, extract the NEW identifier to override
 
 TOKEN MATCHING:
 - **For VAULT strategies**: Only extract token if user explicitly mentions it (for validation against vault's underlyingToken)

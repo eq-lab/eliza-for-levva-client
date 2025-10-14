@@ -315,7 +315,7 @@ describe("Withdrawal Suggestions Integration", () => {
         },
         {
           // STEP 4: Cancel the withdrawal
-          message: "cancel",
+          message: "cancel withdrawal",
           validate: (responses, suggestions) => {
             console.log("\n🎯 STEP 4 VALIDATION (Cancel):");
 
