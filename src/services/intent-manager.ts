@@ -226,8 +226,40 @@ export class IntentManager extends Service {
     confidenceThreshold: number = INTENT_CONFIDENCE_THRESHOLD
   ): Promise<IntentContext | undefined> {
     try {
+      // Check if there's a recently cancelled intent for this domain
+      // This prevents immediate re-creation after user cancels
+      const cacheKey = `intent_${domain}_${userId}_${channelId}`;
+      const cachedIntent = await this.runtime.getCache<IntentContext>(cacheKey);
+      
+      if (cachedIntent?.status === "CANCELLED") {
+        const timeSinceCancellation = Date.now() - (cachedIntent.metadata?.cancelledAt || 0);
+        const CANCELLATION_GRACE_PERIOD = 10000; // 10 seconds
+        
+        if (timeSinceCancellation < CANCELLATION_GRACE_PERIOD) {
+          this.runtime.logger.info(
+            `[INTENT-DETECTION] Skipping detection - intent recently cancelled (${Math.round(timeSinceCancellation / 1000)}s ago)`,
+            {
+              domain,
+              intentId: cachedIntent.id,
+              intentType: cachedIntent.type,
+            }
+          );
+          return undefined;
+        }
+      }
+
       // Detect intent from current message
       const detect = await this.detectIntentWithLLM(message, domain);
+
+      this.runtime.logger.debug(
+        `[INTENT-DETECTION] LLM result for domain ${domain}:`,
+        {
+          intentType: detect?.intentType,
+          confidence: detect?.confidence,
+          threshold: confidenceThreshold,
+          existingType: existingIntentContext?.type,
+        }
+      );
 
       // Create new intent if detected, valid for domain, and different from existing
       if (
@@ -257,7 +289,7 @@ export class IntentManager extends Service {
         );
 
         this.runtime.logger.info(
-          `Created new intent: ${intentContext.id} (${intentContext.type}) with confidence ${detect.confidence}`
+          `[INTENT-DETECTION] Created new intent: ${intentContext.id} (${intentContext.type}) with confidence ${detect.confidence}`
         );
 
         return intentContext;
@@ -369,12 +401,12 @@ export class IntentManager extends Service {
   ) {
     const cacheKey = `intent_${domain}_${userId}_${channelId}`;
     const intent = await this.runtime.getCache<IntentContext>(cacheKey);
-    
+
     // DEBUG LOGGING
     this.runtime.logger.debug(
       `[getActiveIntentByDomain] Domain: ${domain}, CacheKey: ${cacheKey}, Found: ${!!intent}, Status: ${intent?.status}, ID: ${intent?.id}`
     );
-    
+
     return intent?.status === "ACTIVE" ? intent : undefined;
   }
 
@@ -382,19 +414,21 @@ export class IntentManager extends Service {
    * Get all active intents for a channel across all possible userIds
    * This is used for cleanup to find orphaned intents
    */
-  async getAllActiveIntentsInChannel(channelId: string): Promise<IntentContext[]> {
+  async getAllActiveIntentsInChannel(
+    channelId: string
+  ): Promise<IntentContext[]> {
     const activeIntents: IntentContext[] = [];
-    
+
     // Get all registered domains
     const allDomains = Array.from(IntentManager.getRegisteredIntents().values())
       .map((registration) => registration.domain)
       .filter((domain, index, self) => self.indexOf(domain) === index);
-    
+
     // For each domain, we need to check common userId patterns
     // This is a workaround since we can't do wildcard cache lookups
     // We'll check for the "unknown" userId specifically (common orphan case)
     const userIdsToCheck = ["unknown", "user"];
-    
+
     for (const domain of allDomains) {
       for (const userId of userIdsToCheck) {
         const cacheKey = `intent_${domain}_${userId}_${channelId}`;
@@ -411,7 +445,7 @@ export class IntentManager extends Service {
         }
       }
     }
-    
+
     return activeIntents;
   }
 
@@ -614,13 +648,17 @@ export class IntentManager extends Service {
     this.runtime.logger.debug(
       `[cancelIntent] Cancelling intent ${intent.id} (${intent.type}) in domain ${intent.domain}`
     );
-    
+
     // Mark as CANCELLED (not delete) for audit trail
     intent.status = "CANCELLED";
+    intent.metadata = {
+      ...intent.metadata,
+      cancelledAt: Date.now(),
+    };
     await this.storeIntent(intent);
-    
+
     this.runtime.logger.debug(
-      `[cancelIntent] Marked intent ${intent.id} as CANCELLED`
+      `[cancelIntent] Marked intent ${intent.id} as CANCELLED at ${intent.metadata.cancelledAt}`
     );
 
     // Cancel any child intents
