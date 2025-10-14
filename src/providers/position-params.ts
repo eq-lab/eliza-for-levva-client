@@ -187,11 +187,27 @@ export const positionParamsProvider: Provider = {
         ]);
 
         const availableStrategiesText = strategies
-          .map(
-            (s) =>
-              `${s.name} (ID: ${s.id}, Risk: ${s.risk}, Type: ${s.type}, Address: ${s.vault?.address}) - ${s.shortDescription}`
-          )
-          .join("\n");
+          .map((s) => {
+            const lines = [
+              `Strategy: ${s.name}`,
+              `  ID: ${s.id}`,
+              `  Risk: ${s.risk}`,
+              `  Type: ${s.type}`,
+            ];
+
+            if (s.vault?.address) {
+              lines.push(`  Contract: ${s.vault.address}`);
+            } else if (s.pool?.address) {
+              lines.push(`  Contract: ${s.pool.address}`);
+            }
+
+            if (s.shortDescription) {
+              lines.push(`  Description: ${s.shortDescription}`);
+            }
+
+            return lines.join("\n");
+          })
+          .join("\n\n");
 
         const userPortfolioText = service.wallet.formatWalletAssets(
           walletAssets,
@@ -224,17 +240,30 @@ export const positionParamsProvider: Provider = {
           const previous = (intentContext?.returnData ||
             {}) as Partial<DepositData>;
 
+          // Simple merge - priority system in findStrategy handles conflicts
           const combined: DepositData = {
             ...previous,
             ...result,
           };
 
-          // 2) Match strategy using StrategyComponent helpers
+          // Clear previous strategy reference if any new strategy identifier provided
+          if (
+            result.strategyId !== undefined ||
+            result.strategyName ||
+            result.strategyRisk ||
+            result.contractAddress
+          ) {
+            combined.strategy = undefined;
+          }
+
+          // 2) Match strategy using priority-based system
+          // Priority: contractAddress > strategyId > strategyName > strategyRisk
           const matched: StrategyEntry | undefined =
             service.strategy.findStrategy(strategies, {
               strategyId: combined.strategyId,
               strategyName: combined.strategyName,
               strategyRisk: combined.strategyRisk,
+              contractAddress: combined.contractAddress,
             });
 
           combined.strategy = matched;

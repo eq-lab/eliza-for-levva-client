@@ -36,11 +36,11 @@ export class StrategyComponent {
 
     const result = await getStrategiesApi(chainId);
     if (!result.success) {
-      logger.error("Failed to get strategies", result.error);
+      this.runtime.logger.error("Failed to get strategies", result.error);
       throw new Error("Failed to get strategies");
     }
 
-    logger.debug("Raw strategies data:", {
+    this.runtime.logger.debug("Raw strategies data:", {
       count: result.data.length,
       firstStrategy: result.data[0],
     });
@@ -53,7 +53,7 @@ export class StrategyComponent {
       )
       .map<StrategyEntry>((x, index) => {
         try {
-          logger.debug(`Processing strategy ${index}:`, {
+          this.runtime.logger.debug(`Processing strategy ${index}:`, {
             id: x.id,
             name: x.name,
             type: x.type,
@@ -98,13 +98,13 @@ export class StrategyComponent {
             vault: x.vault,
           };
 
-          logger.debug(
+          this.runtime.logger.debug(
             `Successfully processed strategy ${index}:`,
             strategyEntry
           );
           return strategyEntry;
         } catch (error) {
-          logger.error(`Error processing strategy ${index}:`, {
+          this.runtime.logger.error(`Error processing strategy ${index}:`, {
             error,
             strategy: x,
           });
@@ -123,35 +123,59 @@ export class StrategyComponent {
    * @param criteria - Strategy search criteria
    * @returns The matched strategy or undefined if not found
    */
+  /**
+   * Find strategy using priority-based matching
+   * Priority: contractAddress > strategyId > strategyName > strategyRisk
+   *
+   * Higher priority fields take precedence - when a higher priority field is present,
+   * lower priority fields are ignored to ensure correct strategy selection.
+   */
   findStrategy(
     strategies: StrategyEntry[],
     criteria: {
       strategyId?: number;
       strategyName?: string;
       strategyRisk?: string;
+      contractAddress?: string;
     }
   ): StrategyEntry | undefined {
-    const { strategyId, strategyName, strategyRisk } = criteria;
+    const { strategyId, strategyName, strategyRisk, contractAddress } =
+      criteria;
 
-    if (!strategyId && !strategyName && !strategyRisk) {
-      return undefined;
+    // Priority 1: Contract address (highest priority)
+    if (contractAddress) {
+      return strategies.find(
+        (s) =>
+          s.vault?.address?.toLowerCase() === contractAddress.toLowerCase() ||
+          s.pool?.address?.toLowerCase() === contractAddress.toLowerCase()
+      );
     }
 
-    return strategies.find(
-      (s) =>
-        // Match by ID (exact)
-        s.id === strategyId ||
-        // Match by name (case insensitive)
-        (s.name &&
-          strategyName &&
-          s.name.toLowerCase() === strategyName.toLowerCase()) ||
-        // Match by risk level (case insensitive)
-        (strategyName && s.risk.toLowerCase() === strategyName.toLowerCase()) ||
-        (strategyRisk && s.risk.toLowerCase() === strategyRisk.toLowerCase()) ||
-        // Handle common strategy aliases with fuzzy matching
-        (strategyName && this.matchesStrategyAlias(strategyName, s.risk)) ||
-        (strategyRisk && this.matchesStrategyAlias(strategyRisk, s.risk))
-    );
+    // Priority 2: Strategy ID
+    if (strategyId !== undefined) {
+      return strategies.find((s) => s.id === strategyId);
+    }
+
+    // Priority 3: Strategy name
+    if (strategyName) {
+      return strategies.find(
+        (s) =>
+          (s.name && s.name.toLowerCase() === strategyName.toLowerCase()) ||
+          s.risk.toLowerCase() === strategyName.toLowerCase() ||
+          this.matchesStrategyAlias(strategyName, s.risk)
+      );
+    }
+
+    // Priority 4: Strategy risk (lowest priority)
+    if (strategyRisk) {
+      return strategies.find(
+        (s) =>
+          s.risk.toLowerCase() === strategyRisk.toLowerCase() ||
+          this.matchesStrategyAlias(strategyRisk, s.risk)
+      );
+    }
+
+    return undefined;
   }
 
   /**

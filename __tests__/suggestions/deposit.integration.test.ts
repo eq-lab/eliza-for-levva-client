@@ -126,7 +126,7 @@ describe("Deposit Suggestions Integration", () => {
         },
         {
           // STEP 4: Cancel the deposit
-          message: "cancel",
+          message: "cancel deposit",
           validate: (responses, suggestions) => {
             console.log("\n🎯 STEP 4 VALIDATION (Cancel):");
             expect(responses.length).toBeGreaterThan(0);

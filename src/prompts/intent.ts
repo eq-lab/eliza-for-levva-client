@@ -94,6 +94,12 @@ ${intentList}
    - Only trigger intents when user clearly expresses desire to PERFORM an action (not just view information)
    - Consider the context of numbers and amounts based on what was previously asked
 
+2.5. **CANCEL/ABORT DETECTION** (CRITICAL):
+   - If user says "cancel", "nevermind", "stop", "abort", "forget it", "no", "don't" → return undefined, confidence < 0.2
+   - These are cancellation requests, NOT new action intents
+   - Even if previous conversation mentioned positions/withdrawals/deposits, cancellation is not an intent
+   - User canceling a transaction does NOT mean they want to withdraw or perform any other action
+
 3. **Intent Selection**: Select the most appropriate intent from available options
    - BE CONSERVATIVE: Only create intents when user clearly wants to perform a transaction
    - Prioritize conversation context over isolated message analysis
