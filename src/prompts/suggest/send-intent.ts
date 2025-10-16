@@ -1,4 +1,10 @@
 import type { IntentContext } from "../../services/intent-manager";
+import {
+  generateIntentContextSection,
+  generateOutputFormat,
+  generateCommonInstructions,
+} from "../helpers";
+import { calculateAmountsFromBalance } from "../helpers/amount-suggestions";
 
 export interface SendIntentSuggestionParams {
   intentContext: IntentContext;
@@ -17,6 +23,7 @@ export interface SendIntentSuggestionParams {
     symbol: string;
     amount: bigint;
     value: bigint;
+    decimals?: number;
   }>;
 }
 
@@ -43,54 +50,127 @@ export function generateSendIntentSuggestionsPrompt(
     const tokenDisplay = tokenSymbol || tokenAddress?.slice(0, 8) || "tokens";
     const shortRecipient = `${recipientAddress.slice(0, 6)}...${recipientAddress.slice(-4)}`;
 
-    return `<task>Generate edit/cancel suggestions for send - all parameters set</task>
-<intentContext>
-Intent Type: SEND
-Token: ${tokenDisplay}
-Amount: ${amount}
-Recipient: ${shortRecipient}
-Status: All parameters set (confirmation handled in UI)
-User Address: ${userAddress}
-Chain ID: ${chainId}
-</intentContext>
-<conversation>
-${conversation}
-</conversation>
-<instructions>
-Generate 3-5 natural, conversational suggestions for editing or cancelling:
+    // Get wallet asset for balance-aware amount suggestions
+    const walletAsset = walletAssets.find((a) => {
+      if (tokenAddress) {
+        return a.token.toLowerCase() === tokenAddress.toLowerCase();
+      }
+      return a.symbol.toLowerCase() === tokenSymbol?.toLowerCase();
+    });
+
+    const amounts = calculateAmountsFromBalance(
+      walletAsset?.amount ?? 0n,
+      walletAsset?.decimals ?? 18,
+      walletAsset?.token
+    );
+
+    // Get alternative tokens for suggestions
+    const alternativeTokens = walletAssets
+      .filter((a) => a.amount > 0n && a.symbol !== tokenDisplay)
+      .slice(0, 2)
+      .map((a) => a.symbol);
+
+    const intentContext = generateIntentContextSection({
+      intentType: "SEND",
+      status: "All parameters set (confirmation handled in UI)",
+      userAddress,
+      chainId,
+      parameters: {
+        Token: tokenDisplay,
+        Amount: amount,
+        Recipient: shortRecipient,
+        ...(amounts.hasBalance
+          ? { "Available Balance": `${amounts.fullAmount} ${tokenDisplay}` }
+          : {}),
+      },
+    });
+
+    const amountContext = amounts.hasBalance
+      ? `\nUser has ${amounts.fullAmount} ${tokenDisplay} available. Suggest specific amounts: ${amounts.amount50} ${tokenDisplay}, ${amounts.amount75} ${tokenDisplay}.`
+      : "";
+
+    const tokenContext =
+      alternativeTokens.length > 0
+        ? `\nAlternative tokens: ${alternativeTokens.join(", ")}`
+        : "";
+
+    // Build label format examples
+    const labelExamples = [];
+    if (amounts.hasBalance) {
+      labelExamples.push(
+        `- "Send ${amounts.amount50} ${tokenDisplay}" - for 50% amount`,
+        `- "Send ${amounts.amount75} ${tokenDisplay}" - for 75% amount`
+      );
+    } else {
+      labelExamples.push(`- "Different amount" - for amount change`);
+    }
+    if (alternativeTokens.length > 0) {
+      labelExamples.push(
+        `- "Send ${alternativeTokens[0]}" - for specific token change`
+      );
+    } else {
+      labelExamples.push(`- "Different token" - for token change`);
+    }
+    labelExamples.push(
+      `- "Different recipient" - for address change`,
+      `- "Cancel transfer" - for cancellation`
+    );
+
+    // Build text format examples
+    const textExamples = [];
+    if (amounts.hasBalance) {
+      textExamples.push(
+        `- "Actually, send ${amounts.amount50} ${tokenDisplay} instead"`,
+        `- "Let me send ${amounts.amount75} ${tokenDisplay}"`
+      );
+    } else {
+      textExamples.push(`- "Actually, send a different amount"`);
+    }
+    if (alternativeTokens.length > 0) {
+      textExamples.push(`- "Send ${alternativeTokens[0]} instead"`);
+    } else {
+      textExamples.push(`- "Change to a different token"`);
+    }
+    textExamples.push(
+      `- "Send to a different address"`,
+      `- "Cancel this transfer"`
+    );
+
+    const instructions = generateCommonInstructions({
+      suggestionType: "missing-info",
+      specificInstructions: `Generate 3-5 natural, conversational suggestions for editing or cancelling:
 
 IMPORTANT: DO NOT suggest confirmation - that is handled by the UI.
 Only provide suggestions for EDITING parameters or CANCELLING.
+${amountContext}${tokenContext}
 
 SUGGESTION PRIORITIES:
-1. Edit amount
-2. Change token
-3. Change recipient address
+1. Edit amount with SPECIFIC amounts from balance
+2. Change to SPECIFIC alternative token
+3. Change recipient address (warn about irreversibility)
 4. Cancel transfer
 
-SUGGESTION FORMATS:
-- "Actually, send a different amount" - edit amount
-- "Change to a different token" - change token
-- "Send to a different address" - change recipient
-- "Cancel this transfer" - cancel
+LABEL FORMAT (must be SPECIFIC):
+${labelExamples.join("\n")}
+
+TEXT FORMAT (use ACTUAL specific values):
+${textExamples.join("\n")}
 
 Each suggestion should:
+- Use SPECIFIC amounts or token names in BOTH label and text
 - Be natural and conversational
 - Focus on parameter modification or cancellation
 - NOT include confirmation suggestions
-- Emphasize that transfers are irreversible (if user wants to change recipient)
-</instructions>
-<output>
-Respond using JSON format:
-{
-  "suggestions": [
-    {
-      "label": "Edit or cancel action",
-      "text": "Natural message that edits parameters or cancels"
-    }
-  ]
-}
-</output>`;
+- Emphasize that transfers are irreversible (if user wants to change recipient)`,
+    });
+
+    return `<task>Generate edit/cancel suggestions for send - all parameters set</task>
+${intentContext}
+<conversation>
+${conversation}
+</conversation>
+${instructions}
+${generateOutputFormat()}`;
   }
 
   // Case 2: Recipient + token set, need amount

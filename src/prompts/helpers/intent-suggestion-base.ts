@@ -1,10 +1,14 @@
 /**
  * Base helper functions for intent-aware suggestion generation
  *
- * @version 1.0.0
+ * @version 1.1.0
  * @lastModified 2025-01-XX
- * @changes Initial creation - extracted common patterns from intent suggestion prompts
+ * @changes v1.1.0: Updated generateOutputFormat to use formatZodOutput helper
+ * @changes v1.0.0: Initial creation - extracted common patterns from intent suggestion prompts
  */
+
+import { formatZodOutput } from "../util";
+import { defaultSuggestionSchema } from "../suggest/schema";
 
 export interface BaseIntentSuggestionConfig {
   intentType: string;
@@ -102,30 +106,43 @@ ${cancellationNote}
 }
 
 /**
- * Generate standard output format section
+ * Generate standard output format section using Zod schema
+ *
+ * Uses the shared defaultSuggestionSchema for consistent output format.
+ * Note: Prompts should also pass schema to useModel for structured output:
+ *
+ * @example
+ * import { defaultSuggestionSchema } from "../suggest/schema";
+ * import { zodJsonSchema } from "../util";
+ *
+ * const result = await runtime.useModel(ModelType.OBJECT_SMALL, {
+ *   prompt: generateOutputFormat(),
+ *   schema: zodJsonSchema(defaultSuggestionSchema),
+ *   temperature: 0,
+ * });
  */
-export function generateOutputFormat(additionalFields?: string): string {
-  const baseFormat = `{
-  "suggestions": [
-    {
-      "label": "Short descriptive label",
-      "text": "What the USER would type/say to the agent"
-    }
-  ]${additionalFields ? `,\n${additionalFields}` : ""}
-}`;
-
+export function generateOutputFormat(): string {
   return `<output>
-Respond using JSON format like this:
-${baseFormat}
+${formatZodOutput(defaultSuggestionSchema)}
 
-**CRITICAL: The "text" field MUST be what the USER would say/type, NOT what the agent would respond.**
+**CRITICAL REQUIREMENTS:**
+1. Each suggestion MUST have BOTH "label" AND "text" fields - never omit either one
+2. The "label" is a SHORT, SPECIFIC, UI-friendly description (2-5 words) that clearly indicates what the suggestion does
+3. The "text" is the complete message the USER would type/say to the agent
+4. The "text" field MUST be what the USER would say, NOT what the agent would respond
 
-Examples:
-✅ CORRECT: "Withdraw 100 USDC from Brave strategy"
-❌ WRONG: "Consider withdrawing from your Brave strategy to rebalance..."
+**CORRECT EXAMPLES:**
+✅ { "label": "Withdraw 100 USDC", "text": "Actually, withdraw 100 USDC instead" }
+✅ { "label": "50% of balance", "text": "Withdraw 50 USDC from Brave strategy" }
+✅ { "label": "Cancel withdrawal", "text": "Cancel this withdrawal" }
+✅ { "label": "Safe yield strategy", "text": "I want to deposit into the safe yield strategy" }
 
-✅ CORRECT: "I want to deposit into the safe yield strategy"
-❌ WRONG: "You could deposit into the safe yield strategy for stable returns"
+**WRONG EXAMPLES:**
+❌ { "text": "Withdraw 100 USDC" } - Missing label field!
+❌ { "label": "Withdraw" } - Missing text field!
+❌ { "label": "Edit amount" } - Too vague! Should be "Withdraw 100 USDC" or "50% of balance"
+❌ { "label": "Different option" } - Not specific! Should clearly state what the option is
+❌ { "label": "Advice", "text": "You should consider withdrawing..." } - Text is agent advice, not user message!
 
 Your response should include the valid JSON block and nothing else.
 </output>`;

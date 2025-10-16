@@ -10,7 +10,12 @@ import {
 import { plugin } from "@elizaos/plugin-sql";
 import { modules } from "../actions/modules";
 import { LEVVA_SERVICE } from "../constants/enum";
-import { defaultSuggestionPrompt } from "../prompts/default";
+import { defaultSuggestionPrompt } from "../prompts/suggest/default";
+import {
+  defaultSuggestionSchema,
+  suggestionTypeSchema,
+} from "../prompts/suggest/schema";
+import { zodJsonSchema } from "../prompts/util";
 import { LevvaService } from "../services/levva/class";
 import { suggestTypeTemplate } from "../templates/generate";
 import { isHex } from "viem";
@@ -258,7 +263,7 @@ export const suggestionsEvaluator: Evaluator = {
           "[SUGGESTIONS] No intent-aware suggestions, falling back to action-based suggestions"
         );
 
-        const gen = await runtime.useModel(ModelType.OBJECT_LARGE, {
+        const gen = await runtime.useModel(ModelType.OBJECT_SMALL, {
           prompt: suggestTypeTemplate(
             suggestions.map(({ name, description }) => ({
               name,
@@ -267,6 +272,8 @@ export const suggestionsEvaluator: Evaluator = {
           )
             .replace("{{userData}}", JSON.stringify(user))
             .replace("{{conversation}}", conversation),
+          schema: zodJsonSchema(suggestionTypeSchema),
+          temperature: 0,
         });
 
         const type = gen.type;
@@ -284,6 +291,8 @@ export const suggestionsEvaluator: Evaluator = {
 
           result = await runtime.useModel(model, {
             prompt,
+            schema: zodJsonSchema(defaultSuggestionSchema),
+            temperature: 0,
           });
         }
       } else if (result) {
@@ -296,6 +305,8 @@ export const suggestionsEvaluator: Evaluator = {
         logger.debug("Using default suggestions");
         result = await runtime.useModel(ModelType.OBJECT_SMALL, {
           prompt: defaultSuggestionPrompt({ conversation }),
+          schema: zodJsonSchema(defaultSuggestionSchema),
+          temperature: 0,
         });
       }
 
@@ -360,6 +371,8 @@ async function generateIntentAwareSuggestions(
           );
           const result = await runtime.useModel(ModelType.OBJECT_SMALL, {
             prompt,
+            schema: zodJsonSchema(defaultSuggestionSchema),
+            temperature: 0,
           });
           logger.info(
             `[SUGGESTIONS-GEN] LLM returned ${result?.suggestions?.length || 0} suggestions`

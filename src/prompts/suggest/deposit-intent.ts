@@ -14,7 +14,10 @@ import {
   generateOutputFormat,
   generateCommonInstructions,
 } from "../helpers";
-import { formatUnits } from "viem";
+import {
+  calculateAmountsFromBalance,
+  generateAmountContext,
+} from "../helpers/amount-suggestions";
 
 export interface DepositIntentSuggestionParams {
   intentContext: IntentContext;
@@ -108,6 +111,25 @@ export function generateDepositIntentSuggestionsPrompt(
   if (strategyId && tokenSymbol && amount && (!isPool || leverage)) {
     const strategyDisplay = strategyName || `Strategy #${strategyId}`;
 
+    // Get wallet asset and calculate amounts for balance-aware suggestions
+    const walletAsset = walletAssets.find((a) => {
+      const token = getToken(a.token);
+      return token && token.symbol.toLowerCase() === tokenSymbol.toLowerCase();
+    });
+
+    const token = walletAsset ? getToken(walletAsset.token) : undefined;
+    const amounts = calculateAmountsFromBalance(
+      walletAsset?.amount ?? 0n,
+      token?.decimals ?? 18,
+      walletAsset?.token
+    );
+
+    // Get alternative strategies for suggestions
+    const alternativeStrategies = strategies
+      .filter((s) => s.id !== strategyId)
+      .slice(0, 2)
+      .map((s) => s.name);
+
     const intentContext = generateIntentContextSection({
       intentType: "DEPOSIT",
       status: "All parameters set (confirmation handled in UI)",
@@ -118,8 +140,67 @@ export function generateDepositIntentSuggestionsPrompt(
         Token: tokenSymbol,
         Amount: amount,
         ...(isPool && leverage ? { Leverage: `${leverage}x` } : {}),
+        ...(amounts.hasBalance
+          ? { "Available Balance": `${amounts.fullAmount} ${tokenSymbol}` }
+          : {}),
       },
     });
+
+    const amountContext = amounts.hasBalance
+      ? `\nUser has ${amounts.fullAmount} ${tokenSymbol} available. Suggest specific amounts: ${amounts.amount50} ${tokenSymbol}, ${amounts.amount75} ${tokenSymbol}, or ${amounts.fullAmount} ${tokenSymbol}.`
+      : "";
+
+    const strategyContext =
+      alternativeStrategies.length > 0
+        ? `\nAlternative strategies: ${alternativeStrategies.join(", ")}`
+        : "";
+
+    // Build label format examples
+    const labelExamples = [];
+    if (amounts.hasBalance) {
+      labelExamples.push(
+        `- "Deposit ${amounts.amount50} ${tokenSymbol}" - for 50% amount`,
+        `- "Deposit ${amounts.amount75} ${tokenSymbol}" - for 75% amount`,
+        `- "Deposit ${amounts.fullAmount} ${tokenSymbol}" - for full balance`
+      );
+    } else {
+      labelExamples.push(
+        `- "Deposit 100 ${tokenSymbol}" - for different amount`
+      );
+    }
+    if (isPool) {
+      labelExamples.push(`- "Use 3x leverage" - for different leverage`);
+    }
+    if (alternativeStrategies.length > 0) {
+      labelExamples.push(
+        `- "${alternativeStrategies[0]}" - for specific strategy change`
+      );
+    } else {
+      labelExamples.push(`- "Different strategy" - for strategy change`);
+    }
+    labelExamples.push(`- "Cancel deposit" - for cancellation`);
+
+    // Build text format examples
+    const textExamples = [];
+    if (amounts.hasBalance) {
+      textExamples.push(
+        `- "Actually, change the amount to ${amounts.amount50} ${tokenSymbol}"`,
+        `- "Let me deposit ${amounts.amount75} ${tokenSymbol} instead"`
+      );
+    } else {
+      textExamples.push(
+        `- "Actually, change the amount to 100 ${tokenSymbol}"`
+      );
+    }
+    if (isPool) {
+      textExamples.push(`- "Let me use 3x leverage instead"`);
+    }
+    if (alternativeStrategies.length > 0) {
+      textExamples.push(`- "Change to ${alternativeStrategies[0]}"`);
+    } else {
+      textExamples.push(`- "Change to a different strategy"`);
+    }
+    textExamples.push(`- "Cancel this deposit"`);
 
     const instructions = generateCommonInstructions({
       suggestionType: "missing-info",
@@ -127,20 +208,22 @@ export function generateDepositIntentSuggestionsPrompt(
 
 IMPORTANT: DO NOT suggest confirmation - that is handled by the UI.
 Only provide suggestions for EDITING parameters or CANCELLING.
+${amountContext}${strategyContext}
 
 SUGGESTION PRIORITIES:
-1. Edit amount
-2. Edit leverage (pools only)
-3. Change strategy
+1. Edit amount with SPECIFIC amounts from balance
+2. Edit leverage (pools only) with SPECIFIC leverage values
+3. Change to SPECIFIC alternative strategy
 4. Cancel deposit
 
-SUGGESTION FORMATS:
-- "Actually, change the amount to [X]" - edit amount
-- "Let me use [Y]x leverage instead" - edit leverage (pools)
-- "Change to a different strategy" - change strategy
-- "Cancel this deposit" - cancel
+LABEL FORMAT (must be SPECIFIC):
+${labelExamples.join("\n")}
+
+TEXT FORMAT (use ACTUAL specific values):
+${textExamples.join("\n")}
 
 Each suggestion should:
+- Use SPECIFIC amounts, leverage, or strategy names in BOTH label and text
 - Be natural and conversational
 - Focus on parameter modification or cancellation
 - NOT include confirmation suggestions`,
@@ -210,31 +293,18 @@ ${generateOutputFormat()}`;
       return token && token.symbol.toLowerCase() === tokenSymbol.toLowerCase();
     });
 
-    // Calculate actual token amounts based on balance if available
-    const amounts = [1, 0.75, 0.5, 0.25];
-    let calculatedAmounts: string[] = [];
-    let hasBalance = false;
+    // Calculate actual token amounts based on balance using universal helper
+    const token = walletAsset ? getToken(walletAsset.token) : undefined;
+    const amounts = calculateAmountsFromBalance(
+      walletAsset?.amount ?? 0n,
+      token?.decimals ?? 18,
+      walletAsset?.token
+    );
 
-    if (walletAsset) {
-      const token = getToken(walletAsset.token);
-      if (token) {
-        const balance = parseFloat(
-          formatUnits(walletAsset.amount, token.decimals)
-        );
-        if (balance > 0) {
-          hasBalance = true;
-          calculatedAmounts = amounts.map((pct) => (balance * pct).toFixed(6));
-        }
-      }
-    }
+    const { fullAmount, amount75, amount50, amount25, hasBalance } = amounts;
 
-    const [fullAmount = "", amount75 = "", amount50 = "", amount25 = ""] =
-      calculatedAmounts;
-
-    let amountContext = "";
-    if (hasBalance) {
-      amountContext = `\nUser has ${fullAmount} ${tokenSymbol} available in wallet.`;
-    }
+    // Generate amount context for prompt
+    const amountContext = generateAmountContext(tokenSymbol, amounts);
 
     const intentContext = generateIntentContextSection({
       intentType: "DEPOSIT",
@@ -250,17 +320,21 @@ ${generateOutputFormat()}`;
       },
     });
 
+    const gasNote = amounts.isNativeToken
+      ? `\nIMPORTANT: ${tokenSymbol} is native token - suggest max 95% to reserve gas for transaction.`
+      : "";
+
     const instructions = generateCommonInstructions({
       suggestionType: "next-step",
       specificInstructions: `Generate 3-5 natural, conversational suggestions for deposit amount.
 
 CRITICAL: The token symbol is "${tokenSymbol}" - use ONLY this exact symbol, nothing else.
-${hasBalance ? `User has ${fullAmount} ${tokenSymbol} available in wallet.` : ""}
+${hasBalance ? `User has ${fullAmount} ${tokenSymbol} available in wallet${amounts.isNativeToken ? " (95% max to reserve gas)" : ""}.` : "No balance available."}${gasNote}
 
 LABEL FORMAT (use specific amounts, NOT generic labels):
 ${
   hasBalance
-    ? `- "Full balance" - for depositing all ${tokenSymbol}
+    ? `- "Full balance" - for depositing ${amounts.isNativeToken ? "95%" : "all"} ${tokenSymbol}
 - "75% of balance" - for depositing 75% of ${tokenSymbol}
 - "50% of balance" - for depositing 50% of ${tokenSymbol}
 - "Partial amount" - for a smaller specific amount`
@@ -270,7 +344,7 @@ ${
 TEXT FORMAT (use "${tokenSymbol}" exactly as shown and ACTUAL amounts):
 ${
   hasBalance
-    ? `- "Deposit ${fullAmount} ${tokenSymbol}" - full balance
+    ? `- "Deposit ${fullAmount} ${tokenSymbol}" - full ${amounts.isNativeToken ? "(95%)" : ""} balance
 - "I want to deposit ${amount75} ${tokenSymbol}" - 75% of balance
 - "Deposit ${amount50} ${tokenSymbol}" - 50% of balance
 - "Deposit ${amount25} ${tokenSymbol}" - 25% of balance`
@@ -283,7 +357,7 @@ ${
 Each suggestion should:
 - Be natural and conversational
 - Use ONLY the token symbol "${tokenSymbol}" (no extra characters or variations)
-- Provide specific amounts based on balance when available
+- Provide specific amounts based on balance when available${amounts.isNativeToken ? "\n- Reserve 5% for gas if native token" : ""}
 - Lead to transaction creation`,
     });
 

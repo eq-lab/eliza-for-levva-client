@@ -15,6 +15,7 @@
         "patchright": "1.50.1",
         "viem": "2.30.6",
         "zod": "3.24.2",
+        "zod-to-json-schema": "^3.24.6",
       },
       "devDependencies": {
         "@elizaos/api-client": "1.5.10",

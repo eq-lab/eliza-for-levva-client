@@ -1,7 +1,16 @@
-import { formatZodKeys, formatZodOutput } from "./util";
-import { defaultSuggestionSchema } from "./suggest/schema";
+/**
+ * Default suggestion generation prompt
+ * 
+ * @version 2.0.0
+ * @lastModified 2025-01-XX
+ * @changes v2.0.0: Moved to suggest/ folder for consistency with intent-based suggestions
+ * @changes v1.0.0: Initial implementation
+ */
 
-export type { DefaultSuggestionResult } from "./suggest/schema";
+import { formatZodKeys, formatZodOutput } from "../util";
+import { defaultSuggestionSchema } from "./schema";
+
+export type { DefaultSuggestionResult } from "./schema";
 export { defaultSuggestionSchema };
 
 export const defaultSuggestionPrompt = (ctx: {
