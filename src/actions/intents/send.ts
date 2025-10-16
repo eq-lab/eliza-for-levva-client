@@ -459,6 +459,7 @@ export async function generateSendSuggestions(params: {
         symbol: tokenData?.symbol || "UNKNOWN",
         amount: asset.amount,
         value: asset.value,
+        decimals: tokenData?.decimals,
       };
     }),
   });

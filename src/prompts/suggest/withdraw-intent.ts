@@ -292,6 +292,32 @@ ${generateOutputFormat()}`;
     const amountDisplay =
       returnData.amount === "all" ? "ALL" : String(returnData.amount);
 
+    // Get position balance for position-aware suggestions
+    const position = positions.find(
+      (p) => p.strategyId === returnData.strategyId
+    );
+
+    // Get the token symbol from the strategy (positions use vault's underlying token)
+    const tokenSymbol =
+      (strategy as any)?.vault?.underlyingToken?.symbol || "tokens";
+
+    // Calculate alternative amounts based on position amount
+    const fullAmount = position?.balance || 0;
+    const amounts = [0.75, 0.5];
+    const calculatedAmounts = amounts.map(
+      (pct) => Math.floor(fullAmount * pct * 100) / 100
+    );
+    const [amount75, amount50] = calculatedAmounts;
+
+    // Get alternative strategies for suggestions
+    const alternativeStrategies = positions
+      .filter((p) => p.strategyId !== returnData.strategyId)
+      .slice(0, 2)
+      .map((p) => {
+        const strat = strategies.find((s) => s.id === p.strategyId);
+        return strat?.name || `Strategy ${p.strategyId}`;
+      });
+
     const intentContext = generateIntentContextSection({
       intentType: "WITHDRAW",
       status: "All parameters set (confirmation handled in UI)",
@@ -301,8 +327,60 @@ ${generateOutputFormat()}`;
         Strategy: `${strategyName} (ID: ${returnData.strategyId})`,
         Amount: amountDisplay,
         Step: withdrawalStep || "request",
+        ...(position
+          ? {
+              "Position Amount": `${position.balance} ${tokenSymbol} ($${position.balanceUsd.toFixed(2)})`,
+            }
+          : {}),
       },
     });
+
+    const amountContext = position
+      ? `\nUser has ${fullAmount} ${tokenSymbol} in this position. Suggest specific amounts: ${amount50} ${tokenSymbol}, ${amount75} ${tokenSymbol}, or ${fullAmount} ${tokenSymbol}.`
+      : "";
+
+    const strategyContext =
+      alternativeStrategies.length > 0
+        ? `\nAlternative positions: ${alternativeStrategies.join(", ")}`
+        : "";
+
+    // Build label format examples
+    const labelExamples = [];
+    if (position) {
+      labelExamples.push(
+        `- "Withdraw ${amount50} ${tokenSymbol}" - for 50% of position`,
+        `- "Withdraw ${amount75} ${tokenSymbol}" - for 75% of position`,
+        `- "Withdraw ${fullAmount} ${tokenSymbol}" - for full position`
+      );
+    } else {
+      labelExamples.push(`- "Withdraw 50%" - for different amount`);
+    }
+    if (alternativeStrategies.length > 0) {
+      labelExamples.push(
+        `- "${alternativeStrategies[0]}" - for specific strategy change`
+      );
+    } else {
+      labelExamples.push(`- "Different strategy" - for strategy change`);
+    }
+    labelExamples.push(`- "Cancel withdrawal" - for cancellation`);
+
+    // Build text format examples
+    const textExamples = [];
+    if (position) {
+      textExamples.push(
+        `- "Actually, withdraw ${amount50} ${tokenSymbol} instead"`,
+        `- "Let me withdraw ${amount75} ${tokenSymbol}"`,
+        `- "Withdraw ${fullAmount} ${tokenSymbol} from ${strategyName}"`
+      );
+    } else {
+      textExamples.push(`- "Actually, withdraw 50% instead"`);
+    }
+    if (alternativeStrategies.length > 0) {
+      textExamples.push(`- "Withdraw from ${alternativeStrategies[0]}"`);
+    } else {
+      textExamples.push(`- "Withdraw from a different strategy"`);
+    }
+    textExamples.push(`- "Cancel this withdrawal"`);
 
     const instructions = generateCommonInstructions({
       suggestionType: "missing-info",
@@ -310,18 +388,21 @@ ${generateOutputFormat()}`;
 
 IMPORTANT: DO NOT suggest confirmation - that is handled by the UI.
 Only provide suggestions for EDITING parameters or CANCELLING.
+${amountContext}${strategyContext}
 
 SUGGESTION PRIORITIES:
-1. Edit amount
-2. Change to different position/strategy
+1. Edit amount with SPECIFIC amounts from position (in actual token like USDC, ETH)
+2. Change to SPECIFIC alternative position/strategy
 3. Cancel withdrawal
 
-SUGGESTION FORMATS:
-- "Actually, withdraw 50% instead" - edit amount
-- "Withdraw from a different strategy" - change strategy
-- "Cancel this withdrawal" - cancel
+LABEL FORMAT (must be SPECIFIC):
+${labelExamples.join("\n")}
+
+TEXT FORMAT (use ACTUAL specific values):
+${textExamples.join("\n")}
 
 Each suggestion should:
+- Use SPECIFIC amounts with ACTUAL token symbols (${tokenSymbol}) in BOTH label and text
 - Be natural and conversational
 - Focus on parameter modification or cancellation
 - NOT include confirmation suggestions`,

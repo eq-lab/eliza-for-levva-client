@@ -59,6 +59,7 @@ export async function generateSwapSuggestions(params: {
         (asset.token === ETH_NULL_ADDR ? "ETH" : asset.token.slice(0, 8)),
       amount: asset.amount,
       value: asset.value,
+      decimals: token?.decimals,
     };
   });
 

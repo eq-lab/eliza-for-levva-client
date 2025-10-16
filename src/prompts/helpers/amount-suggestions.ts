@@ -1,257 +1,217 @@
 /**
- * Amount suggestion helper for consistent amount suggestion logic
+ * Universal amount suggestion helper for consistent amount calculations across all intents
  *
- * @version 1.0.0
+ * @version 2.0.0
  * @lastModified 2025-01-XX
- * @changes Initial creation - standardized amount suggestion percentages and formatting
+ * @changes v2.0.0: Refactored based on deposit-intent pattern with native token gas reservation
+ * @changes v1.0.0: Initial creation
  */
 
+import { formatUnits } from "viem";
+import { ETH_NULL_ADDR } from "../../constants/eth";
+
 /**
- * Standard amount suggestion percentages
+ * Standard amount suggestion percentages for ERC-20 tokens
  */
 export const STANDARD_AMOUNT_PERCENTAGES = {
   FULL: 1.0, // 100%
-  HALF: 0.5, // 50%
-  QUARTER: 0.25, // 25%
-  TENTH: 0.1, // 10%
-};
+  HIGH: 0.75, // 75%
+  MEDIUM: 0.5, // 50%
+  LOW: 0.25, // 25%
+} as const;
 
 /**
  * Amount percentages for native tokens (reserve for gas)
  */
 export const NATIVE_TOKEN_PERCENTAGES = {
-  NEAR_FULL: 0.95, // 95% (reserve 5% for gas)
-  HALF: 0.5, // 50%
-  QUARTER: 0.25, // 25%
-  TENTH: 0.1, // 10%
-};
+  FULL: 0.95, // 95% (reserve 5% for gas)
+  HIGH: 0.75, // 75%
+  MEDIUM: 0.5, // 50%
+  LOW: 0.25, // 25%
+} as const;
 
-/**
- * Alternative amount suggestion pattern (used in strategy prompts)
- */
-export const ALTERNATIVE_PERCENTAGES = {
-  FULL: 1.0, // 100%
-  HIGH: 0.7, // 70%
-  MEDIUM: 0.4, // 40%
-  LOW: 0.1, // 10%
-};
-
-export interface AmountSuggestion {
-  percentage: number;
-  amount: string;
-  label: string;
-  description?: string;
-}
-
-export interface AmountSuggestionConfig {
-  maxAmount: bigint;
-  decimals: number;
-  tokenSymbol: string;
-  isNativeToken?: boolean;
-  percentageSet?: "standard" | "native" | "alternative";
-  includeMax?: boolean;
+export interface CalculatedAmounts {
+  fullAmount: string;
+  amount75: string;
+  amount50: string;
+  amount25: string;
+  isNativeToken: boolean;
+  hasBalance: boolean;
 }
 
 /**
- * Generate amount suggestions based on balance
+ * Calculate amount suggestions from balance using deposit-intent pattern
+ *
+ * @param balance - Token balance (bigint for wallet assets, number for position balances)
+ * @param decimals - Token decimals (required for bigint, ignored for number)
+ * @param tokenAddress - Token address to detect native ETH for gas reservation
+ * @returns Calculated amounts with proper formatting
+ *
+ * @example
+ * // For bigint wallet balance (e.g., USDC with 6 decimals)
+ * const amounts = calculateAmountsFromBalance(1500000n, 6, "0x...");
+ * // Returns: { fullAmount: "1.5", amount75: "1.125", amount50: "0.75", amount25: "0.375", ... }
+ *
+ * @example
+ * // For native ETH (gas reservation)
+ * const amounts = calculateAmountsFromBalance(1000000000000000000n, 18, ETH_NULL_ADDR);
+ * // Returns: { fullAmount: "0.95", ... } - reserves 5% for gas
+ *
+ * @example
+ * // For number position balance
+ * const amounts = calculateAmountsFromBalance(100.5, undefined, "0x...");
+ * // Returns: { fullAmount: "100.5", amount75: "75.375", ... }
  */
-export function generateAmountSuggestions(
-  config: AmountSuggestionConfig
-): AmountSuggestion[] {
-  const percentages = getPercentageSet(
-    config.isNativeToken,
-    config.percentageSet
+export function calculateAmountsFromBalance(
+  balance: bigint | number,
+  decimals?: number,
+  tokenAddress?: string
+): CalculatedAmounts {
+  // Detect native token for gas reservation
+  const isNativeToken = tokenAddress === ETH_NULL_ADDR;
+
+  // Choose percentages based on token type
+  const percentages = isNativeToken
+    ? NATIVE_TOKEN_PERCENTAGES
+    : STANDARD_AMOUNT_PERCENTAGES;
+
+  // Handle empty balance
+  if (
+    (typeof balance === "bigint" && balance === 0n) ||
+    (typeof balance === "number" && balance === 0)
+  ) {
+    return {
+      fullAmount: "",
+      amount75: "",
+      amount50: "",
+      amount25: "",
+      isNativeToken,
+      hasBalance: false,
+    };
+  }
+
+  let balanceFloat: number;
+
+  // Convert balance to float based on type
+  if (typeof balance === "bigint") {
+    if (decimals === undefined) {
+      throw new Error("decimals parameter is required when balance is bigint");
+    }
+    balanceFloat = parseFloat(formatUnits(balance, decimals));
+  } else {
+    balanceFloat = balance;
+  }
+
+  // Check for valid balance
+  if (balanceFloat <= 0) {
+    return {
+      fullAmount: "",
+      amount75: "",
+      amount50: "",
+      amount25: "",
+      isNativeToken,
+      hasBalance: false,
+    };
+  }
+
+  // Calculate amounts using percentages (matching deposit-intent pattern)
+  const amounts = [
+    percentages.FULL,
+    percentages.HIGH,
+    percentages.MEDIUM,
+    percentages.LOW,
+  ];
+
+  const calculatedAmounts = amounts.map((pct) =>
+    (balanceFloat * pct).toFixed(6)
   );
 
-  return Object.entries(percentages).map(([key, percentage]) => {
-    const amount = calculateAmount(
-      config.maxAmount,
-      percentage,
-      config.decimals
-    );
-    const percentLabel = `${(percentage * 100).toFixed(0)}%`;
+  const [fullAmount, amount75, amount50, amount25] = calculatedAmounts;
 
-    return {
-      percentage,
-      amount,
-      label: `${formatAmountForDisplay(amount, config.decimals)} ${config.tokenSymbol}`,
-      description: `${percentLabel} of available balance`,
-    };
-  });
+  return {
+    fullAmount,
+    amount75,
+    amount50,
+    amount25,
+    isNativeToken,
+    hasBalance: true,
+  };
 }
 
 /**
- * Get appropriate percentage set
+ * Generate amount context section for prompts
+ *
+ * @param tokenSymbol - Token symbol to display
+ * @param amounts - Calculated amounts from calculateAmountsFromBalance
+ * @returns Formatted context string for inclusion in prompts
+ *
+ * @example
+ * const context = generateAmountContext("USDC", amounts);
+ * // Returns: "\nUser has 1.5 USDC available in wallet."
  */
-function getPercentageSet(
-  isNativeToken?: boolean,
-  preferredSet?: "standard" | "native" | "alternative"
-): Record<string, number> {
-  if (preferredSet === "alternative") {
-    return ALTERNATIVE_PERCENTAGES;
-  }
-
-  if (preferredSet === "native" || isNativeToken) {
-    return NATIVE_TOKEN_PERCENTAGES;
-  }
-
-  return STANDARD_AMOUNT_PERCENTAGES;
-}
-
-/**
- * Calculate amount from percentage
- */
-function calculateAmount(
-  maxAmount: bigint,
-  percentage: number,
-  decimals: number
+export function generateAmountContext(
+  tokenSymbol: string,
+  amounts: CalculatedAmounts
 ): string {
-  const amount =
-    (maxAmount * BigInt(Math.floor(percentage * 1000000))) / 1000000n;
-  return formatTokenAmount(amount, decimals);
-}
-
-/**
- * Format token amount to string with proper decimals
- */
-export function formatTokenAmount(amount: bigint, decimals: number): string {
-  const divisor = 10n ** BigInt(decimals);
-  const wholePart = amount / divisor;
-  const fractionalPart = amount % divisor;
-
-  if (fractionalPart === 0n) {
-    return wholePart.toString();
+  if (!amounts.hasBalance) {
+    return "";
   }
 
-  const fractionalStr = fractionalPart.toString().padStart(decimals, "0");
-  const trimmedFractional = fractionalStr.replace(/0+$/, "");
+  const gasNote = amounts.isNativeToken ? " (max: 95% to reserve gas)" : "";
 
-  return `${wholePart}.${trimmedFractional}`;
+  return `\nUser has ${amounts.fullAmount} ${tokenSymbol} available${gasNote}.`;
 }
 
 /**
- * Format amount for display (trimmed, up to 6 decimals)
+ * Generate amount suggestions instructions for prompts
+ *
+ * @param tokenSymbol - Token symbol for suggestions
+ * @param amounts - Calculated amounts from calculateAmountsFromBalance
+ * @returns Formatted instructions string for LLM prompts
+ *
+ * @example
+ * const instructions = generateAmountSuggestionsInstructions("USDC", amounts);
  */
-export function formatAmountForDisplay(
-  amount: string,
-  maxDecimals: number = 6
+export function generateAmountSuggestionsInstructions(
+  tokenSymbol: string,
+  amounts: CalculatedAmounts
 ): string {
-  const [whole, fractional] = amount.split(".");
+  const {
+    fullAmount,
+    amount75,
+    amount50,
+    amount25,
+    hasBalance,
+    isNativeToken,
+  } = amounts;
 
-  if (!fractional) return whole;
-
-  const trimmed = fractional.slice(0, maxDecimals).replace(/0+$/, "");
-
-  return trimmed ? `${whole}.${trimmed}` : whole;
-}
-
-/**
- * Generate amount suggestions instruction section for prompts
- */
-export function generateAmountSuggestionsInstructions(config: {
-  tokenSymbol: string;
-  isNativeToken?: boolean;
-}): string {
-  const percentages = config.isNativeToken
-    ? "95% (reserve gas), 50%, 25%, 10%"
-    : "100%, 50%, 25%, 10%";
-
-  const gasNote = config.isNativeToken
-    ? "\n- For native tokens (ETH), suggest 95% not 100% to reserve gas"
+  const gasNote = isNativeToken
+    ? "\n- For native ETH: max is 95% to reserve 5% for gas fees"
     : "";
 
-  return `**AMOUNT SUGGESTIONS:**
-- Generate suggestions for: ${percentages}
-- Show trimmed amounts in labels (max 6 decimals)
-- Use full precision in text for transaction accuracy${gasNote}
-- Prioritize amounts user can actually afford
-- Consider gas costs in calculations`;
-}
-
-/**
- * Validate amount against balance
- */
-export function validateAmount(
-  amountStr: string,
-  maxAmount: bigint,
-  decimals: number
-): {
-  isValid: boolean;
-  error?: string;
-  parsedAmount?: bigint;
-} {
-  try {
-    // Parse amount string to bigint
-    const [whole, fractional = ""] = amountStr.split(".");
-    const paddedFractional = fractional
-      .padEnd(decimals, "0")
-      .slice(0, decimals);
-    const amountBigInt = BigInt(whole + paddedFractional);
-
-    if (amountBigInt > maxAmount) {
-      return {
-        isValid: false,
-        error: "Amount exceeds available balance",
-      };
-    }
-
-    if (amountBigInt <= 0n) {
-      return {
-        isValid: false,
-        error: "Amount must be greater than zero",
-      };
-    }
-
-    return {
-      isValid: true,
-      parsedAmount: amountBigInt,
-    };
-  } catch (error) {
-    return {
-      isValid: false,
-      error: "Invalid amount format",
-    };
-  }
-}
-
-/**
- * Parse percentage or keyword to decimal
- */
-export function parsePercentageOrKeyword(input: string): number | null {
-  const normalized = input.toLowerCase().trim();
-
-  // Handle keywords
-  if (
-    normalized === "all" ||
-    normalized === "max" ||
-    normalized === "everything"
-  ) {
-    return 1.0;
+  if (!hasBalance) {
+    return `No ${tokenSymbol} balance available. User cannot proceed with this token.`;
   }
 
-  if (normalized === "half") {
-    return 0.5;
-  }
+  return `CRITICAL: The token symbol is "${tokenSymbol}" - use ONLY this exact symbol, nothing else.
+User has ${fullAmount} ${tokenSymbol} available${isNativeToken ? " (95% max for gas)" : ""}.
 
-  // Handle percentage (e.g., "50%", "50 percent")
-  const percentMatch = normalized.match(/^(\d+(?:\.\d+)?)\s*%?$/);
-  if (percentMatch) {
-    const value = parseFloat(percentMatch[1]);
-    return value > 1 ? value / 100 : value;
-  }
+LABEL FORMAT (use specific amounts, NOT generic labels):
+- "Full balance" - for ${isNativeToken ? "95% of" : "all"} ${tokenSymbol}
+- "75% of balance" - for 75% of ${tokenSymbol}
+- "50% of balance" - for 50% of ${tokenSymbol}
+- "Partial amount" - for a smaller specific amount
 
-  return null;
-}
+TEXT FORMAT (use "${tokenSymbol}" exactly as shown and ACTUAL amounts):
+- "Deposit ${fullAmount} ${tokenSymbol}" - full ${isNativeToken ? "(95%)" : ""} balance
+- "I want to deposit ${amount75} ${tokenSymbol}" - 75% of balance
+- "Deposit ${amount50} ${tokenSymbol}" - 50% of balance
+- "Deposit ${amount25} ${tokenSymbol}" - 25% of balance
+- "What amount do you recommend?" - ask for guidance
 
-/**
- * Convert percentage amount to absolute amount string
- */
-export function convertPercentageToAmount(
-  percentage: number,
-  balance: bigint,
-  decimals: number
-): string {
-  const amount =
-    (balance * BigInt(Math.floor(percentage * 1000000))) / 1000000n;
-  return formatTokenAmount(amount, decimals);
+Each suggestion should:
+- Be natural and conversational
+- Use ONLY the token symbol "${tokenSymbol}" (no extra characters or variations)
+- Provide specific amounts based on balance
+- Lead to transaction creation${gasNote}`;
 }

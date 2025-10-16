@@ -38,16 +38,10 @@ export {
 
 // Amount suggestion helpers
 export {
-  generateAmountSuggestions,
-  formatTokenAmount,
-  formatAmountForDisplay,
+  calculateAmountsFromBalance,
+  generateAmountContext,
   generateAmountSuggestionsInstructions,
-  validateAmount,
-  parsePercentageOrKeyword,
-  convertPercentageToAmount,
   STANDARD_AMOUNT_PERCENTAGES,
   NATIVE_TOKEN_PERCENTAGES,
-  ALTERNATIVE_PERCENTAGES,
-  type AmountSuggestion,
-  type AmountSuggestionConfig,
+  type CalculatedAmounts,
 } from "./amount-suggestions";

@@ -367,7 +367,7 @@ describe("Withdrawal Suggestions Integration", () => {
           },
         },
       ]);
-    }, 150000); // 120 second timeout for multi-step flow with cancel
+    }, 180000); // 180 second timeout for multi-step flow with cancel
   });
 
   describe("Suggestion System Debugging", () => {

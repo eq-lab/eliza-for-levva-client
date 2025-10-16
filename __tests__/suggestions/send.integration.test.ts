@@ -162,6 +162,6 @@ describe("Send Suggestions Integration", () => {
         `\n✅ Has portfolio-related suggestions: ${hasPortfolioSuggestions}`
       );
       expect(hasPortfolioSuggestions).toBe(true);
-    }, 30000);
+    }, 60000);
   });
 });

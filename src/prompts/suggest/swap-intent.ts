@@ -13,7 +13,10 @@ import {
   generateOutputFormat,
   generateCommonInstructions,
 } from "../helpers";
-import { formatUnits } from "viem";
+import {
+  calculateAmountsFromBalance,
+  generateAmountContext,
+} from "../helpers/amount-suggestions";
 
 export interface SwapIntentSuggestionParams {
   intentContext: IntentContext;
@@ -70,6 +73,17 @@ export function generateSwapIntentSuggestionsPrompt(
     const fromSymbol = fromTokenSymbol || fromToken.slice(0, 8);
     const toSymbol = toTokenSymbol || toToken.slice(0, 8);
 
+    // Get wallet asset for balance-aware amount suggestions
+    const walletAsset = walletAssets.find(
+      (a) => a.token.toLowerCase() === fromToken.toLowerCase()
+    );
+
+    const amounts = calculateAmountsFromBalance(
+      walletAsset?.amount ?? 0n,
+      walletAsset?.decimals ?? 18,
+      walletAsset?.token
+    );
+
     const intentContext = generateIntentContextSection({
       intentType: "SWAP",
       status: "Ready for confirmation",
@@ -79,29 +93,68 @@ export function generateSwapIntentSuggestionsPrompt(
         From: fromSymbol,
         To: toSymbol,
         Amount: amount,
+        ...(amounts.hasBalance
+          ? { "Available Balance": `${amounts.fullAmount} ${fromSymbol}` }
+          : {}),
       },
     });
+
+    const amountContext = amounts.hasBalance
+      ? `\nFor amount modifications, user has ${amounts.fullAmount} ${fromSymbol} available. Suggest specific amounts: ${amounts.amount50} ${fromSymbol}, ${amounts.amount75} ${fromSymbol}.`
+      : "";
+
+    // Build label examples
+    const labelExamples = [
+      `- "Confirm swap" - for confirmation`,
+      `- "Retry swap" - for retry`,
+    ];
+    if (amounts.hasBalance) {
+      labelExamples.push(
+        `- "Swap ${amounts.amount50} ${fromSymbol}" - for 50% amount`
+      );
+    } else {
+      labelExamples.push(`- "Different amount" - for amount change`);
+    }
+    labelExamples.push(`- "Cancel swap" - for cancellation`);
+
+    // Build text examples
+    const textExamples = [
+      `- "Yes, please proceed with the swap" - confirmation`,
+      `- "Let me retry this swap" - retry after failure`,
+      `- "Swap ${amount} ${fromSymbol} to ${toSymbol}" - explicit confirmation`,
+    ];
+    if (amounts.hasBalance) {
+      textExamples.push(
+        `- "Actually, swap ${amounts.amount50} ${fromSymbol} instead" - modify with specific amount`
+      );
+    } else {
+      textExamples.push(
+        `- "Actually, let me swap a different amount" - modify amount`
+      );
+    }
+    textExamples.push(`- "Cancel and swap something else" - restart`);
 
     const instructions = generateCommonInstructions({
       suggestionType: "confirmation",
       specificInstructions: `Generate 3-4 natural, conversational suggestions for swap confirmation:
+${amountContext}
 
 SUGGESTION PRIORITIES:
 1. Confirm and proceed with the swap
 2. Retry if transaction failed
-3. Adjust the amount
+3. Adjust the amount with SPECIFIC amounts
 4. Cancel and try different parameters
 
+LABEL FORMAT (must be SPECIFIC for amount changes):
+${labelExamples.join("\n")}
+
 SUGGESTION FORMATS:
-- "Yes, please proceed with the swap" - confirmation
-- "Let me retry this swap" - retry after failure
-- "Swap ${amount} ${fromSymbol} to ${toSymbol}" - explicit confirmation
-- "Actually, let me swap a different amount" - modify amount
-- "Cancel and swap something else" - restart
+${textExamples.join("\n")}
 
 Each suggestion should:
 - Be natural and conversational
 - Clearly indicate confirmation or modification intent
+- Use SPECIFIC amounts in both label and text for modifications
 - Reference the actual parameters when appropriate`,
     });
 
@@ -124,11 +177,6 @@ ${generateOutputFormat()}`;
       (a) => a.token.toLowerCase() === fromToken.toLowerCase()
     );
 
-    let amountContext = "";
-    if (walletAsset) {
-      amountContext = `\nUser has ${walletAsset.symbol} available in wallet.`;
-    }
-
     const intentContext = generateIntentContextSection({
       intentType: "SWAP",
       status: "Amount selection needed",
@@ -140,31 +188,33 @@ ${generateOutputFormat()}`;
       },
     });
 
-    // Calculate actual token amounts based on balance if available
-    const amounts = [1, 0.75, 0.5, 0.25];
-    let calculatedAmounts: string[] = [];
+    // Calculate actual token amounts based on balance using universal helper
+    const amounts = calculateAmountsFromBalance(
+      walletAsset?.amount ?? 0n,
+      walletAsset?.decimals ?? 18,
+      walletAsset?.token
+    );
 
-    if (walletAsset) {
-      const balance = parseFloat(
-        formatUnits(walletAsset.amount, walletAsset.decimals ?? 18)
-      );
-      calculatedAmounts = amounts.map((pct) => (balance * pct).toFixed(6));
-    }
+    const { fullAmount, amount75, amount50, amount25 } = amounts;
 
-    const [fullAmount = "", amount75 = "", amount50 = "", amount25 = ""] =
-      calculatedAmounts;
+    // Generate amount context for prompt
+    const amountContext = generateAmountContext(fromSymbol, amounts);
+
+    const gasNote = amounts.isNativeToken
+      ? `\nIMPORTANT: ${fromSymbol} is native token - suggest max 95% to reserve gas for transaction.`
+      : "";
 
     const instructions = generateCommonInstructions({
       suggestionType: "next-step",
       specificInstructions: `Generate 3-4 natural, conversational suggestions for swap amount.
 
 CRITICAL: The token symbol is "${fromSymbol}" - use ONLY this exact symbol, nothing else.
-${walletAsset ? `User has ${fromSymbol} available in wallet (balance: ${fullAmount} ${fromSymbol}).` : ""}
+${amounts.hasBalance ? `User has ${fullAmount} ${fromSymbol} available in wallet${amounts.isNativeToken ? " (95% max to reserve gas)" : ""}.` : "No balance available."}${gasNote}
 
 LABEL FORMAT (use specific amounts, NOT generic labels):
 ${
-  walletAsset
-    ? `- "Full balance" - for swapping all ${fromSymbol}
+  amounts.hasBalance
+    ? `- "Full balance" - for swapping ${amounts.isNativeToken ? "95%" : "all"} ${fromSymbol}
 - "75% of balance" - for swapping 75% of ${fromSymbol}
 - "50% of balance" - for swapping 50% of ${fromSymbol}
 - "Partial amount" - for a smaller specific amount`
@@ -173,8 +223,8 @@ ${
 
 TEXT FORMAT (use "${fromSymbol}" exactly as shown and ACTUAL amounts):
 ${
-  walletAsset
-    ? `- "I want to swap ${fullAmount} ${fromSymbol}" - full balance
+  amounts.hasBalance
+    ? `- "I want to swap ${fullAmount} ${fromSymbol}" - full ${amounts.isNativeToken ? "(95%)" : ""} balance
 - "Swap ${amount75} ${fromSymbol}" - 75% of balance
 - "Swap ${amount50} ${fromSymbol}" - 50% of balance
 - "I want to swap ${amount25} ${fromSymbol}" - 25% of balance`
@@ -187,7 +237,7 @@ ${
 Each suggestion should:
 - Be natural and conversational
 - Use ONLY the token symbol "${fromSymbol}" (no extra characters or variations)
-- Provide specific amounts based on balance when available
+- Provide specific amounts based on balance when available${amounts.isNativeToken ? "\n- Reserve 5% for gas if native token" : ""}
 - Lead to confirmation step`,
     });
 
