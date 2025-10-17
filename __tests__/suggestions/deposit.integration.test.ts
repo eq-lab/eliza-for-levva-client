@@ -137,7 +137,9 @@ describe("Deposit Suggestions Integration", () => {
               .join(" ")
               .toLowerCase();
 
-            console.log(`  ✅ Response acknowledges cancel: ${allText.includes("cancel")}`);
+            console.log(
+              `  ✅ Response acknowledges cancel: ${allText.includes("cancel")}`
+            );
             expect(allText).toMatch(/cancel/);
           },
         },
@@ -160,8 +162,10 @@ describe("Deposit Suggestions Integration", () => {
 
             // EXPECTED: Should show positions WITHOUT starting a new deposit intent
             // Should NOT ask for deposit parameters
-            console.log(`  ❌ BUG CHECK - Response asks about deposit: ${allText.includes("how much") || allText.includes("which strategy")}`);
-            
+            console.log(
+              `  ❌ BUG CHECK - Response asks about deposit: ${allText.includes("how much") || allText.includes("which strategy")}`
+            );
+
             expect(allText).not.toContain("how much");
             expect(allText).not.toContain("which strategy would you like");
             expect(allText).not.toContain("which token");

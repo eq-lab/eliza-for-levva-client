@@ -55,4 +55,3 @@ export class MessagingService extends BaseApiClient {
     );
   }
 }
-

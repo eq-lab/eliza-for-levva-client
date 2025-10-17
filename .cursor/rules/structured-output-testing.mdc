@@ -1,0 +1,517 @@
+---
+description: Testing patterns for LLM structured output using OpenRouter and Vercel AI SDK
+globs: ["**/*.test.ts", "**/*.spec.ts"]
+alwaysApply: false
+---
+
+# Testing Structured Output with OpenRouter
+
+## 🎯 **Core Principle**
+
+When testing LLM structured output, focus on **business logic** and **output quality**, not library validation. Use OpenRouter with [Vercel AI SDK's `generateObject`](https://ai-sdk.dev/docs/ai-sdk-core/generating-structured-data) for consistent, type-safe test results.
+
+**See also**: `@structured-output-patterns.mdc` for schema design patterns
+
+---
+
+## 🔧 **Test Setup with OpenRouter**
+
+### **Using the OpenRouter Test Utility**
+
+All OpenRouter testing utilities are centralized in `__tests__/utils/openrouter.ts`.
+
+The utility uses Vercel AI SDK's [`generateObject`](https://ai-sdk.dev/docs/ai-sdk-core/generating-structured-data#generate-object) for type-safe structured generation with automatic schema validation.
+
+```typescript
+import {
+  generateStructured,
+  generateStructuredBatch,
+  testDeterminism,
+  OPENROUTER_MODELS,
+} from '../utils/openrouter';
+import { z } from 'zod';
+
+// Define your schema
+const mySchema = z.object({
+  suggestions: z.array(z.object({
+    label: z.string(),
+    text: z.string(),
+  })),
+});
+
+type MyResult = z.infer<typeof mySchema>;
+
+// Generate structured output with small model (default)
+const result: MyResult = await generateStructured(mySchema, myPrompt);
+
+// Or explicitly use large model for complex tasks
+const complexResult: MyResult = await generateStructured(
+  mySchema,
+  complexPrompt,
+  { modelName: OPENROUTER_MODELS.LARGE }
+);
+```
+
+### **Available Utilities**
+
+#### **1. `generateStructured<T>`**
+Generate single structured output with schema validation.
+
+```typescript
+const result: MyResult = await generateStructured(
+  mySchema,
+  prompt,
+  {
+    modelName: 'anthropic/claude-3.5-sonnet', // Optional
+    temperature: 0, // Default is 0 for determinism
+  }
+);
+```
+
+#### **2. `generateStructuredBatch<T>`**
+Generate multiple outputs concurrently.
+
+```typescript
+const results: MyResult[] = await generateStructuredBatch(
+  mySchema,
+  [prompt1, prompt2, prompt3]
+);
+```
+
+#### **3. `testDeterminism<T>`**
+Test that temperature 0 produces identical results.
+
+```typescript
+const [result1, result2] = await testDeterminism(mySchema, prompt);
+expect(result1).toEqual(result2);
+```
+
+### **Configuration**
+
+Set up environment variables in `.env.test`:
+
+```bash
+# Required
+OPENROUTER_API_KEY=your_key_here
+OPENROUTER_BASE_URL=https://openrouter.ai/api/v1
+
+# Optional: Override models (defaults shown)
+OPENROUTER_SMALL_MODEL=openai/gpt-4o-mini
+OPENROUTER_LARGE_MODEL=openai/gpt-4o-2024-08-06
+```
+
+The utility automatically validates configuration and provides helpful error messages.
+
+---
+
+## ✅ **What to Test**
+
+### **❌ Don't Test**
+- Zod schema validation (library is already tested)
+- Whether LLM returns JSON (provider handles this)
+- Schema structure compliance (that's Zod's job)
+
+### **✅ Do Test**
+1. **Business Requirements**: Count, constraints, required fields
+2. **Content Quality**: Specific, not generic
+3. **Data Usage**: Uses actual context data
+4. **Determinism**: Same input → Same output (temperature 0)
+5. **Integration**: Works with real data from services
+
+---
+
+## 📋 **Test Patterns**
+
+### **Pattern 1: Business Requirements**
+
+Test that output meets your business rules, not just schema structure.
+
+```typescript
+import { describe, it, expect } from "vitest";
+import { z } from "zod";
+import { generateStructured, OPENROUTER_MODELS } from '../utils/openrouter';
+
+const depositSuggestionSchema = z.object({
+  thought: z.string(),
+  suggestions: z.array(
+    z.object({
+      label: z.string(),
+      text: z.string(),
+    })
+  ).min(3).max(6),
+});
+
+type DepositSuggestion = z.infer<typeof depositSuggestionSchema>;
+
+describe("Deposit Suggestions", () => {
+  it("should generate 3-6 suggestions as per business requirements", async () => {
+    const walletAssets = [
+      { token: "0x...", symbol: "USDC", amount: 1000n * 10n**6n }
+    ];
+    const strategies = [
+      { id: 1, name: "Safe Yield Strategy", risk: "low" }
+    ];
+
+    const prompt = generateDepositPrompt({ walletAssets, strategies });
+
+    // Use default small model for simple suggestion generation
+    const result: DepositSuggestion = await generateStructured(
+      depositSuggestionSchema,
+      prompt
+    );
+
+    // Test business requirement: 3-6 suggestions
+    expect(result.suggestions.length).toBeGreaterThanOrEqual(3);
+    expect(result.suggestions.length).toBeLessThanOrEqual(6);
+  });
+});
+```
+
+### **Pattern 2: Content Quality**
+
+Test that suggestions are specific and actionable, not generic.
+
+```typescript
+describe("Content Quality", () => {
+  it("should generate specific labels, not generic ones", async () => {
+    const walletAssets = [
+      { token: "0x...", symbol: "USDC", amount: 500n * 10n**6n }
+    ];
+
+    const prompt = generateDepositPrompt({ walletAssets });
+    
+    const result: DepositSuggestion = await generateStructured(
+      depositSuggestionSchema,
+      prompt
+    );
+
+    // Test quality: Labels should be specific, not vague
+    const hasGenericLabels = result.suggestions.some(s =>
+      ['Edit', 'Change', 'Different', 'Other'].includes(s.label)
+    );
+    expect(hasGenericLabels).toBe(false);
+
+    // Labels should contain actual data
+    const firstLabel = result.suggestions[0].label;
+    expect(firstLabel.length).toBeGreaterThan(5); // Not just "Edit"
+    expect(firstLabel).toMatch(/USDC|Strategy|Deposit|\d+/); // Contains specifics
+  });
+
+  it("should use actual token symbols from context", async () => {
+    const walletAssets = [
+      { token: "0x...", symbol: "USDC", amount: 500n * 10n**6n }
+    ];
+
+    const prompt = generateDepositPrompt({ walletAssets });
+    
+    const result: DepositSuggestion = await generateStructured(
+      depositSuggestionSchema,
+      prompt
+    );
+
+    // Test: Suggestions reference actual user tokens
+    const allSuggestionsText = result.suggestions
+      .map(s => `${s.label} ${s.text}`)
+      .join(" ");
+      
+    expect(allSuggestionsText).toContain("USDC"); // References real token
+    expect(allSuggestionsText).toMatch(/\d+(\.\d+)?\s*USDC/); // Has amounts
+  });
+});
+```
+
+### **Pattern 3: Determinism**
+
+Test that temperature 0 produces consistent results.
+
+```typescript
+import { testDeterminism } from '../utils/openrouter';
+
+describe("Determinism", () => {
+  it("should produce identical results with temperature 0", async () => {
+    const params = {
+      walletAssets: [
+        { token: "0x...", symbol: "USDC", amount: 1000n * 10n**6n }
+      ],
+      strategies: [
+        { id: 1, name: "Safe Yield", risk: "low" }
+      ],
+    };
+
+    const prompt = generateDepositPrompt(params);
+
+    // Use testDeterminism utility - generates same prompt twice
+    const [result1, result2] = await testDeterminism(
+      depositSuggestionSchema,
+      prompt
+    );
+
+    // With temperature 0, should be identical
+    expect(result1).toEqual(result2);
+  });
+});
+```
+
+### **Pattern 4: Integration with Real Data**
+
+Test with actual service data to ensure end-to-end functionality.
+
+```typescript
+describe("Integration Tests", () => {
+  it("should work with real wallet and strategy data", async () => {
+    // Setup test user
+    const userAddress = "0x742d35Cc6634C0532925a3b844Bc9e7595f0bEb";
+    const chainId = 42161; // Arbitrum
+
+    // Fetch real data from services
+    const service = runtime.getService<LevvaService>(LEVVA_SERVICE.LEVVA_COMMON);
+    const assets = await service.getWalletAssets({ userAddress, chainId });
+    const strategies = await service.getStrategies(chainId);
+
+    // Generate suggestions with real data
+    const prompt = generateDepositPrompt({
+      walletAssets: assets,
+      strategies,
+    });
+
+    const result: DepositSuggestion = await generateStructured(
+      depositSuggestionSchema,
+      prompt
+    );
+
+    // Verify suggestions work with real data
+    expect(result.suggestions.length).toBeGreaterThan(0);
+    
+    // Verify suggestions reference actual user tokens
+    const userTokenSymbols = assets.map(a => a.symbol);
+    const suggestionsReferencesUserTokens = result.suggestions.some(s =>
+      userTokenSymbols.some(symbol => 
+        s.text.includes(symbol) || s.label.includes(symbol)
+      )
+    );
+    
+    expect(suggestionsReferencesUserTokens).toBe(true);
+  });
+});
+```
+
+---
+
+## 🎯 **Testing Different Model Types**
+
+### **Small Model (Default)**
+
+Fast, simple structured generation using `OPENROUTER_MODELS.SMALL`.
+
+```typescript
+import { generateStructured, OPENROUTER_MODELS } from '../utils/openrouter';
+
+describe("Simple Suggestions", () => {
+  it("should generate suggestions quickly with small model", async () => {
+    const startTime = Date.now();
+
+    // Default uses OPENROUTER_MODELS.SMALL
+    const result: DepositSuggestion = await generateStructured(
+      depositSuggestionSchema,
+      simplePrompt
+    );
+
+    const duration = Date.now() - startTime;
+
+    // Should be fast with small model
+    expect(duration).toBeLessThan(5000); // < 5 seconds
+    expect(result.suggestions.length).toBeGreaterThanOrEqual(3);
+  });
+});
+```
+
+### **Large Model**
+
+Complex analysis and reasoning using `OPENROUTER_MODELS.LARGE`.
+
+```typescript
+describe("Complex Analysis", () => {
+  it("should provide detailed reasoning with large model", async () => {
+    const analysisSchema = z.object({
+      thought: z.string().describe("Detailed analysis reasoning"),
+      type: z.string(),
+      known: z.record(z.any()),
+      unknown: z.array(z.string()),
+    });
+
+    type Analysis = z.infer<typeof analysisSchema>;
+
+    // Use large model for complex tasks
+    const result: Analysis = await generateStructured(
+      analysisSchema,
+      complexAnalysisPrompt,
+      { modelName: OPENROUTER_MODELS.LARGE }
+    );
+
+    // Verify detailed reasoning
+    expect(result.thought.length).toBeGreaterThan(50);
+    expect(result.thought).toMatch(/because|since|therefore|given/i);
+  });
+});
+```
+
+---
+
+## 🚨 **Common Test Mistakes**
+
+### **1. Testing Schema Validation**
+
+```typescript
+// ❌ BAD: Testing Zod (unnecessary)
+it("should have required fields", () => {
+  const invalid = { suggestions: [{ label: "Test" }] }; // Missing 'text'
+  expect(() => schema.parse(invalid)).toThrow();
+});
+
+// ✅ GOOD: Testing business logic
+it("should generate actionable suggestions", async () => {
+  const result = await generateStructured(schema, prompt);
+  expect(result.suggestions[0].text).toContain("deposit"); // Business logic
+});
+```
+
+### **2. Not Using Actual Test Data**
+
+```typescript
+// ❌ BAD: Mock/fake data
+const mockAssets = [{ symbol: "TEST", amount: 100n }];
+
+// ✅ GOOD: Real data patterns
+const testAssets = [
+  { token: "0xa0b86...", symbol: "USDC", amount: 1000n * 10n**6n },
+  { token: "0x82af4...", symbol: "WETH", amount: 5n * 10n**17n },
+];
+```
+
+### **3. Not Testing Determinism**
+
+```typescript
+// ❌ BAD: Single run test
+it("generates suggestions", async () => {
+  const result = await generateStructured(schema, prompt);
+  expect(result.suggestions.length).toBeGreaterThan(0);
+});
+
+// ✅ GOOD: Test consistency
+it("generates deterministic results", async () => {
+  const [result1, result2] = await Promise.all([
+    generateStructured(schema, prompt),
+    generateStructured(schema, prompt),
+  ]);
+  expect(result1).toEqual(result2); // Temperature 0 ensures this
+});
+```
+
+---
+
+## 📊 **Test Organization**
+
+### **File Structure**
+
+```
+__tests__/
+  ├── suggestions/
+  │   ├── deposit.integration.test.ts    # Tests with real data
+  │   ├── swap.integration.test.ts
+  │   └── send.integration.test.ts
+  ├── unit/
+  │   └── prompt-generation.test.ts      # Test prompt builders
+  └── setup.ts                            # OpenRouter config
+```
+
+### **Test Categories**
+
+```typescript
+// Tag tests by category
+describe("Deposit Suggestions", () => {
+  describe("Business Requirements", () => {
+    // Tests for business rules
+  });
+
+  describe("Content Quality", () => {
+    // Tests for output quality
+  });
+
+  describe("Integration", () => {
+    // Tests with real services
+  });
+});
+```
+
+---
+
+## ⚡ **Performance Testing**
+
+```typescript
+describe("Performance", () => {
+  it("should complete within acceptable time", async () => {
+    const startTime = Date.now();
+
+    const result: DepositSuggestion = await generateStructured(
+      depositSuggestionSchema,
+      prompt
+    );
+
+    const duration = Date.now() - startTime;
+
+    // Performance assertions
+    expect(duration).toBeLessThan(10000); // < 10s for OBJECT_SMALL
+    expect(result.suggestions.length).toBeGreaterThanOrEqual(3);
+  });
+
+  it("should handle concurrent requests", async () => {
+    const prompts = [prompt1, prompt2, prompt3];
+
+    const results = await Promise.all(
+      prompts.map(p => generateStructured(depositSuggestionSchema, p))
+    );
+
+    // All should succeed
+    results.forEach(result => {
+      expect(result.suggestions.length).toBeGreaterThanOrEqual(3);
+    });
+  });
+});
+```
+
+---
+
+## 🎯 **Best Practices Summary**
+
+1. **Use OpenRouter** with Vercel AI SDK for consistent test results
+2. **Test business logic**, not library functionality
+3. **Use real data patterns**, not mocks
+4. **Test determinism** with temperature 0
+5. **Test integration** with actual services
+6. **Test content quality**, not just structure
+7. **Organize tests** by category and purpose
+8. **Monitor performance** for acceptable response times
+
+---
+
+## 📚 **Related Rules**
+
+- `@structured-output-patterns.mdc` - Schema design and core patterns
+- `@test-organization.mdc` - Test organization and cleanup patterns
+- `@testing-patterns.mdc` - General testing best practices
+
+---
+
+## ✅ **Test Checklist**
+
+Before merging LLM-based features:
+
+- [ ] Tests use OpenRouter with proper configuration
+- [ ] Tests focus on business logic, not Zod validation
+- [ ] Tests use realistic data (not mocks)
+- [ ] Tests verify determinism (temperature 0)
+- [ ] Tests check content quality (not generic)
+- [ ] Tests verify data usage (actual tokens/amounts)
+- [ ] Integration tests with real services
+- [ ] Performance tests for acceptable response times
+- [ ] Tests are properly organized and documented

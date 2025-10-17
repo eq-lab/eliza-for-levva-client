@@ -1,6 +1,6 @@
 /**
  * Default suggestion generation prompt
- * 
+ *
  * @version 2.0.0
  * @lastModified 2025-01-XX
  * @changes v2.0.0: Moved to suggest/ folder for consistency with intent-based suggestions

@@ -230,11 +230,12 @@ export class IntentManager extends Service {
       // This prevents immediate re-creation after user cancels
       const cacheKey = `intent_${domain}_${userId}_${channelId}`;
       const cachedIntent = await this.runtime.getCache<IntentContext>(cacheKey);
-      
+
       if (cachedIntent?.status === "CANCELLED") {
-        const timeSinceCancellation = Date.now() - (cachedIntent.metadata?.cancelledAt || 0);
+        const timeSinceCancellation =
+          Date.now() - (cachedIntent.metadata?.cancelledAt || 0);
         const CANCELLATION_GRACE_PERIOD = 10000; // 10 seconds
-        
+
         if (timeSinceCancellation < CANCELLATION_GRACE_PERIOD) {
           this.runtime.logger.info(
             `[INTENT-DETECTION] Skipping detection - intent recently cancelled (${Math.round(timeSinceCancellation / 1000)}s ago)`,
@@ -619,15 +620,12 @@ export class IntentManager extends Service {
   }
 
   async updateIntent(intent: IntentContext, values: Record<string, any>) {
-    const returnValues = Object.entries(values).reduce((acc, [k, v]) => {
-      if (v) {
-        return { ...acc, [k]: v };
-      } else if (acc[k]) {
-        return acc;
-      }
+    // Merge values, explicitly provided undefined values should overwrite
+    const returnValues = {
+      ...intent.returnData,
+      ...values,
+    };
 
-      return { ...acc, [k]: v };
-    }, intent.returnData || {});
     const updatedIntent = { ...intent, returnData: returnValues };
     await this.storeIntent(updatedIntent);
     return updatedIntent;

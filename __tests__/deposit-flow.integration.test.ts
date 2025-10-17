@@ -92,5 +92,4 @@ describe("Deposit Flow Integration", () => {
     expect(allText2).not.toContain("how much");
     expect(allText2).not.toContain("enter an amount");
   }, 60000);
-
 });

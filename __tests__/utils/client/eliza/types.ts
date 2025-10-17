@@ -40,4 +40,3 @@ export interface MessageQueryParams extends PaginationParams {
   before?: Date | string;
   after?: Date | string;
 }
-

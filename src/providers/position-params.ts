@@ -14,7 +14,9 @@ import {
 import {
   ExtractedDataForDeposit,
   extractDepositDataFromMessagePrompt,
+  extractedDataForDepositSchema,
 } from "../prompts/deposit";
+import { zodJsonSchema } from "../prompts/util";
 import { RawMessage } from "../types/core";
 import { LevvaService } from "../services/levva/class";
 import { UserPosition, WithdrawalRequest } from "../services/levva/positions";
@@ -190,6 +192,8 @@ export const positionParamsProvider: Provider = {
           .map((s) => {
             const lines = [
               `Strategy: ${s.name}`,
+              `  Category: ${s.strategy}`,
+              `  Name: ${s.name}`,
               `  ID: ${s.id}`,
               `  Risk: ${s.risk}`,
               `  Type: ${s.type}`,
@@ -232,7 +236,11 @@ export const positionParamsProvider: Provider = {
 
         const result: ExtractedDataForDeposit = await runtime.useModel(
           ModelType.OBJECT_SMALL,
-          { prompt }
+          {
+            prompt,
+            schema: zodJsonSchema(extractedDataForDepositSchema),
+            temperature: 0,
+          }
         );
 
         if (result) {
@@ -241,6 +249,7 @@ export const positionParamsProvider: Provider = {
             {}) as Partial<DepositData>;
 
           // Simple merge - priority system in findStrategy handles conflicts
+          // Schema ensures LLM cannot return 'strategy' field, preventing overwrites
           const combined: DepositData = {
             ...previous,
             ...result,

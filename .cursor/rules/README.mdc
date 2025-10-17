@@ -29,6 +29,8 @@ This directory contains workspace-specific rules and patterns for the ElizaOS Le
 ### 🔧 **Development Tools**
 - **debugging-patterns**: Debugging patterns and troubleshooting guidelines (includes Bun debugging with debug.bun.sh)
 - **llm-prompt-debugging**: Comprehensive LLM prompt debugging, limitations, and consistency guidelines
+- **structured-output-patterns**: Structured output patterns for LLM model usage (schema design, type annotation, temperature 0)
+- **structured-output-testing**: Testing patterns for LLM structured output using OpenRouter and Vercel AI SDK
 - **conversation-flow-patterns**: Natural conversation flow patterns and context-aware prompting for better UX
 - **code-style**: Code style standards and linting configuration
 - **ethereum-constants**: Ethereum constants and address patterns (ETH_NULL_ADDR usage)
@@ -60,8 +62,10 @@ This directory contains workspace-specific rules and patterns for the ElizaOS Le
    - This creates infinite loops and breaks the validation system
    - Keep validators as pure functions that only examine existing state
 
-2. **Improper Model Usage** (elizaos-patterns.mdc)
+2. **Improper Model Usage** (elizaos-patterns.mdc, structured-output-patterns.mdc)
    - Use `runtime.useModel(ModelType.OBJECT_SMALL, { prompt })` for structured object generation
+   - **ALWAYS** use `schema: zodJsonSchema(mySchema)` and `temperature: 0` for OBJECT_SMALL/OBJECT_LARGE
+   - Define Zod schemas with detailed, explicit field descriptions including examples
    - Choose appropriate model types for the complexity of the task
    - Always await model calls as they are async operations
 
@@ -86,6 +90,8 @@ This directory contains workspace-specific rules and patterns for the ElizaOS Le
 
 ### ElizaOS Framework
 - Core patterns: elizaos-patterns.mdc
+- Structured output: structured-output-patterns.mdc (schema design)
+- Structured output testing: structured-output-testing.mdc (OpenRouter utilities)
 - Testing approaches: testing-patterns.mdc
 - Error handling: error-handling.mdc
 

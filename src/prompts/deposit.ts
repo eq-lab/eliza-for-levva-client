@@ -7,76 +7,69 @@
  * @changes v1.0.0: Initial implementation with vault/pool strategy support
  */
 
-import { DataDescription, formatKeys, formatOutput } from "./util";
+import { z } from "zod";
+import { formatZodKeys, formatZodOutput } from "./util";
 
-export interface ExtractedDataForDeposit {
-  strategyId?: number;
-  strategyName?: string;
-  strategyRisk?: string;
-  contractAddress?: string;
-  tokenSymbol?: string;
-  tokenAddress?: string;
-  amount?: string; // numeric string only (e.g., "100" or "0.5")
-  leverage?: number;
-  confidence: number;
-  thought: string;
-}
+export const extractedDataForDepositSchema = z
+  .object({
+    thought: z
+      .string()
+      .describe(
+        "Your reasoning about which parameters were extracted and confidence level"
+      ),
+    confidence: z
+      .number()
+      .describe(
+        "Confidence level (0.0-1.0) that the user wants to perform a deposit/investment action"
+      ),
+    strategyId: z
+      .number()
+      .optional()
+      .describe("The ID of the strategy to deposit into, if specified"),
+    strategyName: z
+      .string()
+      .optional()
+      .describe("The name of the strategy to deposit into, if specified"),
+    strategyRisk: z
+      .string()
+      .optional()
+      .describe(
+        'The risk profile of the strategy: "ultra-safe", "safe", "brave", or "custom"'
+      ),
+    contractAddress: z
+      .string()
+      .optional()
+      .describe(
+        "The contract address of the strategy/vault if provided (e.g., 0xCF9bdc...)"
+      ),
+    tokenSymbol: z
+      .string()
+      .optional()
+      .describe("The symbol of the token to deposit (e.g., USDC, ETH, WETH)"),
+    tokenAddress: z
+      .string()
+      .optional()
+      .describe(
+        "The contract address of the token to deposit, if specified (e.g., 0xAf88...)"
+      ),
+    amount: z
+      .string()
+      .optional()
+      .describe(
+        'Numeric string only (e.g., "100" or "0.5"). NEVER include currency symbols or units, just the number'
+      ),
+    leverage: z
+      .number()
+      .optional()
+      .describe(
+        "The leverage multiplier for pool strategies (e.g., 2 for 2x leverage). Only applicable for pool strategies, not vault strategies"
+      ),
+  })
+  .describe("Extracted deposit parameters from user message");
 
-const dataDescription: DataDescription<ExtractedDataForDeposit> = {
-  strategyId: {
-    type: "number",
-    description: "The ID of the strategy to deposit into, if specified",
-    default: "null",
-  },
-  strategyName: {
-    type: "string",
-    description: "The name of the strategy to deposit into, if specified",
-    default: "null",
-  },
-  strategyRisk: {
-    type: "string",
-    description:
-      'The risk profile of the strategy: "ultra-safe", "safe", "brave", or "custom"',
-    default: "null",
-  },
-  contractAddress: {
-    type: "string",
-    description:
-      "The contract address of the strategy/vault if provided (e.g., 0xCF9bdc...)",
-    default: "null",
-  },
-  tokenSymbol: {
-    type: "string",
-    description: "The symbol of the token to deposit (e.g., USDC, ETH, WETH)",
-    default: "null",
-  },
-  tokenAddress: {
-    type: "string",
-    description: "The contract address of the token to deposit, if provided",
-    default: "null",
-  },
-  amount: {
-    type: "string",
-    description:
-      "Numeric string amount only (e.g., '100', '0.5'). If user specifies a percentage (e.g., '30%') or keywords ('all', 'max') and the token is known, convert to a numeric string using user's token balance from <userPortfolio>. If you cannot compute (token unknown or balance missing), set amount to null and explain in thought.",
-    default: "null",
-  },
-  leverage: {
-    type: "number",
-    description: "The leverage multiplier for 'pool' strategies (1-10)",
-    default: "null",
-  },
-  confidence: {
-    type: "number",
-    description:
-      "Confidence score from 0 to 1 based on clarity of extracted parameters",
-  },
-  thought: {
-    type: "string",
-    description:
-      "Analysis of the user's deposit request and parameter extraction. IMPORTANT: If user mentions a DIFFERENT value for an existing parameter in <returnData>, explicitly state in thought that you are OVERRIDING the previous value (e.g., 'User changed strategy from ultra-safe to custom, overriding strategyId' or 'User changed token from USDC to WETH, overriding tokenSymbol')",
-  },
-};
+export type ExtractedDataForDeposit = z.infer<
+  typeof extractedDataForDepositSchema
+>;
 
 export const extractDepositDataFromMessagePrompt = (ctx: {
   inheritedData?: Record<string, any>;
@@ -228,10 +221,10 @@ AMOUNT PARSING:
 - Remove currency or token symbols (e.g., "$100 USDC" -> "100").
 </instructions>
 <keys>
-${formatKeys(dataDescription)}
+${formatZodKeys(extractedDataForDepositSchema)}
 </keys>
 <output>
-${formatOutput(dataDescription)}
+${formatZodOutput(extractedDataForDepositSchema)}
 
 Your response should include the valid JSON block and nothing else.
 </output>`;

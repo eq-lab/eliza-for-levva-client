@@ -106,6 +106,26 @@ export class LevvaService extends BaseApiClient {
   }
 
   /**
+   * Clear suggestions cache for user
+   * @param address - User's wallet address
+   * @param chainId - EVM chain ID
+   */
+  async clearSuggestions(
+    address: `0x${string}`,
+    chainId: number
+  ): Promise<{
+    success: boolean;
+    message: string;
+    data: { cacheKey: string };
+  }> {
+    return this.delete<{
+      success: boolean;
+      message: string;
+      data: { cacheKey: string };
+    }>(`/api/levva/clear-suggest?address=${address}&chainId=${chainId}`);
+  }
+
+  /**
    * Cleanup channel state before clearing messages
    * Cancels active intents, clears suggestions cache, and removes memories
    * @param channelId - Channel ID to cleanup
