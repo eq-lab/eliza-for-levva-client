@@ -1,0 +1,19 @@
+export enum LEVVA_ACTIONS {
+  ANALYZE_WALLET = "ANALYZE_WALLET",
+  SWAP_TOKENS = "SWAP_TOKENS",
+  SELECT_STRATEGY = "SELECT_STRATEGY",
+  MANAGE_POSITIONS = "MANAGE_POSITIONS",
+}
+
+export enum LEVVA_SERVICE {
+  LEVVA_COMMON = "levva-common",
+  INTENT_MANAGER = "intent-manager",
+  MESSAGE_RATE_LIMITER = "message-rate-limiter",
+}
+
+export enum INTENT_TYPE {
+  WITHDRAW = "WITHDRAW",
+  DEPOSIT = "DEPOSIT",
+  SWAP = "SWAP",
+  SEND = "SEND",
+}

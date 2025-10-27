@@ -1,0 +1,220 @@
+---
+description: TypeScript coding conventions and best practices for the ElizaOS Levva Agent project
+globs: ["packages/levva-agent/**/*.ts", "**/*.tsx"]
+alwaysApply: true
+---
+
+# TypeScript Conventions and Best Practices
+
+## 🎯 **Undefined vs Null Preference**
+
+### **Rule: Prefer `undefined` over `null`**
+
+In TypeScript, consistently prefer `undefined` over `null` to represent the absence of a value. This aligns with JavaScript/TypeScript defaults and improves code consistency.
+
+#### **✅ Reasons for Preferring `undefined`**
+
+##### **1. Consistency with Defaults**
+```typescript
+// ✅ JavaScript/TypeScript defaults
+let uninitialized: string; // undefined
+function example(optional?: string) {} // undefined when omitted
+const obj = { prop: undefined }; // explicit undefined
+
+// ❌ Inconsistent with defaults
+let value: string | null = null; // requires explicit null assignment
+```
+
+##### **2. Optional Properties**
+```typescript
+// ✅ TypeScript optional properties use undefined
+interface User {
+  name: string;
+  email?: string; // string | undefined
+}
+
+const user: User = { name: "John" }; // email is undefined
+```
+
+##### **3. Default Values in Destructuring**
+```typescript
+// ✅ undefined triggers default values
+const { name = "Anonymous" } = { name: undefined }; // "Anonymous"
+
+// ❌ null does not trigger default values
+const { name = "Anonymous" } = { name: null }; // null
+```
+
+##### **4. JSON.stringify Behavior**
+```typescript
+// ✅ undefined properties are omitted (smaller payload)
+JSON.stringify({ a: 1, b: undefined, c: 3 }); // '{"a":1,"c":3}'
+
+// ❌ null properties are included
+JSON.stringify({ a: 1, b: null, c: 3 }); // '{"a":1,"b":null,"c":3}'
+```
+
+##### **5. Reduced Ambiguity**
+```typescript
+// ✅ Single concept for "absence of value"
+function processValue(value?: string) {
+  if (value === undefined) {
+    // Handle absence of value
+  }
+}
+
+// ❌ Two concepts to handle
+function processValue(value?: string | null) {
+  if (value === undefined || value === null) {
+    // Handle absence of value - which one means what?
+  }
+}
+```
+
+### **🔧 Implementation Patterns**
+
+#### **Function Parameters**
+```typescript
+// ✅ Use optional parameters (undefined by default)
+function createUser(name: string, email?: string) {
+  return { name, email }; // email is undefined if not provided
+}
+
+// ❌ Avoid null in optional parameters
+function createUser(name: string, email: string | null = null) {
+  return { name, email };
+}
+```
+
+#### **Return Types**
+```typescript
+// ✅ Return undefined for absence
+function findUser(id: string): User | undefined {
+  return users.find(u => u.id === id); // undefined if not found
+}
+
+// ❌ Avoid null returns
+function findUser(id: string): User | null {
+  return users.find(u => u.id === id) || null;
+}
+```
+
+#### **Object Properties**
+```typescript
+// ✅ Use undefined for optional properties
+interface Config {
+  apiKey: string;
+  timeout?: number; // number | undefined
+  retries?: number; // number | undefined
+}
+
+// ❌ Avoid null in optional properties
+interface Config {
+  apiKey: string;
+  timeout: number | null;
+  retries: number | null;
+}
+```
+
+#### **Array Methods**
+```typescript
+// ✅ Array.find returns undefined
+const user = users.find(u => u.id === targetId); // User | undefined
+
+// ❌ Don't convert to null
+const user = users.find(u => u.id === targetId) || null; // User | null
+```
+
+### **🎯 When `null` Might Be Appropriate**
+
+#### **Database Interactions**
+```typescript
+// ✅ null for explicit database NULL values
+interface DatabaseUser {
+  id: string;
+  name: string;
+  deletedAt: Date | null; // Explicit NULL in database
+}
+
+// Convert to undefined for application logic
+interface AppUser {
+  id: string;
+  name: string;
+  deletedAt?: Date; // undefined in application
+}
+```
+
+#### **External API Contracts**
+```typescript
+// ✅ null when external API explicitly uses null
+interface ExternalApiResponse {
+  data: any;
+  error: string | null; // API returns null for no error
+}
+
+// Convert to undefined for internal use
+interface InternalResponse {
+  data: any;
+  error?: string; // undefined for no error internally
+}
+```
+
+### **🔄 Migration Patterns**
+
+#### **Converting Null to Undefined**
+```typescript
+// ❌ Before: null usage
+function getActiveIntent(domain: string): IntentContext | null {
+  return activeIntents.get(domain) || null;
+}
+
+// ✅ After: undefined usage
+function getActiveIntent(domain: string): IntentContext | undefined {
+  return activeIntents.get(domain);
+}
+```
+
+#### **Helper Functions for Conversion**
+```typescript
+// ✅ Convert null to undefined at boundaries
+function nullToUndefined<T>(value: T | null): T | undefined {
+  return value === null ? undefined : value;
+}
+
+// Usage with external APIs
+const externalData = await externalApi.getData();
+const internalData = nullToUndefined(externalData.optionalField);
+```
+
+### **🛠️ Linting Rules**
+
+#### **ESLint Configuration**
+```json
+{
+  "rules": {
+    "@typescript-eslint/prefer-nullish-coalescing": "error",
+    "@typescript-eslint/prefer-optional-chain": "error",
+    "no-null/no-null": "warn" // Consider this rule to discourage null
+  }
+}
+```
+
+### **📋 Best Practices Summary**
+
+1. **✅ DO**: Use `undefined` for optional parameters, properties, and return types
+2. **✅ DO**: Leverage TypeScript's optional property syntax (`prop?: Type`)
+3. **✅ DO**: Use nullish coalescing (`??`) and optional chaining (`?.`) operators
+4. **✅ DO**: Convert `null` to `undefined` at API boundaries when appropriate
+5. **❌ DON'T**: Mix `null` and `undefined` for the same concept
+6. **❌ DON'T**: Use `null` as default values for optional parameters
+7. **❌ DON'T**: Return `null` when `undefined` would be more appropriate
+
+### **🎯 Consistency Rule**
+
+**If you choose to use `undefined` (recommended), apply it consistently throughout the codebase. Document any exceptions (like database NULL values) clearly.**
+
+## 🔗 **Related Patterns**
+
+- See `action-patterns.mdc` for action return type conventions
+- See `error-handling.mdc` for error vs undefined patterns
+- See `intent-based-actions.mdc` for intent context handling

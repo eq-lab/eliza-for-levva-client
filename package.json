@@ -11,6 +11,7 @@
     "start": "turbo run start --filter=./packages/cli --log-prefix=none --no-cache",
     "start:debug": "cross-env NODE_NO_WARNINGS=1 LOG_LEVEL=debug elizaos start",
     "start:app": "turbo run start --filter=./packages/app",
+    "start:levva": "turbo run start --filter=./packages/levva-agent --log-prefix=none --cache=local:r,remote:r",
     "dev": "bun run scripts/dev-watch.js",
     "build": "turbo run build --filter=!./packages/app --filter=!@elizaos/config",
     "build:client": "turbo run build --filter=@elizaos/client",

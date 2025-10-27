@@ -1,0 +1,346 @@
+---
+description: Debugging patterns and troubleshooting guidelines for ElizaOS applications
+globs: ["packages/levva-agent/**/*.ts", "**/*.js", "**/*.json"]
+alwaysApply: false
+---
+
+# Debugging Patterns and Troubleshooting Guidelines
+
+## Bun Debugging with Inspector
+
+### Debug Script Setup
+Use Bun's built-in debugger with the `--inspect-brk` flag for debugging ElizaOS applications:
+
+```json
+{
+  "scripts": {
+    "debug": "bun --inspect-brk ./src/server.ts",
+    "debug:dev": "bun --inspect-brk ./src/index.ts"
+  }
+}
+```
+
+### Debug Workflow
+1. **Start debugging session:**
+   ```bash
+   bun run debug
+   ```
+
+2. **Bun Inspector output:**
+   ```
+   --------------------- Bun Inspector ---------------------
+   Listening:
+     ws://localhost:6499/dkb1qfuuohu
+   Inspect in browser:
+     https://debug.bun.sh/#localhost:6499/dkb1qfuuohu
+   --------------------- Bun Inspector ---------------------
+   ```
+
+3. **Open debug URL** in browser: https://debug.bun.sh/
+
+4. **Debug capabilities:**
+   - Set breakpoints in TypeScript source code
+   - Step through execution (F8 continue, F10 step over, F11 step into)
+   - Inspect variables and call stack
+   - Use console for runtime evaluation
+   - Source maps automatically supported
+
+### Debug Script Improvements Needed
+- **Graceful shutdown**: Implement proper signal handling for debug scripts
+- **Port configuration**: Allow custom debug port specification
+- **Environment detection**: Different debug configs for dev vs prod
+
+### Best Practices
+- Use `--inspect-brk` to pause at first line for early breakpoint setting
+- Leverage Bun's native TypeScript support - no transpilation needed for debugging
+- Use browser DevTools familiar interface via debug.bun.sh
+- Source maps work automatically with Bun's transpilation
+
+## Common Debugging Scenarios
+
+### ElizaOS Agent Debugging
+- Debug plugin initialization and loading
+- Trace action execution flow
+- Inspect provider data generation
+- Monitor service lifecycle events
+
+### Performance Debugging
+- Use Bun's built-in profiling capabilities
+- Monitor memory usage and garbage collection
+- Trace async operation bottlenecks
+- Profile database query performance
+
+## Troubleshooting Guidelines
+
+### Worker Thread Issues
+- Watch for "worker has exited" errors in thread-stream
+- These often indicate process interruption by debugger (expected with --inspect-brk)
+- Distinguish between actual errors and debugger-induced interruptions
+
+### Source Map Issues
+- Bun handles source maps automatically
+- If breakpoints don't align, check TypeScript compilation settings
+- Ensure tsconfig.json has proper source map configuration
+
+### Network Debugging
+- Use `BUN_CONFIG_VERBOSE_FETCH=curl` for request debugging
+- Monitor WebSocket connections for real-time features
+- Debug API integration issues with network inspection
+
+## Response Quality Issues
+
+### Rephrase Prompt Deduplication Problems
+
+**Problem**: Overly aggressive deduplication filtering out legitimate user-requested data
+
+**Symptoms**:
+- User asks "show me my positions" but gets generic response instead of position data
+- LLM responds with "You have several management options" instead of actual position summary
+- Structured data (## headers, dollar amounts, balances) being suppressed
+
+**Root Cause**: Deduplication logic treating user-requested data as "duplicate information"
+
+**Solution Pattern**:
+```typescript
+// ❌ WRONG: Too aggressive deduplication
+"CRITICAL: Avoid duplicating information from previous actions. If prevActions contain data, provide complementary information instead of repeating the same data."
+
+// ✅ CORRECT: Smart deduplication that preserves user requests
+"SMART DEDUPLICATION (Only apply when truly redundant):
+1. If prevActions contain IDENTICAL structured data (same dollar amounts, same strategy names, same format), then provide complementary management options instead
+2. If prevActions contain different data or no structured data, provide the requested information normally  
+3. If user explicitly requested specific information (positions, balances, strategies), always provide that information regardless of prevActions
+4. Only avoid duplication when the EXACT SAME information was already provided in the EXACT SAME format"
+```
+
+**Key Principles**:
+- **Preserve user-requested data**: Never filter out information the user explicitly asked for
+- **Distinguish between redundant vs. requested**: User asking "show positions" is NOT redundant
+- **IDENTICAL data check**: Only suppress when exact same format and values were already shown
+- **Format preservation**: Keep structured data (## headers) vs conversational responses separate
+
+### Testing Response Quality Issues
+- Use integration tests with real LLM interactions to catch response quality problems
+- Unit tests alone won't catch rephrase/deduplication issues
+- Test with `__tests__/chat/*.integration.test.ts` for end-to-end validation
+
+### Debugging Rephrase Issues
+1. **Check rephrase prompt**: Look at `src/prompts/rephrase.ts` for overly aggressive deduplication rules
+2. **Validate prevActions**: Ensure previous context isn't incorrectly flagged as duplicate
+3. **Test with manual prompts**: Create simple test cases to validate prompt behavior
+4. **Monitor action chaining**: Check if REPLY actions are interfering with data actions
+
+## API Validation Debugging
+
+### Zod Schema Validation Failures
+
+**Problem Pattern**: API responses contain `null` values but Zod schema expects `string | undefined`
+
+**Debugging Approach**:
+```typescript
+// ✅ Create temporary test script to inspect actual API responses
+#!/usr/bin/env bun
+import { getStrategies } from "./src/api/levva";
+
+async function debugApiResponse() {
+  console.log("🧪 Testing API response structure...");
+  
+  try {
+    const result = await getStrategies(1);
+    
+    if (result.success) {
+      console.log("✅ Validation successful");
+      console.log("Response structure:", JSON.stringify(result.data[0], null, 2));
+    } else {
+      console.log("❌ Validation failed");
+      console.log("Detailed errors:");
+      result.error.issues.forEach((issue, index) => {
+        console.log(`  ${index + 1}. Path: ${issue.path?.join('.')} - ${issue.message}`);
+      });
+    }
+  } catch (error) {
+    console.error("💥 Unexpected error:", error);
+  }
+}
+
+debugApiResponse().catch(console.error);
+```
+
+**Common Issues and Solutions**:
+```typescript
+// ❌ WRONG: Schema expects string or undefined
+protocol: z.string().optional(),
+
+// 🔍 ACTUAL API RESPONSE:
+"protocol": null  // API returns null, not undefined
+
+// ✅ CORRECT: Schema accepts string, null, or undefined
+protocol: z.string().nullable().optional(),
+```
+
+**Debugging Workflow**:
+1. **Create test script** to make actual API calls
+2. **Inspect raw response** structure and data types
+3. **Identify null vs undefined** patterns in the API
+4. **Update schema** to match actual API behavior
+5. **Test validation** with real data
+6. **Clean up test files** after debugging
+
+**Key Insights**:
+- **Test with Real Data**: Never assume API documentation is accurate
+- **Handle Null Values**: APIs often return `null` instead of omitting fields
+- **Iterative Debugging**: Fix validation errors one by one based on actual patterns
+- **Temporary Scripts**: Create disposable test scripts for quick API inspection
+
+### Schema Evolution Patterns
+```typescript
+// ✅ PATTERN: Gradual schema refinement based on real API responses
+const tokenSchema = z.object({
+  address: z.string(),
+  symbol: z.string(),
+  name: z.string(),
+  decimals: z.number(),
+  priceUsd: z.number(),
+  protocol: z.string().nullable().optional(), // Added .nullable() after API inspection
+  bonuses: z.array(bonusSchema).optional(),
+});
+```
+
+**Benefits**:
+- **Accurate Validation**: Schema matches actual API behavior
+- **Fewer Runtime Errors**: Proper handling of null values prevents crashes
+- **Better Error Messages**: Clear validation errors help debug integration issues
+- **Maintainable Code**: Schema evolution is documented and traceable
+
+## Intent-Based Debugging
+
+### Strategy-Token Compatibility Issues
+
+**Problem Pattern**: Users trying to deposit incompatible tokens into vault strategies
+
+**Debugging Approach**:
+```typescript
+// ✅ Add comprehensive logging for strategy-token validation
+if (strategy.type === "vault") {
+  console.log("🔍 Vault strategy validation:", {
+    strategyId: strategy.id,
+    strategyName: strategy.name,
+    underlyingToken: strategy.vault?.underlyingToken?.symbol,
+    userProvidedToken: tokenSymbol || tokenAddress,
+    isValidToken: isValidToken
+  });
+  
+  if (!isValidToken) {
+    console.log("❌ Token validation failed:", {
+      expected: strategy.vault.underlyingToken.symbol,
+      provided: userToken,
+      reason: "Token not compatible with vault strategy"
+    });
+  }
+}
+```
+
+**Key Debugging Points**:
+- **Strategy Type Detection**: Verify `strategy.type` is correctly identified
+- **Underlying Token Lookup**: Ensure `strategy.vault.underlyingToken` exists
+- **Token Alias Handling**: Check ETH/WETH conversion logic
+- **Error Message Clarity**: Provide specific guidance to users
+
+### Portfolio-Based Suggestion Debugging
+
+**Problem Pattern**: Suggestions showing placeholder amounts instead of real balances
+
+**Debugging Approach**:
+```typescript
+// ✅ Add debugging for portfolio data extraction
+const debugPortfolioSuggestions = async (userAddress, chainId) => {
+  console.log("🔍 Portfolio suggestion debugging:", { userAddress, chainId });
+  
+  const assets = await service.getWalletAssets({ address: userAddress, chainId });
+  console.log("Raw assets:", assets.length, assets.slice(0, 2));
+  
+  const availableTokens = await service.getAvailableTokens({ chainId });
+  console.log("Available tokens:", availableTokens.length);
+  
+  const tokenMap = new Map(
+    availableTokens.map(token => [token.address ?? ETH_NULL_ADDR, token])
+  );
+  
+  const significantAssets = assets
+    .filter(asset => asset.amount > 0n)
+    .map(asset => {
+      const tokenInfo = tokenMap.get(asset.token ?? ETH_NULL_ADDR);
+      const symbol = tokenInfo?.symbol ?? "ETH";
+      const balance = formatUnits(asset.amount, tokenInfo?.decimals ?? 18);
+      console.log("Asset processing:", { 
+        token: asset.token, 
+        symbol, 
+        rawAmount: asset.amount.toString(),
+        formattedBalance: balance 
+      });
+      return { symbol, balance: parseFloat(balance) };
+    })
+    .filter(asset => asset.balance > 0.001);
+    
+  console.log("Significant assets:", significantAssets);
+  return significantAssets;
+};
+```
+
+**Common Issues**:
+- **User Address Extraction**: Verify user address is correctly extracted from conversation
+- **Token Map Creation**: Ensure token lookup map includes all necessary tokens
+- **Balance Formatting**: Check `formatUnits` calls with correct decimals
+- **Asset Filtering**: Verify dust filtering doesn't remove legitimate balances
+
+### Intent Context Debugging
+
+**Problem Pattern**: Intent context not persisting across conversation turns
+
+**Debugging Approach**:
+```typescript
+// ✅ Add intent lifecycle debugging
+const debugIntentLifecycle = async (intentManager, message) => {
+  const userId = extractUserId(message);
+  const channelId = extractChannelId(message);
+  
+  console.log("🔍 Intent lifecycle debug:", { userId, channelId });
+  
+  // Check for existing intents
+  const domains = ["MANAGE_POSITIONS", "SWAP_TOKENS", "ANALYZE_WALLET"];
+  for (const domain of domains) {
+    const intent = await intentManager.getActiveIntentByDomain(userId, channelId, domain);
+    if (intent) {
+      console.log(`Found active intent in ${domain}:`, {
+        id: intent.id,
+        type: intent.type,
+        status: intent.status,
+        createdAt: new Date(intent.createdAt).toISOString(),
+        memoryCount: intent.memories?.length || 0
+      });
+    }
+  }
+  
+  // Check conversation analysis
+  const recentMessages = await runtime.getMemories({
+    roomId: channelId,
+    count: 5,
+    unique: false,
+    tableName: "messages",
+  });
+  
+  console.log("Recent messages for intent analysis:", 
+    recentMessages.map(msg => ({
+      isAgent: msg.content.actions?.length > 0,
+      text: msg.content.text?.slice(0, 100) + "...",
+      timestamp: new Date(msg.createdAt).toISOString()
+    }))
+  );
+};
+```
+
+**Key Debugging Areas**:
+- **User/Channel Extraction**: Verify correct user and channel ID extraction
+- **Intent Storage/Retrieval**: Check cache keys and TTL settings
+- **Conversation Analysis**: Validate message filtering and intent detection
+- **Memory Management**: Ensure intent memories are properly maintained

@@ -1,0 +1,38 @@
+---
+description: Package management and tooling preferences
+globs: ["packages/levva-agent/package.json", "bun.lockb", "*.md"]
+alwaysApply: true
+---
+
+# Package Management Guidelines
+
+## Always Use Bun
+**IMPORTANT**: Always use Bun instead of npm for all package management and script execution in this project.
+
+## Commands
+- `bun install` - Install dependencies
+- `bun add <package>` - Add new dependencies  
+- `bun add -d <package>` - Add dev dependencies
+- `bun remove <package>` - Remove dependencies
+- `bun run <script>` - Run package.json scripts
+- `bun run dev` - Start development server
+- `bun run build` - Build the project
+- `bun run test` - Run tests
+- `bun run test:component` - Run component tests
+- `bun run test:e2e` - Run E2E tests
+
+## Why Bun?
+- Faster package installation and script execution
+- Better TypeScript support out of the box
+- Compatible with npm packages and package.json
+- Improved performance for development workflows
+
+## Lock File
+- Use `bun.lockb` (Bun's lock file) instead of `package-lock.json`
+- Commit `bun.lockb` to version control
+- Never mix npm and bun in the same project
+
+## Documentation and Examples
+- Always use `bun` commands in README files
+- Update any documentation that references npm commands
+- Use `bun` in CI/CD scripts and deployment instructions

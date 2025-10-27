@@ -57,4 +57,4 @@ ENV NODE_ENV=production
 EXPOSE 3000
 EXPOSE 50000-50100/udp
 
-CMD ["bun", "run", "start"]
+CMD ["bun", "run", "start:levva"]

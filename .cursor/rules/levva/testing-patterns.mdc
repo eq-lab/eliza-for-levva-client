@@ -1,0 +1,197 @@
+---
+description: Testing patterns and best practices
+globs: ["packages/levva-agent/**/__tests__/**/*.ts", "**/e2e/**/*.ts"]
+alwaysApply: false
+---
+
+# Testing Guidelines
+
+## Test Structure
+- **Unit Tests**: Fast, isolated tests with mocks (`.test.ts` files)
+- **Integration Tests**: Test real API interactions (`.integration.test.ts` files)
+- **Component Tests**: `__tests__/` directory using Vitest
+- **E2E Tests**: `e2e/` directory using ElizaOS test interface
+- **Test Utilities**: `__tests__/utils/` for helper functions
+
+### File Naming Convention
+- `*.test.ts` - Unit tests (mocked, fast)
+- `*.integration.test.ts` - Integration tests (real APIs, slow)
+- `*.spec.ts` - Alternative test file naming
+
+### CI/CD Considerations
+- **CI Pipeline**: Run only unit tests + E2E tests (`bun run test`)
+- **Local Development**: Run all tests including integration (`bun run test:all`)
+- **Integration tests** can be skipped in CI to avoid external API dependencies
+
+## Component Testing with Vitest
+```typescript
+// Unit test example
+describe('Configuration', () => {
+  it('should load configuration correctly', () => {
+    expect(config.debug).toBeDefined();
+  });
+});
+
+// Integration test example
+describe('Integration: Plugin with Character', () => {
+  it('should initialize character with plugins', async () => {
+    // Test interactions between components
+  });
+});
+```
+
+## E2E Testing with ElizaOS
+```typescript
+export class ProjectTestSuite implements TestSuite {
+  name = 'project_test_suite';
+  tests = [
+    {
+      name: 'project_initialization',
+      fn: async (runtime) => {
+        // Test project in a real runtime
+      },
+    },
+  ];
+}
+
+export default new ProjectTestSuite();
+```
+
+## Testing Best Practices
+- Mock external services appropriately
+- Test error conditions and edge cases
+- Use proper assertions and expectations
+- Test async operations with proper awaiting
+- Mock blockchain interactions for unit tests
+- Test with realistic data scenarios
+
+## Action Testing Patterns
+
+### CRITICAL: Never Expect Undefined Returns
+Actions in ElizaOS return `ActionResult` objects, not undefined:
+
+```typescript
+// ✅ CORRECT: Test ActionResult structure
+const result = await action.handler(runtime, message, state, {}, callback);
+
+expect(result).toBeDefined();
+expect(result.success).toBe(true);
+expect(result.text).toContain("Generated");
+expect(result.data.actionName).toBe("ACTION_NAME");
+expect(result.values.responded).toBe(true);
+expect(callback).toHaveBeenCalled();
+
+// ❌ WRONG: Never expect undefined
+// expect(result).toBeUndefined(); // This breaks action chaining
+```
+
+### Provider Data Structure in Tests
+**📋 For complete provider patterns, see `action-patterns.mdc`**
+
+Mock provider data with correct nesting:
+```typescript
+mockRuntime.composeState.mockResolvedValue({
+  data: {
+    providers: {
+      PROVIDER_NAME: {
+        text: "Provider description", 
+        data: { /* actual provider data */ },
+      },
+    },
+  },
+});
+```
+
+### Essential Mocks for Action Tests
+**📋 For complete mock setup examples, see `action-patterns.mdc`**
+
+Key mocks required:
+- `mockRuntime.logger` - All log levels (debug, info, warn, error)
+- Service mocks - All methods including `createCalldata` for transactions
+- `mockRuntime.composeState` - Provider data structure
+- `mockRuntime.rephrase` - Content object handling
+
+### Test Error Cases Properly
+**📋 For complete error testing patterns, see `action-patterns.mdc`**
+
+Key principles:
+- Test that `result.success` reflects the actual outcome
+- Verify `callback` was called with user-friendly message
+- Check `result.data.actionName` and error details
+
+## Test Commands
+- `bun run test:unit` - Run unit tests only (fast, mocked, CI-friendly)
+- `bun run test:integration` - Run integration tests only (slow, real APIs)
+- `bun run test:component` - Run all component tests (unit + integration)
+- `bun run test:e2e` - Run E2E tests
+- `bun run test` - Run unit tests + E2E tests (recommended for CI)
+- `bun run test:all` - Run all tests (component + E2E)
+- `bun run test:coverage` - Run with coverage report
+
+## CRITICAL: Response Quality Testing
+
+### Use Integration Tests for Response Quality
+**📋 For response quality issues (duplication, inconsistency, formatting), use `chat-instance.integration.test.ts`**
+
+```typescript
+// ✅ CORRECT: Test response quality with real agent
+describe("Response Quality Validation", () => {
+  it("should not duplicate information in responses", async () => {
+    const response = await socket.sendMessage({
+      channelId,
+      userId,
+      text: "Show me my positions",
+    });
+    
+    // Validate response quality with real LLM output
+    expect(response.text).not.toMatch(/duplicate patterns/);
+  });
+});
+
+// ❌ WRONG: Isolated unit tests for response quality
+// These don't test real LLM behavior and rephrase interactions
+```
+
+### Fix Response Quality in General Prompts
+**📋 For response quality issues, improve `src/prompts/rephrase.ts`, not individual actions**
+
+```typescript
+// ✅ CORRECT: Improve general rephrase prompt
+// src/prompts/rephrase.ts - Add deduplication rules
+
+// ❌ WRONG: Add specific rules to individual actions
+// src/actions/position.ts - Don't modify rephrase calls
+```
+- `bun run test:watch` - Run in watch mode
+
+## Package Management
+- **Always use Bun**: Use `bun` instead of `npm` for all package management and script execution
+- `bun install` - Install dependencies
+- `bun add <package>` - Add new dependencies
+- `bun run <script>` - Run package.json scripts
+
+## Successful Pattern: Format Preservation
+**Problem**: LLM adding conversational intros to structured content (e.g., "Here's your..." + "## Your Position Summary")
+
+**Solution**: Explicit format preservation rules in rephrase prompt:
+```typescript
+// src/prompts/rephrase.ts
+CRITICAL: PRESERVE ORIGINAL FORMAT
+- If content starts with "##" (structured format), keep it structured - do NOT add conversational intro
+- If content is conversational, keep it conversational - do NOT add structured sections
+- NEVER combine both formats in one response
+```
+
+**Result**: Clean separation between REPLY (conversational) and action responses (structured)
+- Text similarity reduced from 80% to 3%
+- No more duplicate position summaries
+
+## Test Organization and Cleanup
+**See `test-organization.mdc` for comprehensive test cleanup guidelines**
+
+### Key Insights from Recent Cleanup
+- **Split Large Test Files**: Break monolithic integration tests into focused modules
+- **Consolidate Constants**: Use shared setup files to avoid duplication
+- **Update Provider Tests**: Expect `ProviderResult` format with `text` and `data` properties
+- **Fix Cache API**: Use `runtime.getCache`/`runtime.setCache` instead of direct cache manager
+- **Correct Socket API**: Use `client.messaging.clearChannelHistory()` not `socket.clearMessages()`

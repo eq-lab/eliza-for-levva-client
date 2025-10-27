@@ -1,0 +1,103 @@
+---
+description: ElizaOS caching patterns and correct cache API usage
+globs: ["packages/levva-agent/**/services/**/*.ts", "**/providers/**/*.ts", "**/actions/**/*.ts"]
+alwaysApply: false
+---
+
+# ElizaOS Caching Patterns
+
+## Correct Cache API Usage
+
+### ✅ Correct Pattern
+```typescript
+// Reading from cache
+const cached = await runtime.getCache<T>(cacheKey);
+
+// Writing to cache
+await runtime.setCache(cacheKey, value);
+
+// Example with proper typing
+const extractedParams = await runtime.getCache<LLMExtractedParams>(cacheKey);
+if (!extractedParams) {
+  const newParams = await extractData();
+  await runtime.setCache(cacheKey, newParams);
+}
+```
+
+### ❌ Incorrect Patterns to Avoid
+```typescript
+// DON'T use cacheManager directly
+const cached = (runtime as any).cacheManager?.get(cacheKey) as T;
+(runtime as any).cacheManager?.set(cacheKey, value, ttl);
+
+// DON'T cast runtime to any for cache access
+const cached = (runtime as any).cache?.get(cacheKey);
+```
+
+## Cache Key Naming Conventions
+
+### Provider Caching
+- **Format**: `{provider-name}-{message.id}` 
+- **Example**: `withdraw-params-${message.id}`
+- **Purpose**: Prevent redundant LLM calls during state composition
+
+### Service Caching
+- **Timed Cache**: `{service}:{method}:{params}`
+- **Example**: `user-positions:${address}`, `strategies:${chainId}`
+- **Permanent Cache**: Use service's built-in `timedCache` and `permanentCache` helpers
+
+### Route/Evaluator Caching
+- **Format**: `{feature}:{user}:{chain}` 
+- **Example**: `suggestions:${address}:${chainId}`
+
+## Cache TTL Guidelines
+
+### ElizaOS Default Behavior
+- `runtime.setCache()` uses framework defaults (typically 5-15 minutes)
+- No need to specify TTL unless you have specific requirements
+- Framework handles cache expiration automatically
+
+### Service Cache Helpers
+```typescript
+// Use service's timedCache for dynamic data
+getUserPositions = this.timedCache(
+  300000, // 5 minutes TTL
+  async (address: `0x${string}`) => {
+    // Implementation
+  },
+  this.getUserPositionsCacheKey
+);
+
+// Use permanentCache for static data
+getStrategies = this.permanentCache(async (chainId: number = 1) => {
+  // Implementation
+}, this.getStrategiesKey);
+```
+
+## Best Practices
+
+1. **Always Use Proper Types**: Specify generic type when calling `getCache<T>()`
+2. **Async/Await**: Cache operations are async, always await them
+3. **Error Handling**: Cache misses return `undefined`, handle gracefully
+4. **Key Uniqueness**: Ensure cache keys are unique and descriptive
+5. **Provider Caching**: Use message.id for provider-level caching to prevent duplicate LLM calls
+
+## Migration from Incorrect Usage
+
+When you find incorrect cache usage:
+
+```typescript
+// Before (incorrect)
+let cached = (runtime as any).cacheManager?.get(key) as T | undefined;
+if (!cached) {
+  cached = await computeValue();
+  (runtime as any).cacheManager?.set(key, cached, 300000);
+}
+
+// After (correct)
+let cached = await runtime.getCache<T>(key);
+if (!cached) {
+  cached = await computeValue();
+  await runtime.setCache(key, cached);
+}
+```

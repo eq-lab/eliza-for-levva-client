@@ -1,0 +1,543 @@
+---
+description: Structured output patterns and best practices for LLM model invocations with OBJECT_SMALL and OBJECT_LARGE
+globs: ["packages/levva-agent/**/*.ts", "**/*.js"]
+alwaysApply: false
+---
+
+# Structured Output Patterns for LLM Model Usage
+
+## 🎯 **Core Principle**
+
+When using `ModelType.OBJECT_SMALL` or `ModelType.OBJECT_LARGE`, **ALWAYS** use structured output with Zod schemas and zero temperature for deterministic, consistent results.
+
+---
+
+## ✅ **Required Pattern**
+
+### **1. Always Use Schema + Temperature 0**
+
+```typescript
+import { ModelType } from "@elizaos/core";
+import { z } from "zod";
+import { zodJsonSchema } from "../prompts/util";
+
+// Define schema and infer type
+const mySchema = z.object({ /* ... */ });
+type MySchemaResult = z.infer<typeof mySchema>;
+
+// ✅ CORRECT: Schema + temperature 0 + type annotation
+const result: MySchemaResult = await runtime.useModel(
+  ModelType.OBJECT_SMALL,
+  {
+    prompt: myPrompt,
+    schema: zodJsonSchema(mySchema),
+    temperature: 0,
+  }
+);
+
+// ❌ WRONG: No schema
+const result = await runtime.useModel(ModelType.OBJECT_SMALL, {
+  prompt: myPrompt,
+});
+
+// ❌ WRONG: No temperature specified (uses default)
+const result = await runtime.useModel(ModelType.OBJECT_SMALL, {
+  prompt: myPrompt,
+  schema: zodJsonSchema(mySchema),
+});
+```
+
+### **2. Define Schemas with Detailed Descriptions**
+
+```typescript
+import { z } from "zod";
+
+// ✅ CORRECT: Detailed, explicit descriptions
+export const suggestionSchema = z.object({
+  thought: z
+    .string()
+    .describe(
+      "Your internal reasoning about what suggestions to provide and why"
+    ),
+  suggestions: z
+    .array(
+      z.object({
+        label: z
+          .string()
+          .describe(
+            "Short, specific label for the button/chip UI element (2-5 words). " +
+            "Must clearly indicate what the suggestion does. " +
+            "Examples: 'Withdraw 100 USDC' (NOT 'Edit amount'), " +
+            "'50% of balance' (NOT 'Partial'), " +
+            "'Safe yield strategy' (NOT 'Different strategy')"
+          ),
+        text: z
+          .string()
+          .describe(
+            "The complete natural message that the USER would type or say to the agent " +
+            "(e.g., 'I want to withdraw 100 USDC', 'Actually, withdraw 50 USDC instead')"
+          ),
+      })
+    )
+    .describe(
+      "Array of 3-6 suggestion objects, each containing both a label and text field"
+    ),
+});
+
+// ❌ WRONG: Vague descriptions
+export const badSchema = z.object({
+  thought: z.string().describe("A thought"),
+  suggestions: z.array(
+    z.object({
+      label: z.string().describe("Label"),
+      text: z.string().describe("Text"),
+    })
+  ),
+});
+```
+
+---
+
+## 📋 **Schema Design Best Practices**
+
+### **1. Field Descriptions Must Be Explicit**
+
+**Include:**
+- **Purpose**: What the field represents
+- **Format**: Expected structure/format
+- **Examples**: Concrete examples (especially CORRECT vs WRONG)
+- **Constraints**: Length limits, required patterns
+- **Context**: How the field will be used
+
+```typescript
+// ✅ EXCELLENT: Explicit with examples
+label: z.string().describe(
+  "Short, specific label for the button/chip UI element (2-5 words). " +
+  "Must clearly indicate what the suggestion does. " +
+  "Examples: 'Withdraw 100 USDC' (NOT 'Edit amount'), " +
+  "'50% of balance' (NOT 'Partial')"
+)
+
+// ⚠️ OKAY: Missing examples
+label: z.string().describe(
+  "Short, specific label for the button UI (2-5 words)"
+)
+
+// ❌ BAD: Too vague
+label: z.string().describe("A label")
+```
+
+### **2. Use Type Inference and Annotation (Not Casting)**
+
+```typescript
+// ✅ CORRECT: Export inferred type
+export const mySchema = z.object({
+  field: z.string(),
+});
+export type MySchemaResult = z.infer<typeof mySchema>;
+
+// ✅ BEST: Type annotation on variable
+const result: MySchemaResult = await runtime.useModel(
+  ModelType.OBJECT_SMALL,
+  { prompt, schema: zodJsonSchema(mySchema), temperature: 0 }
+);
+
+// ❌ AVOID: Type casting with 'as'
+const result = await runtime.useModel(
+  ModelType.OBJECT_SMALL,
+  { prompt, schema: zodJsonSchema(mySchema), temperature: 0 }
+) as MySchemaResult;
+```
+
+**Why prefer type annotation?**
+- Better type safety at compile time
+- Catches type mismatches earlier
+- More explicit about expected types
+- TypeScript best practice
+
+### **3. Centralize Common Schemas**
+
+```typescript
+// ✅ CORRECT: Shared schemas in dedicated files
+// src/prompts/suggest/schema.ts
+export const defaultSuggestionSchema = z.object({...});
+export const suggestionTypeSchema = z.object({...});
+
+// Import and use
+import { defaultSuggestionSchema } from "../prompts/suggest/schema";
+```
+
+---
+
+## 🔧 **Helper Functions**
+
+### **zodJsonSchema Helper**
+
+Located in `src/prompts/util.ts`:
+
+```typescript
+import { zodJsonSchema } from "../prompts/util";
+
+// Converts Zod schema to JSON Schema format for LLM
+const result = await runtime.useModel(ModelType.OBJECT_SMALL, {
+  prompt: myPrompt,
+  schema: zodJsonSchema(mySchema), // ✅ Use this helper
+  temperature: 0,
+});
+```
+
+### **formatZodOutput Helper**
+
+For generating prompt instructions:
+
+```typescript
+import { formatZodOutput } from "../prompts/util";
+
+const prompt = `
+<output>
+${formatZodOutput(mySchema)}
+
+Your response should follow this exact JSON structure.
+</output>
+`;
+```
+
+---
+
+## 📊 **Model Type Selection**
+
+### **ModelType.OBJECT_SMALL**
+- **Use for**: Simple structured data extraction
+- **Examples**:
+  - Suggestion generation (3-6 items)
+  - Parameter extraction
+  - Single-step decisions
+- **Response time**: Fast (~1-2s)
+- **Cost**: Lower
+
+### **ModelType.OBJECT_LARGE**
+- **Use for**: Complex structured data generation
+- **Examples**:
+  - Multi-step analysis
+  - Suggestion type selection with reasoning
+  - Complex intent detection
+- **Response time**: Slower (~2-5s)
+- **Cost**: Higher
+
+```typescript
+// ✅ OBJECT_SMALL: Simple suggestion generation
+const suggestions = await runtime.useModel(ModelType.OBJECT_SMALL, {
+  prompt: generateSuggestionsPrompt(params),
+  schema: zodJsonSchema(defaultSuggestionSchema),
+  temperature: 0,
+});
+
+// ✅ OBJECT_LARGE: Complex decision-making
+const analysis = await runtime.useModel(ModelType.OBJECT_LARGE, {
+  prompt: analyzeSituationPrompt(params),
+  schema: zodJsonSchema(suggestionTypeSchema),
+  temperature: 0,
+});
+```
+
+---
+
+## 🎯 **Temperature Guidelines**
+
+### **Always Use 0 for Structured Output**
+
+```typescript
+// ✅ CORRECT: Deterministic output
+temperature: 0
+
+// ❌ WRONG: Introduces variability
+temperature: 0.7
+
+// ❌ WRONG: Omitted (uses default)
+// (omitted)
+```
+
+**Why temperature 0?**
+- **Deterministic**: Same input → Same output
+- **Consistent**: Users get predictable behavior
+- **Reliable**: Follows schema more strictly
+- **Testable**: Easier to write tests
+
+---
+
+## 📝 **Complete Example**
+
+### **1. Define Schema**
+
+```typescript
+// src/prompts/suggest/schema.ts
+import { z } from "zod";
+
+export const depositSuggestionSchema = z.object({
+  thought: z
+    .string()
+    .describe(
+      "Your analysis of the user's deposit intent and what parameters are missing"
+    ),
+  suggestions: z
+    .array(
+      z.object({
+        label: z
+          .string()
+          .describe(
+            "Specific, actionable label (2-5 words) like 'Deposit 100 USDC' or 'Safe strategy'"
+          ),
+        text: z
+          .string()
+          .describe(
+            "Complete user message like 'I want to deposit 100 USDC into the safe strategy'"
+          ),
+      })
+    )
+    .min(3)
+    .max(6)
+    .describe("Array of 3-6 suggestion objects"),
+});
+
+export type DepositSuggestionResult = z.infer<typeof depositSuggestionSchema>;
+```
+
+### **2. Use in Model Call**
+
+```typescript
+// src/evaluators/suggestions.ts
+import { ModelType } from "@elizaos/core";
+import { zodJsonSchema } from "../prompts/util";
+import {
+  depositSuggestionSchema,
+  type DepositSuggestionResult,
+} from "../prompts/suggest/schema";
+
+async function generateDepositSuggestions(
+  runtime: IAgentRuntime,
+  prompt: string
+): Promise<DepositSuggestionResult> {
+  const result: DepositSuggestionResult = await runtime.useModel(
+    ModelType.OBJECT_SMALL,
+    {
+      prompt,
+      schema: zodJsonSchema(depositSuggestionSchema),
+      temperature: 0,
+    }
+  );
+
+  return result;
+}
+```
+
+### **3. Generate Prompt with Output Format**
+
+```typescript
+// src/prompts/suggest/deposit-intent.ts
+import { formatZodOutput } from "../util";
+import { depositSuggestionSchema } from "./schema";
+
+export function generateDepositPrompt(params: Params): string {
+  return `<task>
+Generate deposit suggestions for the user
+</task>
+
+<context>
+${params.context}
+</context>
+
+<instructions>
+Generate 3-5 specific, actionable suggestions.
+Use ACTUAL amounts and strategy names from context.
+</instructions>
+
+<output>
+${formatZodOutput(depositSuggestionSchema)}
+
+CRITICAL REQUIREMENTS:
+- Each suggestion MUST have BOTH "label" AND "text" fields
+- Labels must be SPECIFIC (e.g., "Deposit 100 USDC", NOT "Edit amount")
+- Text must be complete user messages
+</output>`;
+}
+```
+
+---
+
+## 🚨 **Common Mistakes**
+
+### **1. Missing Schema**
+```typescript
+// ❌ BAD: No schema enforcement
+const result = await runtime.useModel(ModelType.OBJECT_SMALL, {
+  prompt: "Generate suggestions",
+});
+
+// ✅ GOOD: Schema enforced with type annotation
+type SuggestionResult = z.infer<typeof suggestionSchema>;
+
+const result: SuggestionResult = await runtime.useModel(
+  ModelType.OBJECT_SMALL,
+  {
+    prompt: "Generate suggestions",
+    schema: zodJsonSchema(suggestionSchema),
+    temperature: 0,
+  }
+);
+```
+
+### **2. Missing Temperature**
+```typescript
+type MySchemaResult = z.infer<typeof mySchema>;
+
+// ❌ BAD: Non-deterministic (uses default temperature)
+const result: MySchemaResult = await runtime.useModel(
+  ModelType.OBJECT_SMALL,
+  {
+    prompt: myPrompt,
+    schema: zodJsonSchema(mySchema),
+  }
+);
+
+// ✅ GOOD: Deterministic with temperature 0
+const result: MySchemaResult = await runtime.useModel(
+  ModelType.OBJECT_SMALL,
+  {
+    prompt: myPrompt,
+    schema: zodJsonSchema(mySchema),
+    temperature: 0,
+  }
+);
+```
+
+### **3. Vague Schema Descriptions**
+```typescript
+// ❌ BAD: LLM doesn't know what to generate
+const schema = z.object({
+  label: z.string().describe("A label"),
+  text: z.string().describe("Some text"),
+});
+
+// ✅ GOOD: Explicit expectations
+const schema = z.object({
+  label: z.string().describe(
+    "Short, specific label (2-5 words) like 'Withdraw 100 USDC' or '50% of balance'. " +
+    "NOT vague labels like 'Edit' or 'Different option'"
+  ),
+  text: z.string().describe(
+    "Complete natural language message the user would type, " +
+    "e.g., 'I want to withdraw 100 USDC from my position'"
+  ),
+});
+```
+
+### **4. Using Type Casting Instead of Annotation**
+```typescript
+// ❌ BAD: Type casting with 'as'
+const result = await runtime.useModel(ModelType.OBJECT_SMALL, {
+  prompt: myPrompt,
+  schema: zodJsonSchema(mySchema),
+  temperature: 0,
+}) as MySchemaResult;
+
+// ✅ GOOD: Type annotation on variable
+const result: MySchemaResult = await runtime.useModel(
+  ModelType.OBJECT_SMALL,
+  {
+    prompt: myPrompt,
+    schema: zodJsonSchema(mySchema),
+    temperature: 0,
+  }
+);
+```
+
+### **5. Not Using Helper Functions**
+```typescript
+// ❌ BAD: Manual JSON Schema construction
+const schema = {
+  type: "object",
+  properties: {
+    suggestions: { type: "array" }
+  }
+};
+
+// ✅ GOOD: Use zodJsonSchema helper
+const schema = zodJsonSchema(suggestionSchema);
+```
+
+---
+
+## 🧪 **Testing Structured Output**
+
+For comprehensive testing patterns and utilities, see:
+- **`@structured-output-testing.mdc`** - Complete testing guide with OpenRouter utilities
+- **`__tests__/utils/openrouter.ts`** - Testing helper functions
+
+### **Quick Example**
+
+```typescript
+import { generateStructured, testDeterminism } from '../utils/openrouter';
+
+// Test business logic and quality
+const result = await generateStructured(mySchema, prompt);
+expect(result.suggestions.length).toBeGreaterThanOrEqual(3);
+
+// Test determinism (temperature 0)
+const [result1, result2] = await testDeterminism(mySchema, prompt);
+expect(result1).toEqual(result2);
+```
+
+**Key Testing Principles:**
+- ❌ Don't test Zod validation (library already tested)
+- ✅ Do test business logic and output quality
+- ✅ Do test with real data from services
+- ✅ Do test determinism (temperature 0)
+
+**See `@structured-output-testing.mdc` for detailed patterns and examples.**
+
+---
+
+## 📚 **Reference Files**
+
+### **Related Rules**
+- `@structured-output-testing.mdc` - Testing patterns with OpenRouter utilities
+- `@elizaos-patterns.mdc` - Core ElizaOS framework patterns
+- `@typescript-conventions.mdc` - TypeScript best practices
+
+### **Code Files**
+- `src/prompts/suggest/schema.ts` - Shared suggestion schemas
+- `src/prompts/util.ts` - `zodJsonSchema()`, `formatZodOutput()`
+- `src/evaluators/suggestions.ts` - Multiple model calls with schemas
+- `src/actions/intents/*.ts` - Intent-specific structured output
+
+### **Test Utilities**
+- `__tests__/utils/openrouter.ts` - OpenRouter testing helpers
+
+---
+
+## ✅ **Checklist**
+
+Before using `useModel` with `OBJECT_SMALL` or `OBJECT_LARGE`:
+
+- [ ] Defined Zod schema with detailed descriptions
+- [ ] Used `zodJsonSchema(schema)` helper
+- [ ] Set `temperature: 0`
+- [ ] Added examples in field descriptions (CORRECT vs WRONG)
+- [ ] Exported type inference with `z.infer<>`
+- [ ] Used type annotation on variable (NOT `as` casting)
+- [ ] Included schema output format in prompt with `formatZodOutput()`
+- [ ] Tested schema validation
+- [ ] Verified deterministic output
+
+---
+
+## 🎓 **Key Takeaways**
+
+1. **Always**: Schema + Temperature 0 for `OBJECT_SMALL`/`OBJECT_LARGE`
+2. **Explicit**: Detailed descriptions with examples prevent LLM confusion
+3. **Type Annotation**: Use `const result: Type = await useModel(...)` instead of `as` casting
+4. **Consistent**: Centralize common schemas, reuse patterns
+5. **Testable**: Deterministic output enables reliable testing
+6. **Type-Safe**: Use `z.infer<>` for TypeScript integration
+
+**Remember**: The LLM only sees your schema descriptions and prompt. Make them as explicit and unambiguous as possible!

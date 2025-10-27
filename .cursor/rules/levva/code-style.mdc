@@ -1,0 +1,155 @@
+---
+description: Code style standards and linting configuration for the ElizaOS Levva Agent project
+globs: ["packages/levva-agent/**/*.ts", "**/*.js", "eslint.config.js", ".prettierrc"]
+alwaysApply: false
+---
+
+# Code Style and Linting Guidelines
+
+This document outlines the code style standards and linting configuration for the ElizaOS Levva Agent project.
+
+## ESLint Configuration
+
+The project uses ESLint with TypeScript support, Prettier integration, and custom rules tailored for the ElizaOS framework.
+
+### Key Rules
+
+**TypeScript Rules:**
+- `@typescript-eslint/no-unused-vars`: Error for unused variables, except those starting with `_`
+- `@typescript-eslint/no-explicit-any`: Disabled for ElizaOS framework compatibility
+- `@typescript-eslint/ban-ts-comment`: Disabled for framework flexibility
+
+**General Rules:**
+- `no-console`: Warning (allowed in development, should be removed in production)
+- `no-debugger`: Error
+- `no-duplicate-imports`: Error
+- `prefer-const`: Error
+- `no-var`: Error
+
+**Code Style:**
+- Handled by Prettier integration via `prettier/prettier` rule
+- Double quotes for strings
+- Semicolons required
+- 2-space indentation
+- 80 character line width
+
+### File-Specific Rules
+
+**Test Files** (`**/*.test.{ts,tsx,js,jsx}`, `**/__tests__/**/*`):
+- `@typescript-eslint/no-explicit-any`: Disabled
+- `no-console`: Disabled
+
+**Config Files** (`**/*.config.{ts,js}`, `**/scripts/**/*`):
+- `no-console`: Disabled
+
+### Environment Globals
+
+The configuration includes globals for:
+- **Node.js**: `process`, `Buffer`, `__dirname`, `console`, `setTimeout`, etc.
+- **Browser**: `fetch`, `URLSearchParams`, `document`, `window`
+- **TypeScript**: `NodeJS` namespace
+
+## Available Scripts
+
+```bash
+# Linting
+bun run lint              # Run ESLint with auto-fix
+bun run lint:fix          # Run ESLint with auto-fix
+bun run lint:check        # Run ESLint without fixes, fail on warnings
+
+# Formatting
+bun run format            # Format code with Prettier
+bun run format:check      # Check formatting without changes
+
+# Combined checks
+bun run check             # Run lint:check + format:check + test:unit
+```
+
+## Pre-commit Hooks
+
+The project uses `lint-staged` to automatically lint and format staged files:
+
+```json
+{
+  "lint-staged": {
+    "*.{ts,tsx,js,jsx}": [
+      "eslint --fix",
+      "prettier --write"
+    ],
+    "*.{json,md,yml,yaml}": [
+      "prettier --write"
+    ]
+  }
+}
+```
+
+## Best Practices
+
+### Unused Variables
+- Prefix unused parameters with `_` to avoid linting errors
+- Remove unused imports and variables before committing
+- Use `// eslint-disable-next-line` sparingly and with justification
+
+### Console Statements
+- `console.log` statements are warnings, not errors
+- Remove debug console statements before production
+- Use `runtime.logger` for proper logging in ElizaOS context
+
+### Import Organization
+- Avoid duplicate imports from the same module
+- Group imports: external libraries, then internal modules
+- Use consistent import styles within files
+
+### TypeScript
+- Prefer explicit types over `any` when possible
+- Use `any` only when necessary for ElizaOS framework compatibility
+- Leverage TypeScript's strict mode features
+
+## IDE Integration
+
+### VS Code
+Add to `.vscode/settings.json`:
+```json
+{
+  "editor.codeActionsOnSave": {
+    "source.fixAll.eslint": true
+  },
+  "editor.formatOnSave": true,
+  "editor.defaultFormatter": "esbenp.prettier-vscode"
+}
+```
+
+### Cursor
+The ESLint configuration is automatically detected and used by Cursor's built-in linting features.
+
+## Troubleshooting
+
+### Common Issues
+
+**"'fetch' is not defined"**: 
+- This is resolved by the globals configuration
+- If still occurring, ensure you're using the latest ESLint config
+
+**"Duplicate import"**:
+- Consolidate imports from the same module
+- Use single import statement with multiple named imports
+
+**"Unexpected console statement"**:
+- This is a warning, not an error
+- Remove console statements or use `runtime.logger` for proper logging
+
+### Ignoring Files
+
+Files are ignored via the `ignores` property in `eslint.config.js`:
+- `node_modules/`, `dist/`, `build/`
+- `data/generated/`, `patches/`
+- `drizzle/migrations/`
+- Build artifacts and temporary files
+
+## Migration Notes
+
+This project was migrated from no linting to ESLint 9 with flat config:
+- Uses modern flat config format (`eslint.config.js`)
+- Includes comprehensive TypeScript and Prettier integration
+- Configured for ElizaOS framework patterns
+- Remaining lint issues are primarily unused imports/variables (acceptable during development)

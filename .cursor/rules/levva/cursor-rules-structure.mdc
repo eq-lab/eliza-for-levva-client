@@ -1,0 +1,112 @@
+---
+description: Correct Cursor rules directory structure and format requirements
+globs: [".cursor/**/*", "**/*.mdc"]
+alwaysApply: true
+---
+
+# Cursor Rules Structure and Format
+
+## CRITICAL: Correct Directory Structure
+
+**✅ CORRECT**: Use `.cursor/rules/` directory
+```
+project/
+  .cursor/
+    rules/
+      rule-name.mdc
+      another-rule.mdc
+```
+
+**❌ WRONG**: Never use `.cursorrules/` directory
+```
+project/
+  .cursorrules/  # This is WRONG - deprecated legacy format
+```
+
+## Rule File Format
+
+### MDC Format Required
+All rules must use `.mdc` extension (MDC = Markdown with metadata):
+
+```mdc
+---
+description: Brief description of what this rule does
+globs: ["packages/levva-agent/**/*.ts", "**/*.js"]  # File patterns this rule applies to
+alwaysApply: false  # or true for always-active rules
+---
+
+# Rule Content
+
+Your rule content in markdown format...
+```
+
+### Rule Types
+Based on the [Cursor documentation](https://docs.cursor.com/en/context/rules):
+
+| Rule Type       | Configuration | Description |
+|----------------|---------------|-------------|
+| Always         | `alwaysApply: true` | Always included in model context |
+| Auto Attached  | `globs: ["pattern"]` | Included when files matching pattern are referenced |
+| Agent Requested| `description: "..."` | AI decides whether to include it |
+| Manual         | `alwaysApply: false` | Only when explicitly mentioned with @ruleName |
+
+## Best Practices
+
+### File Organization
+- Keep rules under 500 lines
+- Split large rules into multiple, composable rules
+- Use descriptive filenames (kebab-case recommended)
+- Group related rules in subdirectories when needed
+
+### Content Guidelines
+- Provide concrete examples or referenced files
+- Avoid vague guidance - write like clear internal docs
+- Include `@filename.ts` references to include files in context
+- Focus on actionable, specific instructions
+
+### Nested Rules Support
+```
+project/
+  .cursor/rules/        # Project-wide rules
+  backend/
+    .cursor/rules/      # Backend-specific rules
+  frontend/
+    .cursor/rules/      # Frontend-specific rules
+```
+
+## Migration from Legacy Format
+
+If you have `.cursorrules` files:
+1. Create `.cursor/rules/` directory
+2. Convert files to `.mdc` format with metadata
+3. Remove old `.cursorrules` directory
+4. Update any references in documentation
+
+## Alternative: AGENTS.md
+
+For simple cases, use `AGENTS.md` in project root:
+- Plain markdown file (no metadata required)
+- Simpler than structured rules
+- Limited to root level only (v1.5)
+- Cannot be scoped or split across files
+
+## Common Mistakes to Avoid
+
+1. **Wrong directory**: Using `.cursorrules/` instead of `.cursor/rules/`
+2. **Wrong extension**: Using `.md` instead of `.mdc` for structured rules
+3. **Missing metadata**: Forgetting the YAML frontmatter in `.mdc` files
+4. **Overly broad globs**: Using patterns that match too many files
+5. **Vague descriptions**: Not providing clear descriptions for Agent Requested rules
+
+## Verification
+
+Check your rules setup:
+```bash
+# Correct structure should show:
+ls -la .cursor/rules/
+# Should contain .mdc files
+
+# Wrong structure (should not exist):
+ls -la .cursorrules/
+# Should return "No such file or directory"
+```

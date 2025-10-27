@@ -1,0 +1,409 @@
+---
+description: API integration patterns and validation best practices for ElizaOS Levva Agent
+globs: ["packages/levva-agent/**/*.ts"]
+alwaysApply: false
+---
+
+# API Integration Patterns
+
+## Overview
+
+This rule documents best practices for API integration, schema validation, and error handling based on real-world experience with the Levva API integration.
+
+## Zod Schema Validation Patterns
+
+### Handling Nullable Fields
+
+**Key Insight**: Real API responses often contain `null` values for optional fields, requiring explicit nullable handling in Zod schemas.
+
+#### Problem Pattern
+```typescript
+// ❌ WRONG: Schema expects string or undefined
+const tokenSchema = z.object({
+  protocol: z.string().optional(), // Fails when API returns null
+});
+
+// 🔍 ACTUAL API RESPONSE:
+{
+  "protocol": null  // API returns null, not undefined
+}
+```
+
+#### Solution Pattern
+```typescript
+// ✅ CORRECT: Schema accepts string, null, or undefined
+const tokenSchema = z.object({
+  protocol: z.string().nullable().optional(),
+});
+```
+
+### Schema Evolution Strategy
+
+#### Iterative Refinement Based on Real Data
+```typescript
+// ✅ PATTERN: Gradual schema refinement
+const strategiesResponseSchema = z.array(
+  z.object({
+    id: z.number(),
+    name: z.string(),
+    description: z.string(),
+    // ... other required fields
+    
+    // Added after API inspection revealed null values
+    apy: z.number().optional(),
+    protocol: z.string().nullable().optional(),
+    bonuses: z.array(bonusSchema).optional(),
+    
+    vault: z.object({
+      // ... vault fields
+      underlyingToken: z.object({
+        // ... token fields
+        protocol: z.string().nullable().optional(), // Critical fix
+      }),
+      lpToken: z.object({
+        // ... token fields  
+        protocol: z.string().nullable().optional(), // Critical fix
+      }),
+    }).optional(),
+  })
+);
+```
+
+### API Response Debugging
+
+#### Test Script Pattern
+```typescript
+// ✅ PATTERN: Create temporary debugging scripts
+#!/usr/bin/env bun
+import { getStrategies } from "./src/api/levva";
+
+async function debugApiResponse() {
+  console.log("🧪 Testing API response structure...");
+  
+  try {
+    const result = await getStrategies(1);
+    
+    if (result.success) {
+      console.log("✅ Validation successful");
+      console.log(`📊 Received ${result.data.length} strategies`);
+      
+      // Log first strategy structure
+      if (result.data.length > 0) {
+        console.log("📋 First strategy structure:");
+        console.log(JSON.stringify(result.data[0], null, 2));
+      }
+      
+      // Check for validation issues
+      result.data.forEach((strategy, index) => {
+        const issues = [];
+        if (!strategy.name) issues.push("missing name");
+        if (!strategy.vault?.underlyingToken) issues.push("missing underlyingToken");
+        
+        if (issues.length > 0) {
+          console.log(`⚠️  Strategy ${index} (ID: ${strategy.id}): ${issues.join(", ")}`);
+        }
+      });
+      
+    } else {
+      console.log("❌ Validation failed");
+      console.log("Detailed errors:");
+      result.error.issues.forEach((issue, index) => {
+        console.log(`  ${index + 1}. Path: ${issue.path?.join('.')} - ${issue.message}`);
+      });
+    }
+  } catch (error) {
+    console.error("💥 Unexpected error:", error);
+  }
+}
+
+debugApiResponse().catch(console.error);
+```
+
+#### Debugging Workflow
+1. **Create test script** to make actual API calls
+2. **Inspect raw response** structure and data types  
+3. **Identify null vs undefined** patterns in the API
+4. **Update schema** to match actual API behavior
+5. **Test validation** with real data
+6. **Clean up test files** after debugging
+
+## API Service Integration
+
+### Service Method Patterns
+
+#### Cached API Calls with Validation
+```typescript
+// ✅ PATTERN: Service method with caching and validation
+export class LevvaService extends Service {
+  getStrategies = this.permanentCache(async (chainId?: number) => {
+    const result = await getStrategiesApi(chainId);
+
+    if (!result.success) {
+      logger.error("Failed to get strategies", result.error);
+      throw new Error("Failed to get strategies");
+    }
+
+    logger.debug("Raw strategies data:", {
+      count: result.data.length,
+      firstStrategy: result.data[0],
+    });
+
+    return result.data.map<StrategyEntry>((x, index) => {
+      try {
+        // Transform API response to internal format
+        const strategyEntry: StrategyEntry = {
+          // Map required fields
+          id: x.id,
+          name: x.name,
+          description: x.description,
+          // ... other mappings
+          
+          // Handle optional fields that may be null
+          apy: x.apy,
+          bonuses: x.bonuses,
+          vault: x.vault, // Full vault object with nullable fields
+        };
+
+        return strategyEntry;
+      } catch (error) {
+        logger.error(`Error processing strategy ${index}:`, error);
+        throw error;
+      }
+    });
+  }, this.getStrategiesKey);
+}
+```
+
+### Error Handling Patterns
+
+#### Graceful API Failure Handling
+```typescript
+// ✅ PATTERN: Graceful error handling with fallbacks
+async function fetchWithFallback<T>(
+  apiCall: () => Promise<{ success: boolean; data?: T; error?: any }>,
+  fallbackValue: T,
+  context: string
+): Promise<T> {
+  try {
+    const result = await apiCall();
+    
+    if (result.success && result.data) {
+      return result.data;
+    } else {
+      logger.warn(`${context} API call failed, using fallback:`, result.error);
+      return fallbackValue;
+    }
+  } catch (error) {
+    logger.error(`${context} API call threw error, using fallback:`, error);
+    return fallbackValue;
+  }
+}
+
+// Usage
+const strategies = await fetchWithFallback(
+  () => getStrategies(chainId),
+  [], // Empty array fallback
+  "Strategies"
+);
+```
+
+## Type Safety Patterns
+
+### API Response to Internal Type Mapping
+
+#### Consistent Type Transformation
+```typescript
+// ✅ PATTERN: Explicit type mapping with validation
+interface StrategyEntry {
+  // Internal representation
+  id: number;
+  name: string;
+  type: StrategyType;
+  vault?: {
+    underlyingToken: {
+      symbol: string;
+      address: string;
+      decimals: number;
+    };
+  };
+}
+
+// Transform API response to internal type
+const mapApiResponseToStrategyEntry = (apiResponse: StrategiesResponse[number]): StrategyEntry => {
+  // Validate required fields
+  if (!apiResponse.name || !apiResponse.id) {
+    throw new Error(`Invalid strategy data: missing required fields`);
+  }
+  
+  return {
+    id: apiResponse.id,
+    name: apiResponse.name,
+    type: "vault", // Transform API type to internal enum
+    vault: apiResponse.vault ? {
+      underlyingToken: {
+        symbol: apiResponse.vault.underlyingToken.symbol,
+        address: apiResponse.vault.underlyingToken.address,
+        decimals: apiResponse.vault.underlyingToken.decimals,
+      }
+    } : undefined,
+  };
+};
+```
+
+### Null Safety Patterns
+
+#### Safe Property Access
+```typescript
+// ✅ PATTERN: Safe property access with null checks
+const getUnderlyingTokenSymbol = (strategy: StrategyEntry): string | undefined => {
+  return strategy.vault?.underlyingToken?.symbol;
+};
+
+// ✅ PATTERN: Null-safe validation
+const isValidVaultStrategy = (strategy: StrategyEntry): boolean => {
+  return (
+    strategy.type === "vault" &&
+    strategy.vault?.underlyingToken?.symbol !== undefined &&
+    strategy.vault?.underlyingToken?.address !== undefined
+  );
+};
+```
+
+## Caching Strategies
+
+### API Response Caching
+
+#### Tiered Caching with TTL
+```typescript
+// ✅ PATTERN: Multi-level caching strategy
+export class ApiCacheManager {
+  // Permanent cache for stable data (strategies, tokens)
+  private permanentCache = new Map<string, { data: any; timestamp: number }>();
+  
+  // Temporary cache for user-specific data (balances, positions)
+  private temporaryCache = new Map<string, { data: any; timestamp: number; ttl: number }>();
+  
+  async getCachedStrategies(chainId: number): Promise<StrategyEntry[]> {
+    const cacheKey = `strategies_${chainId}`;
+    const cached = this.permanentCache.get(cacheKey);
+    
+    // Strategies are relatively stable, cache for 1 hour
+    const cacheAge = Date.now() - (cached?.timestamp || 0);
+    if (cached && cacheAge < 3600000) {
+      return cached.data;
+    }
+    
+    // Fetch fresh data
+    const strategies = await this.fetchStrategies(chainId);
+    this.permanentCache.set(cacheKey, {
+      data: strategies,
+      timestamp: Date.now(),
+    });
+    
+    return strategies;
+  }
+  
+  async getCachedBalances(address: string, chainId: number): Promise<BalanceEntry[]> {
+    const cacheKey = `balances_${address}_${chainId}`;
+    const cached = this.temporaryCache.get(cacheKey);
+    
+    // Balances change frequently, cache for 5 minutes
+    const cacheAge = Date.now() - (cached?.timestamp || 0);
+    if (cached && cacheAge < cached.ttl) {
+      return cached.data;
+    }
+    
+    // Fetch fresh data
+    const balances = await this.fetchBalances(address, chainId);
+    this.temporaryCache.set(cacheKey, {
+      data: balances,
+      timestamp: Date.now(),
+      ttl: 300000, // 5 minutes
+    });
+    
+    return balances;
+  }
+}
+```
+
+### Cache Invalidation Patterns
+
+#### Event-Driven Cache Invalidation
+```typescript
+// ✅ PATTERN: Invalidate cache after state changes
+export class LevvaService extends Service {
+  async invalidateUserBalanceCache(address: `0x${string}`, chainId: number) {
+    try {
+      const db = getDb(this.runtime);
+      
+      // Remove stale balance entries from database
+      await db
+        .delete(balancesTable)
+        .where(
+          and(
+            eq(balancesTable.address, getAddress(address)),
+            eq(balancesTable.chainId, chainId)
+          )
+        );
+        
+      logger.info(`Invalidated balance cache for ${address} on chain ${chainId}`);
+    } catch (error) {
+      logger.error("Failed to invalidate balance cache:", error);
+      throw error;
+    }
+  }
+  
+  // Call after successful transactions
+  async onTransactionSuccess(address: `0x${string}`, chainId: number, txType: string) {
+    logger.info(`Transaction ${txType} succeeded, invalidating caches`);
+    
+    if (txType === "SWAP" || txType === "DEPOSIT" || txType === "WITHDRAW") {
+      await this.invalidateUserBalanceCache(address, chainId);
+    }
+    
+    if (txType === "DEPOSIT" || txType === "WITHDRAW") {
+      // Also invalidate position cache
+      await this.invalidateUserPositionCache(address, chainId);
+    }
+  }
+}
+```
+
+## Best Practices Summary
+
+### Schema Design
+- **Always use `.nullable()`** for fields that can be `null` in API responses
+- **Test schemas with real data**, not just documentation
+- **Evolve schemas iteratively** based on actual API behavior
+- **Document schema changes** with comments explaining the reasoning
+
+### Error Handling
+- **Graceful degradation** with meaningful fallback values
+- **Comprehensive logging** for debugging API integration issues
+- **User-friendly error messages** that guide users to solutions
+- **Retry logic** for transient API failures
+
+### Type Safety
+- **Explicit type mapping** between API responses and internal types
+- **Null-safe property access** with optional chaining
+- **Validation at boundaries** between external APIs and internal logic
+- **Consistent error handling** across all API integration points
+
+### Performance
+- **Appropriate caching strategies** based on data volatility
+- **Cache invalidation** after state-changing operations
+- **Batch API calls** when possible to reduce latency
+- **Monitor API usage** to avoid rate limiting
+
+### Debugging
+- **Create temporary test scripts** for API exploration
+- **Log API responses** during development and debugging
+- **Use structured logging** with context for easier troubleshooting
+- **Clean up debugging code** before production deployment
+
+## Related Patterns
+
+- **See `debugging-patterns.mdc`** for API validation debugging techniques
+- **See `elizaos-patterns.mdc`** for service integration patterns
+- **See `error-handling.mdc`** for comprehensive error handling strategies
+- **See `caching-patterns.mdc`** for advanced caching implementations

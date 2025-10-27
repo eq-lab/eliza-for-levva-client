@@ -1,0 +1,31 @@
+---
+description: ElizaOS Levva Agent project overview and architecture
+globs: []
+alwaysApply: true
+---
+
+# ElizaOS Levva Agent - Project Overview
+
+This is an ElizaOS agent implementation designed to improve UX for the Levva staking protocol (https://levva.fi/). 
+
+## Core Functionality
+- Swapping different crypto assets via Kyber and Pendle integrations
+- Analyzing user portfolios and wallet assets
+- Suggesting investment strategies (ultra-safe, safe, brave, custom)
+- Managing DeFi positions with leverage through pools and vaults
+- Providing crypto news and market insights
+
+## Architecture
+- **ElizaOS Framework**: TypeScript-based AI agent framework
+- **Plugin System**: Modular architecture with actions, providers, services, evaluators
+- **Database**: PostgreSQL with Drizzle ORM
+- **Blockchain**: Multi-chain support (Ethereum, Arbitrum, Base) via Viem
+- **AI Models**: OpenAI/OpenRouter integration for LLM capabilities
+- **Package Manager**: Use Bun instead of npm for all package management and script execution
+
+## Key Components
+- **Actions**: Core agent behaviors (swap, strategy selection, wallet analysis)
+- **Providers**: Data suppliers (user info, tokens, strategy params, swap params)
+- **Services**: Business logic (LevvaService, BrowserService)
+- **Evaluators**: Post-action processors (suggestions, transaction acknowledgment)
+- **Routes**: HTTP API endpoints for external integrations

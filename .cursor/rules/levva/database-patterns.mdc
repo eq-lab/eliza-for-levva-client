@@ -1,0 +1,44 @@
+---
+description: Database schema and ORM patterns using Drizzle
+globs: ["packages/levva-agent/**/schema/**/*.ts", "**/util/db/**/*.ts", "**/services/**/*.ts"]
+alwaysApply: false
+---
+# Database Patterns with Drizzle ORM
+
+## Schema Design
+- Use Drizzle ORM with PostgreSQL
+- Table names: snake_case (e.g., `levva_user`, `balances`)
+- Always include UUID primary keys with `gen_random_uuid()`
+- Use proper indexes for performance
+- Include timestamps where appropriate
+
+## Example Schema Pattern
+```typescript
+export const exampleTable = pgTable(
+  "example_table",
+  {
+    id: uuid("id").primaryKey().default(sql`gen_random_uuid()`),
+    address: varchar("address", { length: 42 }).notNull(),
+    chainId: integer("chain_id").notNull(),
+    createdAt: timestamp("created_at").notNull().default(sql`now()`),
+  },
+  (table) => [
+    unique().on(table.address, table.chainId),
+    index("exampleAddressIndex").on(table.address),
+  ]
+);
+```
+
+## Query Patterns
+- Use proper typing with Drizzle queries
+- Implement efficient WHERE clauses
+- Use indexes for frequently queried columns
+- Handle pagination properly
+- Use transactions for related operations
+
+## Performance Guidelines
+- Create indexes for foreign keys
+- Use unique constraints where appropriate
+- Implement proper caching strategies
+- Use connection pooling
+- Monitor query performance
