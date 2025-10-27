@@ -38,6 +38,7 @@
     "@elizaos/plugin-sql": "workspace:*",
     "fast-xml-parser": "5.2.5",
     "patchright": "1.50.1",
+    "redis": "^5.9.0",
     "viem": "2.30.6",
     "zod": "3.24.2",
     "zod-to-json-schema": "^3.24.6"

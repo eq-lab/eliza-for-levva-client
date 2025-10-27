@@ -22,6 +22,7 @@ import { LevvaService } from "./services/levva/class";
 import { IntentManager } from "./services/intent-manager";
 import { MessageRateLimiter } from "./services/message-rate-limiter";
 import { LEVVA_SERVICE } from "./constants/enum";
+import { RedisService } from "./services/redis";
 
 /**
  * Define the configuration schema for the plugin with the following properties:
@@ -128,7 +129,13 @@ const plugin: Plugin = {
       },
     ],
   },
-  services: [BrowserService, LevvaService, IntentManager, MessageRateLimiter],
+  services: [
+    BrowserService,
+    LevvaService,
+    IntentManager,
+    MessageRateLimiter,
+    RedisService,
+  ],
   actions: modules.map((m) => m.action),
   providers: [
     levvaProvider,
