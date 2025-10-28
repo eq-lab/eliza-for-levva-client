@@ -32,7 +32,20 @@
     },
     "start": {
       "dependsOn": ["@elizaos/core#build"],
-      "env": ["LOG_LEVEL"],
+      "env": [
+        "KYBER_CLIENT_ID",
+        "LOG_LEVEL",
+        "OPENROUTER_SMALL_MODEL",
+        "OPENROUTER_LARGE_MODEL",
+        "LOAD_DOCS_ON_STARTUP",
+        "CTX_KNOWLEDGE_ENABLED",
+        "TEXT_PROVIDER",
+        "TEXT_MODEL",
+        "POSTGRES_URL",
+        "OPENROUTER_API_KEY",
+        "OPENAI_EMBEDDING_API_KEY",
+        "REDIS_URL"
+      ],
       "persistent": true
     },
     "dev": {

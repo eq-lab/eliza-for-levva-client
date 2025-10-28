@@ -66,7 +66,7 @@
     "init:patchwright": "npx patchright install chromium",
     "postinstall": "bun init:patchwright",
     "start": "bun ./src/server.ts",
-    "dev": "LOG_LEVEL=debug elizaos dev",
+    "dev": "LOG_LEVEL=debug bun --watch ./src/server.ts",
     "debug": "bun --inspect-brk ./src/server.ts",
     "type-check": "tsc --noEmit",
     "build": "tsup",
