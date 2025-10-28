@@ -176,7 +176,7 @@ async function stopAgent(runtime: IAgentRuntime, server: AgentServer) {
 
 async function main() {
   const postgresUrl = process.env.POSTGRES_URL;
-  const port = Number(process.env.SERVER_PORT) || 3001;
+  const port = Number(process.env.SERVER_PORT) || 3000;
   if (!postgresUrl) {
     throw new Error("POSTGRES_URL is not set");
   }
