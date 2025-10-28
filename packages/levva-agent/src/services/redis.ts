@@ -26,7 +26,15 @@ class DefaultStore implements IKVStore<unknown> {
   ) {}
   async get(key: string): Promise<unknown | undefined> {
     const value = await this.client.get(`${this.prefix}:${key}`);
-    return value ? JSON.parse(value) : undefined;
+    return value
+      ? JSON.parse(value, (k, v) => {
+          if (k === "expiresAt") {
+            return new Date(v);
+          }
+
+          return v;
+        })
+      : undefined;
   }
   async set(key: string, value: unknown): Promise<void> {
     await this.client.set(`${this.prefix}:${key}`, JSON.stringify(value));
