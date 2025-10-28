@@ -133,8 +133,6 @@ async function startAgent(
     settings: await loadEnvConfig(),
   });
 
-  console.error("after runtime", JSON.stringify(process.env, null, 2));
-
   const initWrapper = async (runtime: IAgentRuntime) => {
     if (init) {
       await init(runtime);
@@ -177,7 +175,6 @@ async function stopAgent(runtime: IAgentRuntime, server: AgentServer) {
 }
 
 async function main() {
-  console.error("on start", JSON.stringify(process.env, null, 2));
   const postgresUrl = process.env.POSTGRES_URL;
   const port = Number(process.env.SERVER_PORT) || 3001;
   if (!postgresUrl) {
