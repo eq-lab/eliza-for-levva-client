@@ -104,7 +104,7 @@ export const suggestionsEvaluator: Evaluator = {
       // Set loading state
       loadingKey = `suggestions_loading:${user.address}:${chainId}`;
       // @ts-expect-error - stateCache exists on runtime but not in interface
-      runtime.stateCache.set(loadingKey, true);
+      await runtime.stateCache.set(loadingKey, true);
 
       const messages = await service.getMessages({
         where: eq(schema.messageTable.channelId, channelId),
@@ -316,14 +316,14 @@ export const suggestionsEvaluator: Evaluator = {
 
       // Clear loading state
       // @ts-expect-error - stateCache exists on runtime but not in interface
-      runtime.stateCache.delete(loadingKey);
+      await runtime.stateCache.delete(loadingKey);
     } catch (error) {
       runtime.logger.error("Error in suggestions evaluator:", error);
 
       // Clear loading state on error too
       if (loadingKey) {
         // @ts-expect-error - stateCache exists on runtime but not in interface
-        runtime.stateCache.delete(loadingKey);
+        await runtime.stateCache.delete(loadingKey);
       }
     }
   },

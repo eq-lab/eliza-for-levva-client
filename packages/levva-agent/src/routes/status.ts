@@ -1,6 +1,11 @@
 import type { Request, Response } from "express";
 import { isHex } from "viem";
-import { createUniqueUuid, IAgentRuntime, logger, Route } from "@elizaos/core";
+import {
+  createUniqueUuid,
+  IAgentRuntime,
+  IKVStore,
+  Route,
+} from "@elizaos/core";
 import { LEVVA_SERVICE } from "../constants/enum";
 import { LevvaService } from "../services/levva/class";
 import { ActionResultsCache } from "src/util";
@@ -49,10 +54,12 @@ async function handler(req: Request, res: Response, runtime: IAgentRuntime) {
     }
 
     const cacheKey = `${messageId}_action_results`;
-    const actionState =
-      // @ts-expect-error - stateCache exists on runtime but not in interface
-      (runtime.stateCache.get(cacheKey) as ActionResultsCache | undefined)
-        ?.data;
+    const stateCache = (runtime as any).stateCache as IKVStore<
+      ActionResultsCache,
+      any
+    >;
+
+    const actionState = (await stateCache.get(cacheKey))?.data;
 
     if (!actionState?.actionPlan) {
       res.json({
@@ -85,7 +92,7 @@ async function handler(req: Request, res: Response, runtime: IAgentRuntime) {
       },
     });
   } catch (error) {
-    logger.error(error);
+    runtime.logger.error(error);
 
     res.status(500).json({
       success: false,
