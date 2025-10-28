@@ -4,11 +4,16 @@ import { LEVVA_SERVICE, LEVVA_ACTIONS } from "../constants/enum";
 import { INTENT_CONFIDENCE_THRESHOLD } from "../constants/intent";
 import { ETH_NULL_ADDR } from "../constants/eth";
 import { LevvaService } from "../services/levva/class";
-import { selectSwapDataFromMessagesPrompt } from "../prompts/swap";
+import {
+  selectSwapDataFromMessagesPrompt,
+  extractedSwapParamsSchema,
+  ExtractedSwapParams,
+} from "../prompts/swap";
 import { LEVVA_PROVIDER_NAME, LevvaProviderState } from "./index";
 import { EMPTY_RESULT, selectProviderState, checkSimpleReply } from "./util";
 import { TokenDataWithInfo } from "../types/token";
 import { IntentManager, IntentContext } from "../services/intent-manager";
+import { zodJsonSchema } from "../prompts/util";
 
 export type SwapType = "kyber" | "wrap" | "unwrap";
 
@@ -23,12 +28,6 @@ export interface SwapParamsProviderData {
 }
 
 export const SWAP_PARAMS_PROVIDER_NAME = "SWAP_PARAMS";
-
-interface ExtractedSwapParams {
-  fromToken: string;
-  toToken: string;
-  amount: string;
-}
 
 export const swapParamsProvider: Provider = {
   name: SWAP_PARAMS_PROVIDER_NAME,
@@ -151,6 +150,8 @@ export const swapParamsProvider: Provider = {
     if (!params) {
       params = await runtime.useModel(ModelType.OBJECT_SMALL, {
         prompt: selectSwapDataFromMessagesPrompt(promptContext),
+        schema: zodJsonSchema(extractedSwapParamsSchema),
+        temperature: 0,
       });
 
       if (intentContext && params) {

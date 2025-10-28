@@ -1,11 +1,57 @@
 /**
  * Swap parameter extraction prompt
  *
- * @version 1.0.1
- * @lastModified 2025-01-XX
+ * @version 1.1.0
+ * @lastModified 2025-01-28
+ * @changes v1.1.0: Converted to Zod schema for structured output (follows @structured-output-patterns.mdc)
  * @changes v1.0.1: Added intent context support for improved extraction
  * @changes v1.0.0: Initial implementation
  */
+
+import { z } from "zod";
+import { formatZodKeys, formatZodOutput } from "./util";
+
+/** Zod schema for extracted swap parameters from user messages */
+export const extractedSwapParamsSchema = z
+  .object({
+    thought: z
+      .string()
+      .describe(
+        "Your analysis of the swap request and parameter extraction. " +
+          "Include reasoning about token identification, amount interpretation, and any ambiguities resolved using context."
+      ),
+    fromToken: z
+      .string()
+      .nullable()
+      .describe(
+        "Token symbol (e.g., 'USDC', 'ETH') or contract address (0x...) to swap FROM. " +
+          "Extract the source token the user wants to swap. " +
+          "Examples: 'USDC', 'WETH', '0xAf88d065e77c8cC2239327C5EDb3A432268e5831'. " +
+          "Return null if not specified."
+      ),
+    toToken: z
+      .string()
+      .nullable()
+      .describe(
+        "Token symbol (e.g., 'WETH', 'DAI') or contract address (0x...) to swap TO. " +
+          "Extract the destination token the user wants to receive. " +
+          "Examples: 'WETH', 'DAI', '0x82aF49447D8a07e3bd95BD0d56f35241523fBab1'. " +
+          "Return null if not specified."
+      ),
+    amount: z
+      .string()
+      .nullable()
+      .describe(
+        "Numeric amount as string (e.g., '100', '0.5') or percentage/keyword ('50%', 'all', 'max'). " +
+          "Extract the amount the user wants to swap, denominated in the FROM token. " +
+          'Examples: "100" (NOT "100 USDC"), "0.5" (NOT "0.5 tokens"), "50%", "all", "max". ' +
+          "Return null if not specified."
+      ),
+  })
+  .describe("Extracted swap parameters from user messages");
+
+/** Extracted swap parameters type inferred from Zod schema */
+export type ExtractedSwapParams = z.infer<typeof extractedSwapParamsSchema>;
 
 export const selectSwapDataFromMessagesPrompt = (ctx: {
   recentMessages: string;
@@ -70,19 +116,12 @@ GENERAL INSTRUCTIONS:
 ${ctx.intentContext ? '- Leverage intent context to resolve ambiguous references (e.g., "that token" referring to previously mentioned tokens)' : ""}
 </instructions>
 
-<parameterGuidelines>
-- fromToken: Token symbol (e.g., "USDC", "ETH") or contract address (0x...) to swap FROM
-- toToken: Token symbol (e.g., "WETH", "DAI") or contract address (0x...) to swap TO  
-- amount: Numeric amount as string (e.g., "100", "0.5") or percentage (e.g., "50%", "all", "max")
-</parameterGuidelines>
+<keys>
+${formatZodKeys(extractedSwapParamsSchema)}
+</keys>
 
 <output>
-Respond using JSON format like this:
-{
-  "fromToken": string | null,
-  "toToken": string | null,
-  "amount": string | null
-}
+${formatZodOutput(extractedSwapParamsSchema)}
 
 CRITICAL: Your response must contain ONLY the JSON object, no explanations or additional text.
 </output>`;

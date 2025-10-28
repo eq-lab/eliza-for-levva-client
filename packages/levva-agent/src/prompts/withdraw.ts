@@ -1,66 +1,83 @@
 /**
  * Withdrawal parameter extraction prompt
  *
- * @version 1.1.0
- * @lastModified 2025-01-XX
+ * @version 1.2.0
+ * @lastModified 2025-01-28
+ * @changes v1.2.0: Converted to Zod schema for structured output (follows @structured-output-patterns.mdc)
  * @changes v1.1.0: Standardized amount field to string type (was number | "all")
  * @changes v1.0.0: Initial implementation with request/check/claim flow
  */
 
+import { z } from "zod";
 import { Memory } from "@elizaos/core";
-import { DataDescription, formatKeys, formatOutput } from "./util";
+import { formatZodKeys, formatZodOutput } from "./util";
 import { UserPosition, WithdrawalRequest } from "../services/levva/positions";
 
-/** Extracted withdrawal parameters from user messages */
-export interface ExtractedDataForWithdraw {
-  strategyId?: number;
-  strategyName?: string;
-  strategyRisk?: string;
-  amount?: string;
-  withdrawalStep?: "request" | "check" | "claim";
-  confidence?: number;
-  thought?: string;
-}
+/** Zod schema for extracted withdrawal parameters from user messages */
+export const extractedDataForWithdrawSchema = z
+  .object({
+    thought: z
+      .string()
+      .describe(
+        "Your analysis of the user's withdrawal request and parameter extraction. " +
+          "Include reasoning about strategy identification, amount interpretation, and confidence factors."
+      ),
+    confidence: z
+      .number()
+      .min(0)
+      .max(100)
+      .describe(
+        "Your confidence level in the extraction accuracy (0-100). " +
+          "High (80-100): All parameters clear. Medium (50-79): Some inference needed. Low (0-49): Requires clarification."
+      ),
+    strategyId: z
+      .number()
+      .optional()
+      .describe(
+        "The numeric strategy ID to withdraw from (e.g., 1, 2, 3). " +
+          "Extract when user mentions 'strategy 1', 'from position 2', or references a specific strategy number."
+      ),
+    strategyName: z
+      .string()
+      .optional()
+      .describe(
+        "Strategy name to withdraw from if specified (e.g., 'Brave Strategy', 'Ultra-Safe USDC Vault'). " +
+          "Extract when user mentions the strategy by name rather than number."
+      ),
+    strategyRisk: z
+      .string()
+      .optional()
+      .describe(
+        'Strategy risk profile: "ultra-safe", "safe", "brave", or "custom". ' +
+          "Extract when user mentions risk level (e.g., 'withdraw from safe strategy', 'my ultra-safe position')."
+      ),
+    amount: z
+      .string()
+      .optional()
+      .describe(
+        'Numeric amount as string (e.g., "100", "0.5") or "all" for full withdrawal. ' +
+          "Must match regex ^([0-9]+(\\.[0-9]+)?|all)$ when present. " +
+          'Examples: "100" (NOT "100 USDC"), "0.5" (NOT "0.5 tokens"), "all" (for full withdrawal).'
+      ),
+    withdrawalStep: z
+      .enum(["request", "check", "claim"])
+      .optional()
+      .describe(
+        "The withdrawal action type: " +
+          "'request' for initiating new withdrawal, " +
+          "'check' for checking withdrawal status, " +
+          "'claim' for claiming finalized withdrawals. " +
+          "Extract 'claim' when user mentions 'claim' or references a ready withdrawal. " +
+          "Extract 'check' when user asks about status. " +
+          "Extract 'request' when user mentions amounts or withdrawing."
+      ),
+  })
+  .describe("Extracted withdrawal parameters from user message");
 
-const dataDescription: DataDescription<ExtractedDataForWithdraw> = {
-  strategyId: {
-    type: "number",
-    description:
-      "The strategy number to withdraw from (e.g., 'strategy 1', 'from position 2')",
-  },
-  strategyName: {
-    type: "string",
-    description: "Strategy name to withdraw from, if specified",
-    default: "null",
-  },
-  strategyRisk: {
-    type: "string",
-    description:
-      'Strategy risk profile: "ultra-safe", "safe", "brave", or "custom"',
-    default: "null",
-  },
-  amount: {
-    type: "string",
-    description:
-      'Numeric amount as string (e.g., "100", "0.5") or "all" for full withdrawal. Must match regex ^([0-9]+(\\.[0-9]+)?|all)$ when present.',
-  },
-  withdrawalStep: {
-    type: "string",
-    description:
-      "The withdrawal action: 'request' for new withdrawal, 'check' for status, 'claim' for finalized requests",
-  },
-  confidence: {
-    type: "number",
-    description: "Your confidence level in the extraction accuracy (0-100)",
-    default: "0",
-  },
-  thought: {
-    type: "string",
-    description:
-      "Analysis of the user's withdrawal request and parameter extraction",
-    default: "null",
-  },
-};
+/** Extracted withdrawal parameters type inferred from Zod schema */
+export type ExtractedDataForWithdraw = z.infer<
+  typeof extractedDataForWithdrawSchema
+>;
 
 export const extractWithdrawDataFromMessagePrompt = (ctx: {
   inheritedData?: Record<string, any>;
@@ -175,10 +192,10 @@ CONTEXT USAGE:
 - Consider inherited_context and return_data for ongoing conversations
 </instructions>
 <keys>
-${formatKeys(dataDescription)}
+${formatZodKeys(extractedDataForWithdrawSchema)}
 </keys>
 <output>
-${formatOutput(dataDescription)}
+${formatZodOutput(extractedDataForWithdrawSchema)}
 
 Your response should include the valid JSON block and nothing else.
 </output>`;

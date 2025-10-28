@@ -10,6 +10,7 @@ import { INTENT_CONFIDENCE_THRESHOLD } from "../constants/intent";
 import {
   ExtractedDataForWithdraw,
   extractWithdrawDataFromMessagePrompt,
+  extractedDataForWithdrawSchema,
 } from "src/prompts/withdraw";
 import {
   ExtractedDataForDeposit,
@@ -141,7 +142,11 @@ export const positionParamsProvider: Provider = {
 
         const result: ExtractedDataForWithdraw = await runtime.useModel(
           ModelType.OBJECT_SMALL,
-          { prompt }
+          {
+            prompt,
+            schema: zodJsonSchema(extractedDataForWithdrawSchema),
+            temperature: 0,
+          }
         );
 
         if (result) {
