@@ -176,7 +176,7 @@ const route: Route = {
             // @ts-expect-error - stateCache exists on runtime but not in interface
             if (runtime.stateCache) {
               // @ts-expect-error
-              runtime.stateCache.delete(loadingKey);
+              await runtime.stateCache.delete(loadingKey);
             }
           }
 

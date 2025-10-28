@@ -5,6 +5,7 @@
 **Issue**: Multiple actions (e.g., `REPLY` and `MANAGE_POSITIONS`) were generating duplicate information when triggered in sequence, leading to redundant responses that provided the same data twice.
 
 **Example Symptom**:
+
 ```
 USER: Show me my positions
 
@@ -52,12 +53,12 @@ export const getPreviousActionResults = async (
   message: Memory
 ): Promise<PreviousActionResult[]> => {
   const cacheKey = `action_results_${message.roomId}_${message.id}`;
-  const cached = runtime.stateCache.get(cacheKey);
-  
+  const cached = await runtime.stateCache.get(cacheKey);
+
   if (cached) {
     return cached as PreviousActionResult[];
   }
-  
+
   return [];
 };
 
@@ -69,11 +70,11 @@ export const getPreviousReplyContext = async (
   message: Memory
 ): Promise<string> => {
   const results = await getPreviousActionResults(runtime, message);
-  
+
   if (results.length === 0) {
     return "";
   }
-  
+
   return results
     .map((result) => `[${result.action}]: ${result.text}`)
     .join("\n\n");
@@ -99,7 +100,7 @@ export const rephrase = async ({
   prevActions?: string; // New parameter
 }): Promise<Content> => {
   // ... existing code ...
-  
+
   const template = `
 {{#if prevActions}}
 <prevActions>
@@ -127,13 +128,13 @@ Do not include examples of data in your response.
 
 <!-- Rest of template -->
 `;
-  
+
   const prompt = Handlebars.compile(template)({
     agentName: runtime.character.name,
     prevActions,
     // ... other template variables
   });
-  
+
   // ... rest of function
 };
 ```
@@ -149,19 +150,19 @@ import { getPreviousReplyContext } from "../util/action-results";
 
 export const managePositionsAction: Action = {
   // ... existing configuration ...
-  
+
   handler: async (runtime, message, state, options, callback) => {
     // Get previous action context BEFORE try block
     const prevActions = await getPreviousReplyContext(runtime, message);
-    
+
     // Compose state with required providers
     const composedState = await runtime.composeState(message, [
       POSITION_PARAMS_PROVIDER_NAME,
     ]);
-    
+
     try {
       // ... action logic ...
-      
+
       // Pass prevActions to rephrase
       const responseContent = await rephrase({
         runtime,
@@ -169,7 +170,7 @@ export const managePositionsAction: Action = {
         state: composedState,
         prevActions, // Include previous context
       });
-      
+
       // ... rest of handler
     } catch (error) {
       // Also available in error handling
@@ -209,7 +210,7 @@ describe("Position Duplication Issue", () => {
     expect(responses).toHaveLength(2);
 
     const replyResponse = responses.find((r) => r.actions.includes("REPLY"));
-    const manageResponse = responses.find((r) => 
+    const manageResponse = responses.find((r) =>
       r.actions.includes("MANAGE_POSITIONS")
     );
 
@@ -223,7 +224,7 @@ describe("Position Duplication Issue", () => {
 
     // Verify low duplication (< 30% similarity threshold)
     expect(similarity).toBeLessThan(0.3);
-    
+
     // Verify both responses are meaningful
     expect(replyResponse.text.length).toBeGreaterThan(50);
     expect(manageResponse.text.length).toBeGreaterThan(50);
@@ -234,16 +235,19 @@ describe("Position Duplication Issue", () => {
 ## Testing Strategy
 
 ### 1. Unit Tests
+
 - Test `rephrase` utility with and without `prevActions`
 - Verify template rendering with deduplication rules
 - Test previous action context retrieval functions
 
 ### 2. Integration Tests
+
 - Test real agent responses with multiple actions
 - Measure text similarity between sequential responses
 - Verify conversation flow and context preservation
 
 ### 3. Manual Testing
+
 - Use chat interface to trigger multiple actions
 - Observe response quality and duplication levels
 - Test various conversation scenarios
@@ -251,16 +255,19 @@ describe("Position Duplication Issue", () => {
 ## Results
 
 **Before Fix**:
+
 - High duplication (80-90% text similarity)
 - Redundant information in sequential responses
 - Poor user experience with repetitive content
 
 **After Fix**:
+
 - Low duplication (10-15% text similarity)
 - Complementary responses with distinct value
 - Improved conversation flow
 
 **Example Fixed Output**:
+
 ```
 AGENT[REPLY]: Here's a detailed look at your current DeFi positions:
 - Strategy 1: $3.36 (Balance: 3.37049) - Pending withdrawals
@@ -277,31 +284,37 @@ AGENT[MANAGE_POSITIONS]: Now that you have a summary of your positions, would yo
 ## Best Practices for Similar Issues
 
 ### 1. Identify the Problem
+
 - Look for repetitive content in agent responses
 - Check if multiple actions are triggered for the same user input
 - Measure text similarity between sequential responses
 
 ### 2. Analyze Root Cause
+
 - Determine if actions have access to previous context
 - Check if LLM prompts include deduplication instructions
 - Verify action coordination and state management
 
 ### 3. Implement Context Sharing
+
 - Create utilities to capture and share previous action results
 - Modify action handlers to retrieve previous context
 - Update response generation to include context awareness
 
 ### 4. Enhance LLM Instructions
+
 - Add explicit deduplication rules to prompts
 - Provide clear guidance on avoiding repetition
 - Include conditional logic for context-aware responses
 
 ### 5. Test Thoroughly
+
 - Create integration tests with real agent interactions
 - Measure quantitative metrics (text similarity)
 - Test various conversation scenarios and edge cases
 
 ### 6. Monitor and Iterate
+
 - Set up monitoring for response quality
 - Collect user feedback on conversation experience
 - Continuously refine deduplication logic

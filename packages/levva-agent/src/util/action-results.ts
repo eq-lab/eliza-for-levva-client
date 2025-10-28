@@ -1,4 +1,9 @@
-import { State, type IAgentRuntime, type Memory } from "@elizaos/core";
+import {
+  IKVStore,
+  State,
+  type IAgentRuntime,
+  type Memory,
+} from "@elizaos/core";
 import { selectProviderState } from "src/providers/util";
 
 export interface ActionResult {
@@ -14,7 +19,10 @@ export interface ActionResultsCache {
   values: { actionResults: ActionResult[] };
   data: {
     actionResults: ActionResult[];
-    actionPlan?: { totalSteps: number; steps: { status: string } };
+    actionPlan?: {
+      totalSteps: number;
+      steps: { [index: number]: any; status: string };
+    };
   };
   text: string;
 }
@@ -45,12 +53,13 @@ export async function getPreviousActionResults(
   }
 
   const cacheKey = `${message.id}_action_results`;
+  const stateCache = (runtime as any).stateCache as IKVStore<
+    ActionResultsCache,
+    any
+  >;
 
   if (!result) {
-    result =
-      // @ts-expect-error - stateCache exists on runtime but not in interface
-      (runtime.stateCache.get(cacheKey) as ActionResultsCache | undefined)
-        ?.data;
+    result = (await stateCache.get(cacheKey))?.data;
   }
 
   return result?.actionResults ?? [];

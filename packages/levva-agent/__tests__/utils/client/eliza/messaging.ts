@@ -3,7 +3,13 @@
  */
 
 import { BaseApiClient } from "../base-client";
-import type { Message, MessageChannel, MessageQueryParams } from "./types";
+import type {
+  Message,
+  MessageChannel,
+  MessageQueryParams,
+  CreateSessionRequest,
+  Session,
+} from "./types";
 import type { UUID } from "@elizaos/core";
 
 export class MessagingService extends BaseApiClient {
@@ -53,5 +59,20 @@ export class MessagingService extends BaseApiClient {
     return this.delete<{ deleted: number }>(
       `/api/messaging/central-channels/${channelId}/messages`
     );
+  }
+
+  /**
+   * Create a new conversation session with an agent
+   *
+   * Creates a new session with configurable timeout and renewal policies.
+   * Sessions automatically handle timeout management, renewal, and expiration.
+   *
+   * @param request - Session creation parameters
+   * @returns Created session details with expiration info
+   *
+   * @see https://docs.elizaos.ai/rest-reference/messaging/create-session
+   */
+  async createSession(request: CreateSessionRequest): Promise<Session> {
+    return this.post<Session>("/api/messaging/sessions", request);
   }
 }
