@@ -1,0 +1,289 @@
+---
+description: Turbo environment variable caching patterns and troubleshooting
+globs: ["turbo.json", "**/.env*", "**/Dockerfile"]
+alwaysApply: false
+---
+
+# Turbo Environment Variable Caching
+
+## 🚨 **Critical Issue: Turbo Task Caching Based on Environment Variables**
+
+### **Problem**
+
+Turbo caches task outputs based on inputs, including environment variables. If a task's `env` array in `turbo.json` doesn't include all relevant environment variables, Turbo will **use cached results even when environment variables change**.
+
+### **Symptoms**
+
+```bash
+# Change .env file or use --env-file with different values
+docker run -it --env-file ./packages/levva-agent/.env-1 image_id
+
+# But application still uses OLD environment variables from previous run
+# Output shows: POSTGRES_URL: "postgresql://old:values@old-host/old-db"
+```
+
+### **Root Cause**
+
+In `turbo.json`, tasks define which environment variables affect their cache:
+
+```json
+// ❌ BAD: Only LOG_LEVEL in cache key
+"start": {
+  "dependsOn": ["@elizaos/core#build"],
+  "env": ["LOG_LEVEL"],  // Turbo ignores changes to other env vars!
+  "persistent": true
+}
+```
+
+When `POSTGRES_URL`, `OPENROUTER_API_KEY`, or other variables change, Turbo doesn't detect the change and returns cached results.
+
+---
+
+## ✅ **Solution: Include All Environment Variables**
+
+### **Option 1: Explicit Env List (Recommended)**
+
+List all environment variables that should invalidate the cache:
+
+```json
+"start": {
+  "dependsOn": ["@elizaos/core#build"],
+  "env": [
+    "LOG_LEVEL",
+    "POSTGRES_URL",
+    "SERVER_PORT",
+    "CENTRAL_MESSAGE_SERVER_URL",
+    "OPENROUTER_API_KEY",
+    "OPENROUTER_SMALL_MODEL",
+    "OPENROUTER_LARGE_MODEL",
+    "OPENAI_EMBEDDING_API_KEY",
+    "OPENAI_EMBEDDING_URL",
+    "KYBER_CLIENT_ID",
+    "LOAD_DOCS_ON_STARTUP",
+    "CTX_KNOWLEDGE_ENABLED",
+    "TEXT_PROVIDER",
+    "TEXT_MODEL",
+    "REDIS_URL"
+  ],
+  "persistent": true
+}
+```
+
+**Benefits:**
+
+- Explicit control over cache invalidation
+- Clear documentation of which env vars matter
+- Avoids unnecessary cache invalidation from unrelated vars
+
+### **Option 2: Disable Caching (Alternative)**
+
+For tasks that should always run fresh:
+
+```json
+"start": {
+  "dependsOn": ["@elizaos/core#build"],
+  "cache": false,
+  "persistent": true
+}
+```
+
+**When to use:**
+
+- Development tasks that need fresh state
+- Tasks with side effects (database connections, API calls)
+- When environment variables change frequently
+
+---
+
+## 📋 **Best Practices**
+
+### **1. Audit Environment Variables**
+
+When adding new environment variables to your project:
+
+1. **Identify the variable**: Add to `.env.example`
+2. **Update turbo.json**: Add to relevant task's `env` array
+3. **Document usage**: Comment why it's needed
+
+### **2. Check All Tasks**
+
+Review `turbo.json` for these common tasks:
+
+```json
+{
+  "tasks": {
+    "start": {
+      "env": [
+        /* all runtime env vars */
+      ]
+    },
+    "dev": {
+      "env": [
+        /* all development env vars */
+      ]
+    },
+    "build": {
+      "env": [
+        /* build-time env vars like NODE_ENV */
+      ]
+    },
+    "test": {
+      "env": [
+        /* test-specific env vars */
+      ]
+    }
+  }
+}
+```
+
+### **3. Environment Variable Categories**
+
+**Runtime Configuration** (always include in `start`):
+
+- Database URLs: `POSTGRES_URL`, `REDIS_URL`
+- API Keys: `OPENROUTER_API_KEY`, `OPENAI_EMBEDDING_API_KEY`
+- Service URLs: `CENTRAL_MESSAGE_SERVER_URL`
+- Feature Flags: `LOAD_DOCS_ON_STARTUP`, `CTX_KNOWLEDGE_ENABLED`
+
+**Build-Time Variables** (include in `build`):
+
+- `NODE_ENV`
+- `LOG_LEVEL`
+- Build flags
+
+**Development Variables** (include in `dev`):
+
+- `LOG_LEVEL`
+- Debug flags
+- Development service URLs
+
+---
+
+## 🔍 **Troubleshooting**
+
+### **Symptom: Environment Variables Not Taking Effect**
+
+**Check 1: Verify turbo.json**
+
+```bash
+# Look for the task in turbo.json
+cat turbo.json | grep -A 10 '"start"'
+
+# Ensure all required env vars are listed
+```
+
+**Check 2: Clear Turbo Cache**
+
+```bash
+# Force cache invalidation
+turbo run start --force --cache=none
+
+# Or in Docker
+docker run -it --env-file .env-1 \
+  image_id sh -c "turbo run start --force"
+```
+
+**Check 3: Debug Environment**
+Add debug logging to verify what Turbo sees:
+
+```typescript
+// In server.ts or entry point
+console.error("Environment on start:", {
+  POSTGRES_URL: process.env.POSTGRES_URL,
+  SERVER_PORT: process.env.SERVER_PORT,
+  // ... other critical vars
+});
+```
+
+### **Symptom: Cache Never Invalidates**
+
+If Turbo never invalidates cache even with correct `env` array:
+
+**Solution: Use `cache: false`**
+
+```json
+"start": {
+  "dependsOn": ["@elizaos/core#build"],
+  "cache": false,
+  "persistent": true
+}
+```
+
+---
+
+## 🐳 **Docker-Specific Considerations**
+
+### **Using --env-file with Docker**
+
+```bash
+# Environment variables loaded in this order (last wins):
+# 1. Dockerfile ENV directives
+# 2. docker run --env-file values
+# 3. Turbo cached values (if env not in turbo.json!)
+
+docker run -it --env-file ./packages/levva-agent/.env-1 image_id
+```
+
+### **Preventing Env File Baking**
+
+Add to `.dockerignore`:
+
+```
+.env
+.env.*
+!.env.example
+```
+
+This prevents `.env` files from being copied into the image during build.
+
+### **Force Fresh Environment**
+
+```bash
+# Option 1: Rebuild image
+docker build -t image_id .
+docker run -it --env-file .env-1 image_id
+
+# Option 2: Clear Turbo cache in container
+docker run -it --env-file .env-1 image_id \
+  sh -c "rm -rf node_modules/.cache/turbo && bun run start"
+
+# Option 3: Use --force flag
+docker run -it --env-file .env-1 image_id \
+  sh -c "turbo run start --force"
+```
+
+---
+
+## 📝 **Checklist: Adding New Environment Variables**
+
+When adding a new environment variable:
+
+- [ ] Add to `.env.example` with documentation
+- [ ] Add to `turbo.json` in relevant task's `env` array
+- [ ] Update Dockerfile if needed (ARG/ENV directives)
+- [ ] Document in README or relevant docs
+- [ ] Test with `--force` flag to ensure it works
+- [ ] Verify cache invalidation works correctly
+
+---
+
+## 🔗 **Related Files**
+
+- `turbo.json` - Task definitions and cache configuration
+- `.env.example` - Example environment variables
+- `packages/*/Dockerfile` - Docker environment setup
+- `packages/*/src/server.ts` - Server initialization and env loading
+
+---
+
+## 📚 **External References**
+
+- [Turbo Task Configuration](https://turbo.build/repo/docs/reference/configuration#tasks)
+- [Turbo Environment Variables](https://turbo.build/repo/docs/core-concepts/caching#environment-variables)
+- [Docker ENV vs ARG](https://docs.docker.com/engine/reference/builder/#understand-how-arg-and-from-interact)
+
+---
+
+## 🎯 **Key Takeaway**
+
+**Turbo only tracks environment variables explicitly listed in the `env` array.** If a variable changes but isn't listed, Turbo will use cached results with old values. Always keep `turbo.json` updated when adding new environment variables.
