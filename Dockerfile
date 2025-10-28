@@ -54,6 +54,9 @@ COPY --from=builder /app/node_modules ./node_modules
 COPY --from=builder /app/packages ./packages
 COPY --from=builder /app/scripts ./scripts
 
+RUN npx patchright install-deps
+RUN npx patchright install chromium
+
 ENV NODE_ENV=production
 
 EXPOSE 3000
