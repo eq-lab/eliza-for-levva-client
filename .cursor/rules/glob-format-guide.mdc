@@ -1,0 +1,109 @@
+---
+description: Critical Cursor glob format requirements and patterns for rule files
+globs: .cursor/**/*.mdc,**/.cursor/**/*.mdc
+alwaysApply: false
+---
+
+# Cursor Glob Format Requirements
+
+## ⚠️ CRITICAL FORMAT
+
+Cursor IDE has **VERY SPECIFIC** requirements for glob patterns:
+
+### ✅ CORRECT Format
+
+```yaml
+globs: **/levva-agent/src/actions/**/*.ts,**/levva-agent/src/evaluators/**/*.ts
+```
+
+**Key requirements:**
+
+- ✅ Comma-separated patterns (NO spaces after commas)
+- ✅ NO JSON array brackets `[ ]`
+- ✅ NO quotes around patterns
+- ✅ MUST START with `**/` prefix
+- ✅ Include package name for specificity
+
+### ❌ WRONG Formats
+
+All of these cause "glob doesn't match any files" error:
+
+```yaml
+# Wrong: JSON array
+globs: ["src/actions/**/*.ts", "src/evaluators/**/*.ts"]
+
+# Wrong: Spaces after commas
+globs: src/actions/**/*.ts, src/evaluators/**/*.ts
+
+# Wrong: Missing **/ prefix
+globs: src/actions/**/*.ts,src/evaluators/**/*.ts
+
+# Wrong: Quotes
+globs: "src/actions/**/*.ts","src/evaluators/**/*.ts"
+```
+
+## Correct Examples
+
+### Single Pattern
+
+```yaml
+globs: **/levva-agent/src/**/*.ts
+```
+
+### Multiple Patterns
+
+```yaml
+globs: **/levva-agent/src/actions/**/*.ts,**/levva-agent/src/providers/**/*.ts,**/levva-agent/src/services/**/*.ts
+```
+
+### Mixed Patterns
+
+```yaml
+globs: **/levva-agent/src/**/*.ts,**/*.js,*.config.js
+```
+
+### Empty Globs (for alwaysApply: true rules)
+
+```yaml
+globs:
+alwaysApply: true
+```
+
+## How to Verify
+
+### Check for Warnings in IDE
+
+Open any rule file in Cursor IDE - should NOT see:
+
+```
+This glob pattern doesn't match any files in the workspace
+```
+
+### Test Pattern Matching
+
+```bash
+# From workspace root, test if pattern matches files:
+find . -path "**/levva-agent/src/actions/**/*.ts" | head -5
+```
+
+### Verify All Rules
+
+```bash
+# Check all glob formats
+grep "^globs:" **/.cursor/rules/**/*.mdc
+# Should show comma-separated format, no brackets or quotes
+```
+
+## Reference
+
+Based on [Cursor forum discussion](https://forum.cursor.com/t/cursor-rules-globs-inconsistencies/116958):
+
+> "Ensure your glob patterns are correctly formatted. For instance, when specifying multiple patterns, **avoid spaces after commas**. Use `**/*.cpp,**/*.h` instead of `**/*.cpp, **/*.h` to prevent mismatches."
+
+## Key Takeaways
+
+1. **Cursor has specific format requirements** - don't assume YAML arrays work
+2. **No spaces after commas** - critical for pattern matching
+3. **No JSON syntax** - despite YAML frontmatter
+4. **Always start with `**/`\*\* - for proper pattern matching
+5. **Test in IDE** - verify no "glob doesn't match" warnings

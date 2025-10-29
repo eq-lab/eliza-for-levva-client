@@ -53,7 +53,7 @@ Optional API key authentication via `X-API-KEY` header:
 
 ```typescript
 // Set via environment variable
-process.env.ELIZA_SERVER_AUTH_TOKEN = "your-secret-key"
+process.env.ELIZA_SERVER_AUTH_TOKEN = your-secret-key
 
 // Client request
 headers: {
@@ -77,7 +77,7 @@ Response: {
       characterName: string,
       bio: string,
       status: 'active' | 'inactive'
-    }]
+    }
   }
 }
 
@@ -127,7 +127,7 @@ Query: {
   type?: string,
   count?: number,
   offset?: number,
-  excludeTypes?: string[]
+  excludeTypes?: string[
 }
 
 // Delete specific log
@@ -142,7 +142,7 @@ GET /api/agents/:agentId/panels
 Response: [{
   name: string,
   path: string
-}]
+}
 ```
 
 ### Agent Worlds
@@ -229,7 +229,7 @@ Body: {
   entityId?: UUID,
   worldId?: UUID,
   userName?: string,
-  attachments?: any[]
+  attachments?: any[
 }
 Response: Audio buffer of agent response
 ```
@@ -306,7 +306,7 @@ Body: {
   worldId?: UUID,
   source?: string,
   metadata?: object,
-  agentIds: UUID[]
+  agentIds: UUID[
 }
 
 // Delete group
@@ -374,7 +374,7 @@ Body: {
   content: string,
   server_id: UUID,
   metadata?: object,
-  attachments?: any[]
+  attachments?: any[
 }
 
 // Get channel messages
@@ -387,7 +387,7 @@ Body: {
   name: string,
   server_id: UUID,
   type?: ChannelType,
-  participantCentralUserIds: UUID[]
+  participantCentralUserIds: UUID[
 }
 
 // Get/Create DM channel
@@ -467,7 +467,7 @@ Response: {
   logs: LogEntry[],
   count: number,
   total: number,
-  levels: string[]
+  levels: string[
 }
 
 // Clear logs
@@ -534,7 +534,7 @@ socket.emit('2', {  // SEND_MESSAGE = 2
   serverId: UUID,
   source?: string,
   metadata?: object,
-  attachments?: any[]
+  attachments?: any[
 });
 ```
 
@@ -612,11 +612,11 @@ Standard error format:
 
 ```json
 {
-  "success": false,
-  "error": {
-    "code": "ERROR_CODE",
-    "message": "Human readable message",
-    "details": "Additional information"
+  success: false,
+  error: {
+    code: ERROR_CODE,
+    message: Human readable message,
+    details: Additional information
   }
 }
 ```

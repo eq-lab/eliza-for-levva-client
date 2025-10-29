@@ -1,12 +1,12 @@
 ---
-description: Eva
+description: Evaluators
 globs:
 alwaysApply: false
 ---
 
 # ElizaOS Evaluators System
 
-Evaluators are cognitive components that enable agents to process conversations, extract knowledge, and build understanding by reflecting on the action chain. They run after the actions are processed, and are there to guaranteeably run after everything else runs. A good use of an evaluator is to determine and extract new facts about someone we're talking to. It's very similar to an action, but doesn't chain, and always runs without being selected. Evaluators can enable agents to perform background analysis after responses are generated, similar to how humans form memories after interactions. This is very similar to the concept of reflection from the "Reflexion" paper.
+Evaluators are cognitive components that enable agents to process conversations, extract knowledge, and build understanding by reflecting on the action chain. They run after the actions are processed, and are there to guaranteeably run after everything else runs. A good use of an evaluator is to determine and extract new facts about someone we're talking to. It's very similar to an action, but doesn't chain, and always runs without being selected. Evaluators can enable agents to perform background analysis after responses are generated, similar to how humans form memories after interactions. This is very similar to the concept of reflection from the Reflexion paper.
 
 ## Core Concepts
 
@@ -40,7 +40,7 @@ Extracts and stores factual information from conversations:
 
 ```typescript
 const factEvaluator: Evaluator = {
-  name: 'EXTRACT_FACTS',
+  name: "EXTRACT_FACTS",
 
   validate: async (runtime, message) => {
     // Run periodically, not every message
@@ -55,7 +55,8 @@ const factEvaluator: Evaluator = {
 
     // Filter and deduplicate
     const newFacts = facts.filter(
-      (fact) => !fact.already_known && fact.type === 'fact' && fact.claim?.trim()
+      (fact) =>
+        !fact.already_known && fact.type === "fact" && fact.claim?.trim()
     );
 
     // Store as embeddings
@@ -76,7 +77,7 @@ Enables self-awareness and relationship tracking:
 
 ```typescript
 const reflectionEvaluator: Evaluator = {
-  name: 'REFLECT',
+  name: "REFLECT",
 
   handler: async (runtime, message, state) => {
     const reflection = await generateReflection(state);
@@ -87,7 +88,7 @@ const reflectionEvaluator: Evaluator = {
     // Store self-reflection
     if (thought) {
       await runtime.createMemory({
-        content: { text: thought, type: 'reflection' },
+        content: { text: thought, type: "reflection" },
         entityId: runtime.agentId,
         roomId: message.roomId,
       });
@@ -117,10 +118,10 @@ const reflectionEvaluator: Evaluator = {
 
 ```typescript
 // First encounter
-"I work at TechCorp" → Store: {entity: "user", employer: "TechCorp"}
+I work at TechCorp → Store: {entity: user, employer: TechCorp}
 
 // Later conversation
-"I'm a senior engineer at TechCorp" → Update: {role: "senior engineer"}
+I'm a senior engineer at TechCorp → Update: {role: senior engineer}
 
 // Builds complete picture over time
 ```
@@ -129,12 +130,12 @@ const reflectionEvaluator: Evaluator = {
 
 ```typescript
 // Initial interaction
-{ tags: ["new_interaction"] }
+{ tags: [new_interaction] }
 
 // After multiple conversations
 {
-  tags: ["frequent_interaction", "positive_sentiment"],
-  metadata: { interactions: 15, trust_level: "high" }
+  tags: [frequent_interaction,positive_sentiment],
+  metadata: { interactions: 15, trust_level: high }
 }
 ```
 
@@ -174,7 +175,7 @@ const customEvaluator: Evaluator = {
       prompt: 'Conversation with analysis request',
       messages: [
         { name: 'User', content: { text: 'Can you analyze this data?' } },
-        { name: 'Agent', content: { text: "I'll analyze that for you." } },
+        { name: 'Agent', content: { text: I'll analyze that for you. } },
       ],
       outcome: 'Analysis stored in memory',
     },
@@ -222,7 +223,7 @@ const customEvaluator: Evaluator = {
 
 ```typescript
 const myPlugin: Plugin = {
-  name: 'my-plugin',
+  name: "my-plugin",
   evaluators: [factEvaluator, reflectionEvaluator, customEvaluator],
 
   init: async (runtime) => {

@@ -1,6 +1,7 @@
 ---
-title: ElizaOS Unit Testing Guide
-alwaysApply: true
+description: Unit testing guide for ElizaOS components using Vitest and mocked runtimes
+globs: packages/**/__tests__/**/*.test.ts,packages/**/*.spec.ts
+alwaysApply: false
 ---
 
 # ElizaOS Unit Testing

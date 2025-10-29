@@ -1,7 +1,7 @@
 ---
 description: Comprehensive guide for creating, running, and debugging scenario tests in ElizaOS
-globs: **/*
-alwaysApply: true
+globs: packages/**/scenarios/**/*.ts,packages/**/__tests__/scenarios/**/*.ts
+alwaysApply: false
 ---
 # ElizaOS Scenario Testing
 
@@ -87,7 +87,7 @@ export const myScenario: Scenario = {
             content: 'Hello, I want to test something specific.',
             description: 'Initial test message'
           }
-        ]
+        
       }
     }
   ],
@@ -103,7 +103,7 @@ export const myScenario: Scenario = {
           priority: 'high'
         }
       }
-    ]
+    
   }
 };
 ```
@@ -148,7 +148,7 @@ export const multiAgentScenario: Scenario = {
             content: 'What would you like me to look up?',
             description: 'Follow-up query'
           }
-        ]
+        
       }
     }
   ],
@@ -169,7 +169,7 @@ export const multiAgentScenario: Scenario = {
           category: 'collaboration'
         }
       }
-    ]
+    
   }
 };
 ```
@@ -217,7 +217,7 @@ export const pluginTestScenario: Scenario = {
               description: 'Verify entity was created'
             }
           }
-        ]
+        
       }
     }
   ],
@@ -242,7 +242,7 @@ export const pluginTestScenario: Scenario = {
           category: 'persistence'
         }
       }
-    ]
+    
   }
 };
 ```
@@ -294,7 +294,7 @@ export const pluginTestScenario: Scenario = {
 ```typescript
 {
   type: 'condition',
-  condition: 'message.includes("success")',
+  condition: 'message.includes(success)',
   description: 'Conditional logic'
 }
 ```
@@ -371,8 +371,8 @@ elizaos scenario run path/to/scenario.ts
 elizaos scenario run -d path/to/scenarios/
 
 # Filter by name or tag
-elizaos scenario run -f "Entity Management"
-elizaos scenario run -f "plugin-rolodex"
+elizaos scenario run -f Entity Management
+elizaos scenario run -f plugin-rolodex
 
 # Verbose output for debugging
 elizaos scenario run --verbose
@@ -478,10 +478,10 @@ For debugging specific scenarios:
 ```typescript
 // Create simple test character
 {
-  "name": "Test Agent",
-  "bio": ["I am a test agent"],
-  "system": "You are helpful test agent", 
-  "plugins": ["@elizaos/plugin-rolodex"]
+  name: Test Agent,
+  bio: [I am a test agent],
+  system: You are helpful test agent, 
+  plugins: [@elizaos/plugin-rolodex
 }
 ```
 
@@ -540,7 +540,7 @@ Benefits:
 ### GitHub Actions Example
 ```yaml
 name: Scenario Tests
-on: [push, pull_request]
+on: [push, pull_request
 
 jobs:
   scenario-tests:
@@ -584,7 +584,7 @@ setup: {
   environment: {
     plugins: process.env.NODE_ENV === 'production' 
       ? ['@elizaos/plugin-prod'] 
-      : ['@elizaos/plugin-dev']
+      : ['@elizaos/plugin-dev'
   }
 }
 ```
@@ -600,7 +600,7 @@ execution: {
       value: 'memory_threshold_exceeded',
       description: 'Stop if memory usage too high'
     }
-  ]
+  
 }
 ```
 

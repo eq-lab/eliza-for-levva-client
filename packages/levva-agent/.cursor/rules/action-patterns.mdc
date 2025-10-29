@@ -1,0 +1,502 @@
+---
+description: Action handler patterns, return values, and validation best practices for ElizaOS
+globs: **/levva-agent/src/actions/**/*.ts,**/levva-agent/src/evaluators/**/*.ts
+alwaysApply: false
+---
+
+# Action Patterns and Best Practices
+
+## 📋 Cross-References
+
+**See also**: `@elizaos-actions.mdc` for core ElizaOS action framework concepts and lifecycle.
+
+This file contains Levva-specific action patterns building on ElizaOS foundations. Related files:
+
+- `@elizaos-actions.mdc` - **Core framework**: Action system architecture and component lifecycle
+- `elizaos-patterns.mdc` - Framework overview with cross-references
+- `intent-based-actions.mdc` - Intent-based action resolution system
+- `error-handling.mdc` - Error-specific patterns with cross-references
+- `testing-patterns.mdc` - Test patterns with cross-references
+- `debugging-patterns.mdc` - Troubleshooting guide with cross-references
+
+## Action Handler Return Values
+
+### CRITICAL: Always Return ActionResult Objects
+
+Actions must ALWAYS return proper `ActionResult` objects for action chaining to work correctly in ElizaOS.
+
+```typescript
+// ✅ CORRECT: Return ActionResult after calling callback
+const responseContent = await rephrase({
+  runtime,
+  content,
+  state,
+  prevActions,
+});
+await callback(responseContent);
+
+return {
+  text: `Generated ${actionName}: ${responseContent?.text}`,
+  values: {
+    success: true,
+    responded: true,
+    lastReply: responseContent.text,
+    lastReplyTime: Date.now(),
+    thoughtProcess: responseContent?.thought,
+  },
+  data: {
+    actionName: ACTION_NAME,
+    // ... action-specific data
+    response: responseContent,
+  },
+  success: true,
+};
+
+// ❌ WRONG: Never return undefined or void
+// return; // This breaks action chaining
+// return undefined; // This breaks action chaining
+```
+
+### ActionResult Structure
+
+All actions must return objects with these properties:
+
+- `text`: String description of what was accomplished
+- `success`: Boolean indicating if the action succeeded
+- `values`: Metadata object with:
+  - `success`: Boolean (matches top-level success)
+  - `responded`: Boolean (true if callback was called)
+  - `lastReply`: String (the response text sent to user)
+  - `lastReplyTime`: Number (timestamp)
+  - `thoughtProcess`: String (optional, from LLM response)
+  - `error`: Boolean (true for error cases)
+- `data`: Action-specific data object with:
+  - `actionName`: String (the action identifier)
+  - `response`: The full response content object
+  - Additional action-specific fields
+- `error`: Error object (for error cases only)
+
+### Error Handling Pattern
+
+```typescript
+// Error case example
+return {
+  text: `Error processing ${actionName}: ${errorMessage}`,
+  values: {
+    success: false,
+    responded: true,
+    error: true,
+    lastReply: errorContent.text,
+    lastReplyTime: Date.now(),
+    thoughtProcess: errorContent?.thought,
+  },
+  data: {
+    actionName: ACTION_NAME,
+    error: errorMessage,
+  },
+  success: false,
+  error: error as Error,
+};
+```
+
+## Provider Data Structure
+
+### Provider Result Format
+
+Providers must return `ProviderResult` objects with this structure:
+
+```typescript
+// ✅ CORRECT: Provider returns ProviderResult
+return {
+  text: Description of extracted data,
+  data: {
+    // Actual extracted data here
+    userAddress: 0x...,
+    amount: 100,
+    strategyId: 1,
+  },
+};
+
+// ❌ WRONG: Direct data return
+// return { userAddress: 0x..., amount: 100 }; // Missing ProviderResult wrapper
+```
+
+### Accessing Provider Data in Actions
+
+```typescript
+// ✅ CORRECT: Access nested data property
+const providerResult = composedState.data?.providers?.[PROVIDER_NAME];
+const actualData = providerResult?.data;
+
+// ❌ WRONG: Direct access
+// const data = composedState.data?.providers?.[PROVIDER_NAME]; // Missing .data
+```
+
+## Action Validation Patterns
+
+### Validation Function Structure
+
+```typescript
+validate: async (runtime: IAgentRuntime, message: Memory): Promise<boolean> => {
+  // Check for action keywords
+  const hasKeywords = KEYWORDS.some(keyword =>
+    message.content.text.toLowerCase().includes(keyword.toLowerCase())
+  );
+
+  if (!hasKeywords) return false;
+
+  // Check for required context (optional but recommended)
+  const hasContext = /* check for required context */;
+
+  return hasContext;
+},
+```
+
+### Common Validation Patterns
+
+- **Keyword Matching**: Use case-insensitive includes() for flexibility
+- **Context Requirements**: Check for amounts, addresses, strategy IDs as needed
+- **Address Validation**: Use `isHex()` from viem for address validation
+- **Early Returns**: Return false immediately when validation fails
+
+## Handler Function Patterns
+
+### Handler Signature
+
+```typescript
+handler: async (
+  runtime: IAgentRuntime,
+  message: Memory,
+  state: State,
+  options: any,
+  callback: HandlerCallback
+): Promise<ActionResult> => {
+  // Handler implementation
+};
+```
+
+### Handler Structure Template
+
+```typescript
+handler: async (runtime, message, state, options, callback) => {
+  try {
+    // 1. Get required services
+    const service = runtime.getService<ServiceType>(SERVICE_NAME);
+    if (!service) {
+      // Return error ActionResult
+    }
+
+    // 2. Compose state and get provider data
+    const composedState = await runtime.composeState(message, {
+      providers: [PROVIDER_NAME],
+    });
+
+    const providerResult = composedState.data?.providers?.[PROVIDER_NAME];
+    const providerData = providerResult?.data;
+
+    if (!providerData) {
+      // Return error ActionResult
+    }
+
+    // 3. Extract and validate parameters
+    const { param1, param2 } = providerData;
+
+    // 4. Get previous actions context
+    const prevActions = await getPreviousReplyContext(runtime, message);
+
+    // 5. Perform action logic
+    const result = await performActionLogic();
+
+    // 6. Generate response
+    const responseContent = await rephrase({
+      runtime,
+      content: {
+        text: result.text,
+        source: message.content.source,
+        attachments: result.attachments,
+      },
+      state: composedState,
+      prevActions,
+    });
+
+    // 7. Call callback
+    await callback(responseContent);
+
+    // 8. Return ActionResult
+    return {
+      text: `Generated ${actionName}: ${responseContent?.text}`,
+      values: {
+        success: true,
+        responded: true,
+        lastReply: responseContent.text,
+        lastReplyTime: Date.now(),
+        thoughtProcess: responseContent?.thought,
+      },
+      data: {
+        actionName: ACTION_NAME,
+        response: responseContent,
+        // ... action-specific data
+      },
+      success: true,
+    };
+
+  } catch (error) {
+    // Error handling with ActionResult
+    runtime.logger.error(`Error in ${actionName}:`, error);
+
+    const errorContent = await rephrase({
+      runtime,
+      content: {
+        text: Error message for user,
+        source: message.content.source,
+      },
+      state: composedState,
+      prevActions,
+    });
+
+    await callback(errorContent);
+
+    return {
+      text: `Error processing ${actionName}: ${error.message}`,
+      values: {
+        success: false,
+        responded: true,
+        error: true,
+        lastReply: errorContent.text,
+        lastReplyTime: Date.now(),
+        thoughtProcess: errorContent?.thought,
+      },
+      data: {
+        actionName: ACTION_NAME,
+        error: error.message,
+      },
+      success: false,
+      error: error as Error,
+    };
+  }
+},
+```
+
+## Transaction Handling
+
+### Use Service's createCalldata Method
+
+```typescript
+// ✅ CORRECT: Use service method for transactions
+const calldataWithDescription = [{
+  to: contractAddress as `0x${string}`,
+  data: service.encodeFunction(params),
+  value: 0,
+  title: Transaction Title,
+  description: Detailed description,
+}];
+
+const calldataHash = await service.createCalldata(calldataWithDescription);
+
+return {
+  text: Transaction ready message,
+  attachments: [{
+    id: transaction.json,
+    url: `/api/calldata?hash=${calldataHash}`,
+  }],
+};
+
+// ❌ WRONG: Manual transaction creation
+// const transactionData = { to, data, chainId, value };
+```
+
+### Transaction Response Pattern
+
+Always return transaction data in attachments, not just in text:
+
+```typescript
+// ✅ CORRECT: Transaction in attachments
+return {
+  text: Human-readable transaction description,
+  attachments: [{
+    id: transaction.json,
+    url: `/api/calldata?hash=${calldataHash}`,
+  }],
+};
+
+// ❌ WRONG: Only calldata hash in text
+// return `Transaction ready. Hash: ${calldataHash}`;
+```
+
+## Testing Action Patterns
+
+### Test Structure for Actions
+
+```typescript
+describe(Action Name, () => {
+  let mockRuntime: any;
+  let mockService: any;
+  let mockCallback: any;
+
+  beforeEach(() => {
+    mockRuntime = createMockRuntime();
+    mockCallback = vi.fn();
+
+    // Essential mocks
+    mockRuntime.logger = {
+      debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn(),
+    };
+
+    mockService = {
+      // Mock all service methods used by action
+      method1: vi.fn(),
+      method2: vi.fn(),
+      createCalldata: vi.fn().mockResolvedValue(mock-hash),
+    };
+
+    mockRuntime.getService = vi.fn().mockReturnValue(mockService);
+
+    // Mock provider data structure
+    mockRuntime.composeState = vi.fn().mockResolvedValue({
+      data: {
+        providers: {
+          PROVIDER_NAME: {
+            text: Provider description,
+            data: {
+              // Provider data here
+            },
+          },
+        },
+      },
+    });
+  });
+
+  describe(Validation, () => {
+    // Validation tests
+  });
+
+  describe(Handler, () => {
+    it(should return proper ActionResult, async () => {
+      const result = await action.handler(
+        mockRuntime, message, state, {}, mockCallback
+      );
+
+      // ✅ CORRECT: Test ActionResult structure
+      expect(result).toBeDefined();
+      expect(result.success).toBe(true);
+      expect(result.text).toContain(Generated);
+      expect(result.data.actionName).toBe(ACTION_NAME);
+      expect(result.values.responded).toBe(true);
+      expect(mockCallback).toHaveBeenCalled();
+
+      // ❌ WRONG: Never expect undefined
+      // expect(result).toBeUndefined();
+    });
+  });
+});
+```
+
+### Key Testing Principles
+
+1. **Always expect ActionResult objects**, never undefined
+2. **Mock all service dependencies** including createCalldata
+3. **Use correct provider data structure** with nested data property
+4. **Test both success and error cases** with proper ActionResult structure
+5. **Verify callback was called** and response content is correct
+
+## Common Pitfalls to Avoid
+
+### ❌ Action Handler Mistakes
+
+- Returning undefined or void
+- Not calling the callback before returning
+- Missing ActionResult structure
+- Incorrect provider data access
+- Missing error handling
+
+### ❌ Test Mistakes
+
+- Expecting undefined returns
+- Incorrect provider data structure in mocks
+- Missing service method mocks
+- Not testing ActionResult properties
+
+### ❌ Provider Mistakes
+
+- Returning raw data instead of ProviderResult
+- Missing text description in ProviderResult
+- Incorrect data nesting structure
+
+## Action Separation and Deduplication
+
+### Problem: Multiple Actions Duplicating Information
+
+When multiple actions are triggered for the same user request, they may provide duplicate information.
+
+### Solution: Clear Action Responsibilities
+
+```typescript
+// ✅ GOOD: Each action has distinct purpose
+// REPLY action: Conversational summary with position details
+// MANAGE_POSITIONS action: Management options, withdrawal status, available strategies
+
+// Example of fixed MANAGE_POSITIONS action:
+text = `## Management Options
+${managementSuggestions.join(\n)}
+
+## Withdrawal Status
+${positionData.withdrawalsSummary}
+
+## Other Available Strategies
+${availableStrategies.map(service.formatStrategy).join(\n\n)}`;
+
+// ❌ BAD: Both actions providing same position details
+text = `## Your Position Summary
+${positionData.positionsSummary}  // ← Duplicates REPLY action
+**Total Portfolio Value**: ${totalValue}`;
+```
+
+### Critical Insight: LLM Deduplication Limitations
+
+**Fundamental Problem**: LLM-based deduplication via rephrase prompts is inherently unreliable and inconsistent.
+
+**Evidence from Testing**:
+
+- 3 iterations of increasingly specific rephrase prompt modifications
+- Tested with hardcoded patterns, step-by-step instructions, and generalized rules
+- Results: Inconsistent behavior - sometimes works, sometimes doesn't
+- Same prompt produces different results across runs
+
+**Real Example of Persistent Duplication**:
+
+```
+REPLY: Strategy 1: $3.36, Safe yield: $1.00, Origin WETH Vault: $21.61, Total: $27.97
+MANAGE_POSITIONS: Strategy 1: $3.36, Safe yield: $1.00, Origin WETH Vault: $21.61, Total: $27.97
+```
+
+**Why Rephrase Prompts Fail**:
+
+1. **Context Dependency**: LLM interpretation varies based on model state, temperature, context window
+2. **Pattern Recognition**: Complex to reliably detect semantic duplication across different formats
+3. **Multi-Action Scenarios**: Difficult to coordinate deduplication across multiple simultaneous actions
+4. **Generalization Challenge**: Rules specific enough to work are too narrow; general rules are too vague
+
+**Architectural Solution Required**:
+Instead of post-processing deduplication, design actions with inherently distinct responsibilities:
+
+- **REPLY**: Conversational acknowledgment only (I'll analyze your positions)
+- **MANAGE_POSITIONS**: Complete structured data with management options
+- **SELECT_STRATEGY**: Strategy selection and parameter gathering
+- **SWAP_TOKENS**: Transaction preparation and execution
+- **ANALYZE_WALLET**: Analysis and optimization insights
+
+**Key Learning**: Reliable deduplication requires architectural design, not prompt engineering.
+
+### Testing Deduplication
+
+```typescript
+// Integration test should verify no duplicate information
+const responses = await getAllActionResponses(message);
+const replyText = responses.find((r) => r.actions.includes("REPLY"))?.text;
+const actionText = responses.find((r) =>
+  r.actions.includes("MANAGE_POSITIONS")
+)?.text;
+
+// Should not contain same specific data (dollar amounts, strategy names)
+expect(calculateTextSimilarity(replyText, actionText)).toBeLessThan(0.3);
+```

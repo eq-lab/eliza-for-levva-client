@@ -1,0 +1,228 @@
+---
+description: Critical guidelines for creating actionable suggestions vs avoiding filler suggestions
+globs: **/levva-agent/src/prompts/suggest/**/*.ts,**/levva-agent/src/actions/**/*.ts
+alwaysApply: true
+---
+
+# Actionable vs Filler Suggestions
+
+## CRITICAL RULE: No Filler Suggestions
+
+**Filler suggestions** are suggestions that tell the LLM to generate generic advice without using real user data or leading to specific actions. They provide no value over generic ChatGPT.
+
+## ❌ What Are Filler Suggestions?
+
+### Example 1: Generic Advice Generation
+```typescript
+// ❌ FILLER - Just tells LLM to make up advice
+export const riskAssessmentPrompt = (): string => {
+  return `Generate risk assessment suggestions focusing on:
+- Portfolio concentration analysis
+- Diversification recommendations
+- Risk level balance
+Provide actionable risk management suggestions.`;
+};
+```
+
+**Why This is Filler:**
+- No user data used
+- LLM makes up generic recommendations
+- User gets same advice they could get anywhere
+- No specific next action
+
+### Example 2: Vague Instructions
+```typescript
+// ❌ FILLER - Vague suggestions without specifics
+export const portfolioOptimizationPrompt = (data): string => {
+  return `Generate portfolio optimization suggestions:
+- Diversification opportunities
+- Risk rebalancing suggestions
+- New strategy recommendations`;
+};
+```
+
+**Why This is Filler:**
+- Diversification opportunities - vague, what specifically?
+- Doesn't lead to concrete action (deposit, withdraw, swap)
+- User left wondering how? and where?
+
+### Example 3: Generic Questions as Suggestions
+```typescript
+// ❌ FILLER - Suggestions are just questions user could ask
+export const marketInsightsPrompt = ({ news }): string => {
+  return `Based on news: ${news}
+Suggest actions like:
+- How does this news affect my portfolio?
+- Should I adjust my strategy?`;
+};
+```
+
+**Why This is Filler:**
+- Suggestions don't provide insights, just ask questions
+- User could ask these questions themselves
+- No analysis of news against user's actual portfolio
+
+## ✅ What Are Actionable Suggestions?
+
+### Characteristics of Good Suggestions
+
+1. **Uses Real User Data**
+   - Actual token balances
+   - Current positions
+   - Available strategies
+   - Specific amounts
+
+2. **Leads to Specific Intent**
+   - Creates DEPOSIT intent
+   - Creates WITHDRAW intent
+   - Creates SWAP intent
+   - Creates SEND intent
+
+3. **Progressive Disclosure**
+   - Guides user step-by-step
+   - Each suggestion moves conversation forward
+   - Collects parameters progressively
+
+4. **Immediately Actionable**
+   - User can click and proceed
+   - No additional clarification needed
+   - Clear next steps
+
+### Example 1: Intent-Based Suggestion (GOOD)
+```typescript
+// ✅ ACTIONABLE - Progressive disclosure with real data
+export function generateDepositIntentSuggestions(params: {
+  strategyId?: number;
+  tokenSymbol?: string;
+  amount?: string;
+  strategies: Strategy[];
+  walletAssets: Asset[];
+}): string {
+  // Case 1: No strategy selected
+  if (!strategyId) {
+    return promptToSelectFromAvailableStrategies(strategies);
+  }
+  
+  // Case 2: Strategy selected, need token
+  if (!tokenSymbol) {
+    return promptToSelectFromWalletTokens(walletAssets, strategy);
+  }
+  
+  // Case 3: Strategy + token, need amount
+  if (!amount) {
+    return promptToSelectAmountBasedOnBalance(tokenBalance);
+  }
+  
+  // Case 4: All parameters set
+  return promptToConfirmOrEdit(strategyId, tokenSymbol, amount);
+}
+```
+
+**Why This is Good:**
+- Guides user through parameter collection
+- Uses real data (strategies, assets, balances)
+- Each step leads to next step
+- Results in actual DEPOSIT intent creation
+
+### Example 2: Data-Driven Suggestion (GOOD)
+```typescript
+// ✅ ACTIONABLE - Uses real data for specific suggestions
+export const depositOpportunitiesPrompt = ({
+  walletAssets,
+  strategies,
+  currentPositions,
+}: Params): string => {
+  // Match user's actual tokens with compatible strategies
+  const usdcBalance = findToken(walletAssets, USDC);
+  const ethBalance = findToken(walletAssets, ETH);
+  
+  // Find strategies user can actually use
+  const usdcStrategies = strategies.filter(s => s.acceptsToken(USDC));
+  const ethStrategies = strategies.filter(s => s.acceptsToken(WETH));
+  
+  return `Generate deposit suggestions using REAL data:
+
+User has: ${usdcBalance} USDC, ${ethBalance} ETH
+Compatible strategies: ${usdcStrategies.map(s => s.name).join(,)}
+
+SUGGESTION EXAMPLES (use real amounts):
+- I want to deposit 100 USDC into ${usdcStrategies[0].name}
+- Let me invest 0.1 ETH in ${ethStrategies[0].name}
+
+Requirements:
+- Use actual token amounts user has
+- Reference real strategy names
+- Suggest realistic amounts (10-1000 USDC, 0.01-1 ETH)
+- Each suggestion creates DEPOSIT intent immediately`;
+};
+```
+
+**Why This is Good:**
+- Uses user's actual balances
+- References real strategies by name
+- Suggests realistic amounts
+- Leads directly to DEPOSIT intent creation
+
+## Pattern Recognition
+
+### ❌ Filler Pattern
+```
+Tell LLM to generate advice
+  ↓
+LLM makes up generic recommendations
+  ↓
+User sees vague suggestions
+  ↓
+No clear next action
+```
+
+### ✅ Actionable Pattern
+```
+Use real user data
+  ↓
+Generate specific options based on data
+  ↓
+Each option leads to intent creation
+  ↓
+User clicks and proceeds immediately
+```
+
+## Checklist: Is This Suggestion Actionable?
+
+Before creating or approving a suggestion prompt, ask:
+
+- [ ] Does it use actual user data (balances, positions, strategies)?
+- [ ] Does it lead to a specific intent (DEPOSIT, WITHDRAW, SWAP, SEND)?
+- [ ] Can the user immediately proceed after clicking?
+- [ ] Are the suggestions specific with real amounts/names?
+- [ ] Does it provide value beyond generic ChatGPT advice?
+
+If you answered NO to any of these, it's likely a filler suggestion.
+
+## Examples from Our Codebase
+
+### ❌ Removed as Filler
+- `risk-assessment.ts` - Just told LLM to generate generic advice
+- `portfolio-optimization.ts` - Vague diversification opportunities
+- `investment-opportunities.ts` - Placeholder examples
+- `market-insights.ts` - Generic questions as suggestions
+- `send-tokens.ts` - Examples with `[address]` placeholders
+
+### ✅ Kept as Actionable
+- `deposit-intent.ts` - Progressive disclosure, creates DEPOSIT intent
+- `withdraw-intent.ts` - Progressive disclosure, creates WITHDRAW intent
+- `swap-intent.ts` - Progressive disclosure, creates SWAP intent
+- `send-intent.ts` - Progressive disclosure, creates SEND intent
+- `deposit-opportunities.ts` - Uses real data, matches tokens to strategies
+- `position-diversification.ts` - Analyzes current positions, suggests specific deposits
+- `position-management.ts` - Context-aware, leads to specific actions
+
+## Key Principle
+
+**Good suggestions use data to create actionable options that lead to intents.**
+
+**Bad suggestions tell the LLM to generate generic advice that could come from anywhere.**
+
+When in doubt, ask: Could the user get this same suggestion from generic ChatGPT?
+- If YES → It's filler, remove it
+- If NO → It's actionable, keep it

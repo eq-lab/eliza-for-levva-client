@@ -1,0 +1,159 @@
+---
+description: Service module organization patterns and extraction guidelines
+globs: **/levva-agent/src/services/**/*.ts
+alwaysApply: true
+---
+
+# Service Module Organization
+
+## Module Structure Pattern
+Service functionality should be split between:
+- **`services/*/class.ts`**: Cached methods and stateful operations (bound to service instance)
+- **`services/*/[module].ts`**: Pure helper functions and interfaces
+
+## Extraction Guidelines
+
+### Keep in Service Class
+- **Cached methods** - they need `this.timedCache` binding
+- **Stateful operations** - methods that depend on service instance state
+- **Runtime dependencies** - methods that need access to `this.runtime`
+- **Service lifecycle methods** - initialization, cleanup, event handlers
+
+### Extract to Helper Modules
+- **Pure functions** - formatting, calculations, transformations
+- **Interfaces and types** - data structures and contracts
+- **Constants** - configuration values and enums
+- **Validation logic** - input/output validation functions
+
+## Example Structure
+
+### Service Class (Cached/Stateful)
+```typescript
+// services/levva/class.ts
+export class LevvaService extends Service {
+  // Cached API methods - need timedCache binding
+  getUserPositions = this.timedCache(
+    300000, // TTL
+    async (address: `0x${string}`) => {
+      const result = await getUserPositionsApi(address);
+      return result.success ? result.data : [];
+    },
+    this.getUserPositionsCacheKey
+  );
+
+  // Stateful operations - need service instance
+  async getPositionSummary(address: `0x${string}`) {
+    const [positions, withdrawals] = await Promise.all([
+      this.getUserPositions(address), // Uses cached method
+      this.getWithdrawalRequests(address, 1),
+    ]);
+    
+    return createPositionSummary(positions, withdrawals); // Uses helper
+  }
+}
+```
+
+### Helper Module (Pure Functions)
+```typescript
+// services/levva/positions.ts
+export interface UserPosition {
+  strategyId: number;
+  balance: number;
+  balanceUsd: number;
+}
+
+export const formatPositionsSummary = (positions: UserPosition[]): string => {
+  // Pure formatting function
+};
+
+export const createPositionSummary = (
+  positions: UserPosition[], 
+  withdrawals: WithdrawalRequest[]
+): PositionSummary => {
+  // Pure data transformation
+};
+```
+
+## Benefits of This Pattern
+
+### Maintainability
+- **Clear separation** between stateful and pure logic
+- **Easier testing** of pure functions in isolation
+- **Reduced complexity** in service classes
+
+### Reusability
+- **Helper functions** can be used across different services
+- **Interfaces** provide consistent data contracts
+- **Pure functions** are framework-agnostic
+
+### Performance
+- **Caching preserved** where needed (in service class)
+- **No unnecessary state** in pure helper functions
+- **Better tree-shaking** of unused helpers
+
+## Naming Conventions
+- Service class: `class.ts` (main service implementation)
+- Helper modules: descriptive names (`positions.ts`, `pool.ts`, `wallet.ts`)
+- Interfaces: PascalCase with descriptive names
+- Functions: camelCase with verb-noun pattern
+
+## Import Patterns
+```typescript
+// In service class - import helpers
+import { createPositionSummary, formatPositionsSummary } from ./positions;
+
+// In other modules - import what you need
+import { UserPosition, formatPositionsSummary } from ../services/levva/positions;
+```
+
+## ABI and Asset Management
+
+### Static Imports for ABIs
+```typescript
+// ✅ Prefer static imports at top of file
+import vaultAbi from ./abi/vault.abi;
+import withdrawalNftAbi from ./abi/vault.withdrawal-nft.abi;
+import poolAbi from ./abi/pool.abi;
+
+// ❌ Avoid dynamic requires
+// const vaultAbi = require(./abi/vault.abi).default;
+```
+
+### Transaction Handling with createCalldata
+```typescript
+// ✅ Use service's createCalldata method
+const calldataWithDescription = [{
+  to: contractAddress as `0x${string}`,
+  data: this.encodeFunction(params),
+  value: 0,
+  title: Transaction Title,
+  description: Detailed description of what this transaction does,
+}];
+
+const calldataHash = await this.createCalldata(calldataWithDescription);
+
+// ❌ Don't create raw transaction objects
+// const transactionData = { to, data, chainId, value };
+```
+
+### Encoding Methods
+```typescript
+// Keep encoding methods in service class - they use imported ABIs
+encodeRequestRedeem(shares: bigint): `0x${string}` {
+  return encodeFunctionData({
+    abi: vaultAbi, // Uses static import
+    functionName: requestRedeem,
+    args: [shares],
+  });
+}
+```
+
+## Migration Strategy
+When refactoring existing services:
+1. **Identify pure functions** - no `this` dependencies, no side effects
+2. **Extract interfaces first** - establish data contracts
+3. **Move pure functions** - maintain same API
+4. **Update imports** - service class and consumers
+5. **Replace dynamic requires** - use static imports for ABIs
+6. **Update transaction handling** - use createCalldata method
+7. **Test thoroughly** - ensure no functionality lost
