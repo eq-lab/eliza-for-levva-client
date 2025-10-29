@@ -6,6 +6,13 @@ export interface PositionDiversificationParams {
   portfolioText?: string; // User's current token holdings
   hasEth?: boolean; // Whether user has ETH for WETH conversion
   currentRiskLevels?: string[]; // Risk levels user is already invested in
+  portfolioWithCalculations?: Array<{
+    symbol: string;
+    fullAmount: string;
+    amount75: string;
+    amount50: string;
+    amount25: string;
+  }>;
 }
 
 export const positionDiversificationPrompt = ({
@@ -16,6 +23,7 @@ export const positionDiversificationPrompt = ({
   portfolioText,
   hasEth,
   currentRiskLevels,
+  portfolioWithCalculations,
 }: PositionDiversificationParams): string => {
   const ethContext = hasEth
     ? `\nUser has ETH available for wrapping to WETH if needed for new strategy deposits.`
@@ -39,6 +47,19 @@ ${availableStrategiesFormatted}
 <userPortfolio>
 ${portfolioText || "Portfolio information not available"}${ethContext}
 </userPortfolio>
+${
+  portfolioWithCalculations && portfolioWithCalculations.length > 0
+    ? `<calculatedAmounts>
+Pre-calculated amounts to help generate realistic suggestions:
+${portfolioWithCalculations
+  .map(
+    (calc) =>
+      `${calc.symbol}: 25%=${calc.amount25}, 50%=${calc.amount50}, 75%=${calc.amount75}, 100%=${calc.fullAmount}`
+  )
+  .join("\n")}
+</calculatedAmounts>`
+    : ""
+}
 <conversation>
 ${conversation}
 </conversation>
@@ -65,6 +86,7 @@ Each suggestion should:
 - Lead directly to deposit intent initiation
 - Consider user's available tokens for feasibility
 - Balance the overall portfolio risk and yield profile
+- Use pre-calculated amounts from <calculatedAmounts> section for realistic deposit amounts
 
 AVOID generic suggestions - be specific about actual available strategies and user's tokens.
 </instructions>

@@ -421,7 +421,7 @@ export class LevvaService
 
     // fixme use cache+invalidate?
     // fixme access metadata's chainid
-    const chains = [1, 8543, 42161];
+    const chains = [1, 8453, 42161];
     for (const chainId of chains) {
       const balance = await this.getBalanceOf(address, chainId, ETH_NULL_ADDR);
 

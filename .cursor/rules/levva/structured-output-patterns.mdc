@@ -22,18 +22,17 @@ import { z } from "zod";
 import { zodJsonSchema } from "../prompts/util";
 
 // Define schema and infer type
-const mySchema = z.object({ /* ... */ });
+const mySchema = z.object({
+  /* ... */
+});
 type MySchemaResult = z.infer<typeof mySchema>;
 
 // ✅ CORRECT: Schema + temperature 0 + type annotation
-const result: MySchemaResult = await runtime.useModel(
-  ModelType.OBJECT_SMALL,
-  {
-    prompt: myPrompt,
-    schema: zodJsonSchema(mySchema),
-    temperature: 0,
-  }
-);
+const result: MySchemaResult = await runtime.useModel(ModelType.OBJECT_SMALL, {
+  prompt: myPrompt,
+  schema: zodJsonSchema(mySchema),
+  temperature: 0,
+});
 
 // ❌ WRONG: No schema
 const result = await runtime.useModel(ModelType.OBJECT_SMALL, {
@@ -66,16 +65,16 @@ export const suggestionSchema = z.object({
           .string()
           .describe(
             "Short, specific label for the button/chip UI element (2-5 words). " +
-            "Must clearly indicate what the suggestion does. " +
-            "Examples: 'Withdraw 100 USDC' (NOT 'Edit amount'), " +
-            "'50% of balance' (NOT 'Partial'), " +
-            "'Safe yield strategy' (NOT 'Different strategy')"
+              "Must clearly indicate what the suggestion does. " +
+              "Examples: 'Withdraw 100 USDC' (NOT 'Edit amount'), " +
+              "'50% of balance' (NOT 'Partial'), " +
+              "'Safe yield strategy' (NOT 'Different strategy')"
           ),
         text: z
           .string()
           .describe(
             "The complete natural message that the USER would type or say to the agent " +
-            "(e.g., 'I want to withdraw 100 USDC', 'Actually, withdraw 50 USDC instead')"
+              "(e.g., 'I want to withdraw 100 USDC', 'Actually, withdraw 50 USDC instead')"
           ),
       })
     )
@@ -103,6 +102,7 @@ export const badSchema = z.object({
 ### **1. Field Descriptions Must Be Explicit**
 
 **Include:**
+
 - **Purpose**: What the field represents
 - **Format**: Expected structure/format
 - **Examples**: Concrete examples (especially CORRECT vs WRONG)
@@ -113,21 +113,76 @@ export const badSchema = z.object({
 // ✅ EXCELLENT: Explicit with examples
 label: z.string().describe(
   "Short, specific label for the button/chip UI element (2-5 words). " +
-  "Must clearly indicate what the suggestion does. " +
-  "Examples: 'Withdraw 100 USDC' (NOT 'Edit amount'), " +
-  "'50% of balance' (NOT 'Partial')"
-)
+    "Must clearly indicate what the suggestion does. " +
+    "Examples: 'Withdraw 100 USDC' (NOT 'Edit amount'), " +
+    "'50% of balance' (NOT 'Partial')"
+);
 
 // ⚠️ OKAY: Missing examples
 label: z.string().describe(
   "Short, specific label for the button UI (2-5 words)"
-)
+);
 
 // ❌ BAD: Too vague
-label: z.string().describe("A label")
+label: z.string().describe("A label");
 ```
 
-### **2. Use Type Inference and Annotation (Not Casting)**
+### **2. Field Order: Always Start with `thought`**
+
+**CRITICAL**: Always include `thought` as the **first field** in your schema. This provides transparency into the LLM's reasoning process and helps with debugging.
+
+```typescript
+// ✅ CORRECT: thought is the first field
+export const mySchema = z.object({
+  thought: z
+    .string()
+    .describe(
+      "Your analysis of the request and parameter extraction. " +
+        "Include reasoning about what was extracted and confidence factors."
+    ),
+  // ... other fields follow
+  parameterA: z.string().optional().describe("..."),
+  parameterB: z.number().optional().describe("..."),
+});
+
+// ❌ WRONG: thought is missing or not first
+export const badSchema = z.object({
+  parameterA: z.string().optional(),
+  parameterB: z.number().optional(),
+  thought: z.string(), // Should be first!
+});
+```
+
+**Benefits of `thought` field:**
+
+- **Debugging**: See LLM's reasoning when extraction fails
+- **Quality Assurance**: Verify LLM understood the request correctly
+- **Transparency**: Users can see how parameters were determined
+- **Confidence Assessment**: Understand certainty level of extraction
+
+**Common `thought` patterns:**
+
+```typescript
+// For parameter extraction
+thought: z.string().describe(
+  "Your analysis of the user's request and parameter extraction. " +
+    "Include reasoning about strategy identification, amount interpretation, and confidence factors."
+);
+
+// For decision-making
+thought: z.string().describe(
+  "Your reasoning about which action to take and why. " +
+    "Include analysis of context, user intent, and decision factors."
+);
+
+// For suggestions
+thought: z.string().describe(
+  "Your internal reasoning about what suggestions to provide and why. " +
+    "Include analysis of user context and available options."
+);
+```
+
+### **3. Use Type Inference and Annotation (Not Casting)**
 
 ```typescript
 // ✅ CORRECT: Export inferred type
@@ -137,19 +192,22 @@ export const mySchema = z.object({
 export type MySchemaResult = z.infer<typeof mySchema>;
 
 // ✅ BEST: Type annotation on variable
-const result: MySchemaResult = await runtime.useModel(
-  ModelType.OBJECT_SMALL,
-  { prompt, schema: zodJsonSchema(mySchema), temperature: 0 }
-);
+const result: MySchemaResult = await runtime.useModel(ModelType.OBJECT_SMALL, {
+  prompt,
+  schema: zodJsonSchema(mySchema),
+  temperature: 0,
+});
 
 // ❌ AVOID: Type casting with 'as'
-const result = await runtime.useModel(
-  ModelType.OBJECT_SMALL,
-  { prompt, schema: zodJsonSchema(mySchema), temperature: 0 }
-) as MySchemaResult;
+const result = (await runtime.useModel(ModelType.OBJECT_SMALL, {
+  prompt,
+  schema: zodJsonSchema(mySchema),
+  temperature: 0,
+})) as MySchemaResult;
 ```
 
 **Why prefer type annotation?**
+
 - Better type safety at compile time
 - Catches type mismatches earlier
 - More explicit about expected types
@@ -207,6 +265,7 @@ Your response should follow this exact JSON structure.
 ## 📊 **Model Type Selection**
 
 ### **ModelType.OBJECT_SMALL**
+
 - **Use for**: Simple structured data extraction
 - **Examples**:
   - Suggestion generation (3-6 items)
@@ -216,6 +275,7 @@ Your response should follow this exact JSON structure.
 - **Cost**: Lower
 
 ### **ModelType.OBJECT_LARGE**
+
 - **Use for**: Complex structured data generation
 - **Examples**:
   - Multi-step analysis
@@ -248,16 +308,17 @@ const analysis = await runtime.useModel(ModelType.OBJECT_LARGE, {
 
 ```typescript
 // ✅ CORRECT: Deterministic output
-temperature: 0
+temperature: 0;
 
 // ❌ WRONG: Introduces variability
-temperature: 0.7
+temperature: 0.7;
 
 // ❌ WRONG: Omitted (uses default)
 // (omitted)
 ```
 
 **Why temperature 0?**
+
 - **Deterministic**: Same input → Same output
 - **Consistent**: Users get predictable behavior
 - **Reliable**: Follows schema more strictly
@@ -367,6 +428,7 @@ CRITICAL REQUIREMENTS:
 ## 🚨 **Common Mistakes**
 
 ### **1. Missing Schema**
+
 ```typescript
 // ❌ BAD: No schema enforcement
 const result = await runtime.useModel(ModelType.OBJECT_SMALL, {
@@ -387,30 +449,26 @@ const result: SuggestionResult = await runtime.useModel(
 ```
 
 ### **2. Missing Temperature**
+
 ```typescript
 type MySchemaResult = z.infer<typeof mySchema>;
 
 // ❌ BAD: Non-deterministic (uses default temperature)
-const result: MySchemaResult = await runtime.useModel(
-  ModelType.OBJECT_SMALL,
-  {
-    prompt: myPrompt,
-    schema: zodJsonSchema(mySchema),
-  }
-);
+const result: MySchemaResult = await runtime.useModel(ModelType.OBJECT_SMALL, {
+  prompt: myPrompt,
+  schema: zodJsonSchema(mySchema),
+});
 
 // ✅ GOOD: Deterministic with temperature 0
-const result: MySchemaResult = await runtime.useModel(
-  ModelType.OBJECT_SMALL,
-  {
-    prompt: myPrompt,
-    schema: zodJsonSchema(mySchema),
-    temperature: 0,
-  }
-);
+const result: MySchemaResult = await runtime.useModel(ModelType.OBJECT_SMALL, {
+  prompt: myPrompt,
+  schema: zodJsonSchema(mySchema),
+  temperature: 0,
+});
 ```
 
 ### **3. Vague Schema Descriptions**
+
 ```typescript
 // ❌ BAD: LLM doesn't know what to generate
 const schema = z.object({
@@ -420,45 +478,48 @@ const schema = z.object({
 
 // ✅ GOOD: Explicit expectations
 const schema = z.object({
-  label: z.string().describe(
-    "Short, specific label (2-5 words) like 'Withdraw 100 USDC' or '50% of balance'. " +
-    "NOT vague labels like 'Edit' or 'Different option'"
-  ),
-  text: z.string().describe(
-    "Complete natural language message the user would type, " +
-    "e.g., 'I want to withdraw 100 USDC from my position'"
-  ),
+  label: z
+    .string()
+    .describe(
+      "Short, specific label (2-5 words) like 'Withdraw 100 USDC' or '50% of balance'. " +
+        "NOT vague labels like 'Edit' or 'Different option'"
+    ),
+  text: z
+    .string()
+    .describe(
+      "Complete natural language message the user would type, " +
+        "e.g., 'I want to withdraw 100 USDC from my position'"
+    ),
 });
 ```
 
 ### **4. Using Type Casting Instead of Annotation**
+
 ```typescript
 // ❌ BAD: Type casting with 'as'
-const result = await runtime.useModel(ModelType.OBJECT_SMALL, {
+const result = (await runtime.useModel(ModelType.OBJECT_SMALL, {
   prompt: myPrompt,
   schema: zodJsonSchema(mySchema),
   temperature: 0,
-}) as MySchemaResult;
+})) as MySchemaResult;
 
 // ✅ GOOD: Type annotation on variable
-const result: MySchemaResult = await runtime.useModel(
-  ModelType.OBJECT_SMALL,
-  {
-    prompt: myPrompt,
-    schema: zodJsonSchema(mySchema),
-    temperature: 0,
-  }
-);
+const result: MySchemaResult = await runtime.useModel(ModelType.OBJECT_SMALL, {
+  prompt: myPrompt,
+  schema: zodJsonSchema(mySchema),
+  temperature: 0,
+});
 ```
 
 ### **5. Not Using Helper Functions**
+
 ```typescript
 // ❌ BAD: Manual JSON Schema construction
 const schema = {
   type: "object",
   properties: {
-    suggestions: { type: "array" }
-  }
+    suggestions: { type: "array" },
+  },
 };
 
 // ✅ GOOD: Use zodJsonSchema helper
@@ -470,13 +531,14 @@ const schema = zodJsonSchema(suggestionSchema);
 ## 🧪 **Testing Structured Output**
 
 For comprehensive testing patterns and utilities, see:
+
 - **`@structured-output-testing.mdc`** - Complete testing guide with OpenRouter utilities
 - **`__tests__/utils/openrouter.ts`** - Testing helper functions
 
 ### **Quick Example**
 
 ```typescript
-import { generateStructured, testDeterminism } from '../utils/openrouter';
+import { generateStructured, testDeterminism } from "../utils/openrouter";
 
 // Test business logic and quality
 const result = await generateStructured(mySchema, prompt);
@@ -488,6 +550,7 @@ expect(result1).toEqual(result2);
 ```
 
 **Key Testing Principles:**
+
 - ❌ Don't test Zod validation (library already tested)
 - ✅ Do test business logic and output quality
 - ✅ Do test with real data from services
@@ -500,17 +563,20 @@ expect(result1).toEqual(result2);
 ## 📚 **Reference Files**
 
 ### **Related Rules**
+
 - `@structured-output-testing.mdc` - Testing patterns with OpenRouter utilities
 - `@elizaos-patterns.mdc` - Core ElizaOS framework patterns
 - `@typescript-conventions.mdc` - TypeScript best practices
 
 ### **Code Files**
+
 - `src/prompts/suggest/schema.ts` - Shared suggestion schemas
 - `src/prompts/util.ts` - `zodJsonSchema()`, `formatZodOutput()`
 - `src/evaluators/suggestions.ts` - Multiple model calls with schemas
 - `src/actions/intents/*.ts` - Intent-specific structured output
 
 ### **Test Utilities**
+
 - `__tests__/utils/openrouter.ts` - OpenRouter testing helpers
 
 ---
@@ -520,6 +586,7 @@ expect(result1).toEqual(result2);
 Before using `useModel` with `OBJECT_SMALL` or `OBJECT_LARGE`:
 
 - [ ] Defined Zod schema with detailed descriptions
+- [ ] **CRITICAL**: Included `thought` field as the **first field** in schema
 - [ ] Used `zodJsonSchema(schema)` helper
 - [ ] Set `temperature: 0`
 - [ ] Added examples in field descriptions (CORRECT vs WRONG)
@@ -534,10 +601,11 @@ Before using `useModel` with `OBJECT_SMALL` or `OBJECT_LARGE`:
 ## 🎓 **Key Takeaways**
 
 1. **Always**: Schema + Temperature 0 for `OBJECT_SMALL`/`OBJECT_LARGE`
-2. **Explicit**: Detailed descriptions with examples prevent LLM confusion
-3. **Type Annotation**: Use `const result: Type = await useModel(...)` instead of `as` casting
-4. **Consistent**: Centralize common schemas, reuse patterns
-5. **Testable**: Deterministic output enables reliable testing
-6. **Type-Safe**: Use `z.infer<>` for TypeScript integration
+2. **`thought` First**: Always include `thought` as the first field in your schema for transparency and debugging
+3. **Explicit**: Detailed descriptions with examples prevent LLM confusion
+4. **Type Annotation**: Use `const result: Type = await useModel(...)` instead of `as` casting
+5. **Consistent**: Centralize common schemas, reuse patterns
+6. **Testable**: Deterministic output enables reliable testing
+7. **Type-Safe**: Use `z.infer<>` for TypeScript integration
 
 **Remember**: The LLM only sees your schema descriptions and prompt. Make them as explicit and unambiguous as possible!

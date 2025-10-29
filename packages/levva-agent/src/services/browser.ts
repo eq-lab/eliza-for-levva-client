@@ -5,7 +5,6 @@ import {
   type ServiceTypeName,
   ServiceType,
   logger,
-  parseJSONObjectFromText,
   stringToUuid,
   trimTokens,
 } from "@elizaos/core";
@@ -17,7 +16,12 @@ import {
   chromium,
 } from "patchright";
 import { delay } from "../util/async";
-import { generateWebPageSummaryPrompt } from "../prompts/browser-summary";
+import {
+  generateWebPageSummaryPrompt,
+  webPageSummarySchema,
+  WebPageSummary,
+} from "../prompts/browser-summary";
+import { zodJsonSchema } from "../prompts/util";
 
 // Type for cached content
 interface CachedContent {
@@ -41,16 +45,16 @@ async function generateSummary(
 
   const prompt = generateWebPageSummaryPrompt(trimmedText);
 
-  const response = await runtime.useModel(ModelType.TEXT_SMALL, {
+  const response = (await runtime.useModel(ModelType.OBJECT_SMALL, {
     prompt,
-  });
+    schema: zodJsonSchema(webPageSummarySchema),
+    temperature: 0,
+  })) as WebPageSummary;
 
-  const parsedResponse = parseJSONObjectFromText(response);
-
-  if (parsedResponse?.title && parsedResponse?.summary) {
+  if (response?.title && response?.summary) {
     return {
-      title: parsedResponse.title,
-      description: parsedResponse.summary,
+      title: response.title,
+      description: response.summary,
     };
   }
 
@@ -248,7 +252,8 @@ export class BrowserService extends Service {
       port: string;
       login?: string;
       password?: string;
-    }[] = []
+    }[] = [],
+    schema?: Record<string, unknown> // Optional JSON schema for structured output
   ) {
     await this.initializeBrowser();
 
@@ -313,6 +318,7 @@ export class BrowserService extends Service {
 
       return this.runtime.useModel(ModelType.OBJECT_SMALL, {
         prompt,
+        ...(schema ? { schema, temperature: 0 } : {}),
       });
     } catch (error) {
       logger.error("Error:", error);

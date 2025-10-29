@@ -10,6 +10,7 @@ import { INTENT_CONFIDENCE_THRESHOLD } from "../constants/intent";
 import {
   ExtractedDataForWithdraw,
   extractWithdrawDataFromMessagePrompt,
+  extractedDataForWithdrawSchema,
 } from "src/prompts/withdraw";
 import {
   ExtractedDataForDeposit,
@@ -45,14 +46,14 @@ export const positionParamsProvider: Provider = {
   position: -50,
   async get(runtime, message, state) {
     logger.info(
-      `[POSITION-PARAMS] Provider started for: "${message.content.text}"`
+      `[${POSITION_PARAMS_PROVIDER_NAME}] Provider started for: "${message.content.text}"`
     );
 
     // Check for simple reply mode first
     const simpleReply = checkSimpleReply(
       runtime,
       state,
-      "POSITION-PARAMS",
+      POSITION_PARAMS_PROVIDER_NAME,
       "Position data"
     );
     if (simpleReply) return simpleReply;
@@ -130,18 +131,33 @@ export const positionParamsProvider: Provider = {
       let intentText = "";
 
       if (intentContext?.type === "WITHDRAW") {
+        // Enhance positions with token decimal information for LLM
+        const enhancedPositions = positions.map((pos) => {
+          const strategy = strategies.find((s) => s.id === pos.strategyId);
+          const token = strategy?.vault?.underlyingToken;
+          return {
+            ...pos,
+            tokenSymbol: token?.symbol || "tokens",
+            tokenDecimals: token?.decimals || 18,
+          };
+        });
+
         const prompt = extractWithdrawDataFromMessagePrompt({
           inheritedData: intentContext.inheritedData,
           returnData: intentContext.returnData,
           messages: intentContext.memories,
           strategyIdMap,
-          positions,
+          positions: enhancedPositions as any, // Enhanced with token info
           withdrawals,
         });
 
         const result: ExtractedDataForWithdraw = await runtime.useModel(
           ModelType.OBJECT_SMALL,
-          { prompt }
+          {
+            prompt,
+            schema: zodJsonSchema(extractedDataForWithdrawSchema),
+            temperature: 0,
+          }
         );
 
         if (result) {

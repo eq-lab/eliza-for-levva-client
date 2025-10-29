@@ -72,9 +72,11 @@ export const action: Action = {
     const prevActions = await getPreviousReplyContext(runtime, message, state);
 
     // Compose state with required providers
-    const composedState = await runtime.composeState(message, [
-      LEVVA_PROVIDER_NAME,
-    ]);
+    const composedState = await runtime.composeState(
+      message,
+      [LEVVA_PROVIDER_NAME],
+      true
+    );
 
     try {
       // Check for SEND intent first using centralized service

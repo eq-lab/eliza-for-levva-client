@@ -1,8 +1,9 @@
 /**
  * Deposit parameter extraction prompt
  *
- * @version 1.1.0
- * @lastModified 2025-01-XX
+ * @version 1.2.0
+ * @lastModified 2025-01-29
+ * @changes v1.2.0: Added .regex() validation for amount, balance-aware conversion, token decimal precision
  * @changes v1.1.0: Standardized amount field to string type
  * @changes v1.0.0: Initial implementation with vault/pool strategy support
  */
@@ -19,8 +20,11 @@ export const extractedDataForDepositSchema = z
       ),
     confidence: z
       .number()
+      .min(0)
+      .max(1)
       .describe(
-        "Confidence level (0.0-1.0) that the user wants to perform a deposit/investment action"
+        "Your confidence level in the extraction accuracy (0.0-1.0). " +
+          "High (0.8-1.0): All parameters clear. Medium (0.5-0.79): Some inference needed. Low (0.0-0.49): Requires clarification."
       ),
     strategyId: z
       .number()
@@ -38,9 +42,15 @@ export const extractedDataForDepositSchema = z
       ),
     contractAddress: z
       .string()
+      .regex(
+        /^0x[a-fA-F0-9]{40}$/,
+        "Contract address must be valid Ethereum address (0x + 40 hex chars)"
+      )
       .optional()
       .describe(
-        "The contract address of the strategy/vault if provided (e.g., 0xCF9bdc...)"
+        "The contract address of the strategy/vault if provided. " +
+          "Must be valid Ethereum address format: 0x + 40 hex characters (42 total). " +
+          "Example: 0xCF9bdc89a03f0fDbcc09f402C4498e7a5d86F4A1"
       ),
     tokenSymbol: z
       .string()
@@ -48,15 +58,28 @@ export const extractedDataForDepositSchema = z
       .describe("The symbol of the token to deposit (e.g., USDC, ETH, WETH)"),
     tokenAddress: z
       .string()
+      .regex(
+        /^0x[a-fA-F0-9]{40}$/,
+        "Token address must be valid Ethereum address (0x + 40 hex chars)"
+      )
       .optional()
       .describe(
-        "The contract address of the token to deposit, if specified (e.g., 0xAf88...)"
+        "The contract address of the token to deposit, if specified. " +
+          "Must be valid Ethereum address format: 0x + 40 hex characters (42 total). " +
+          "Example: 0xAf88d065e77c8cC2239327C5EDb3A432268e5831"
       ),
     amount: z
       .string()
-      .optional()
+      .regex(
+        /^[0-9]+(\.[0-9]+)?$/,
+        "Amount must be numeric string without symbols"
+      )
+      .nullable()
       .describe(
-        'Numeric string only (e.g., "100" or "0.5"). NEVER include currency symbols or units, just the number'
+        'Numeric string only (e.g., "100" or "0.5"). ' +
+          "Use token decimal precision from provided balance data. " +
+          'Convert percentages/keywords using balance: 50% → (0.5 × balance), "all"/"max" → full balance. ' +
+          "NEVER include currency symbols, token symbols, or keywords."
       ),
     leverage: z
       .number()
@@ -173,11 +196,20 @@ CONTEXT-AWARE EXTRACTION:
 - **Smart Inference**: If user says "deposit into ultra-safe" and conversation shows USDC discussion, infer USDC
 - **Avoid Redundancy**: Don't ask for info that's already available in context AND not being changed
 
+AMOUNT PARSING RULES:
+- Extract only numeric values: "100", "0.5", "1000"
+- Percentage conversion: If user says "50%" AND token balance available in <userPortfolio> → compute 0.5 × balance
+- Keyword conversion: If user says "all"/"max" AND token balance available → use full token balance
+- Format: Match token's decimal precision shown in userPortfolio balance data
+- Trim trailing zeros (e.g., "15.460000" → "15.46")
+- If token/balance unavailable: Return null for amount, explain reason in thought field
+- NEVER include: %, $, currency symbols, token symbols, or keywords in the amount field
+
 RETURN FORMAT CONSTRAINTS:
-- amount MUST be a numeric string matching regex ^[0-9]+(\.[0-9]+)?$ when present.
-- Never include percent signs, currency symbols, or token symbols in amount.
-- When converting from percentage or "all"/"max", format the computed number as a plain decimal string with up to 6 fractional digits, trimming trailing zeros (e.g., "15.460000" -> "15.46").
-- If unable to compute a numeric string (e.g., token unknown or balance missing), set amount to null and explain why in thought.
+- amount MUST be a numeric string matching regex ^[0-9]+(.[0-9]+)?$ when present
+- Never include percent signs, currency symbols, or token symbols in amount
+- When converting from percentage or "all"/"max", use the exact decimal precision shown in the userPortfolio for that token
+- If unable to compute a numeric string (e.g., token unknown or balance missing), set amount to null and explain why in thought
 
 EXTRACTION PRIORITY:
 1. **Current Message**: Direct parameter extraction from user's latest message
@@ -214,11 +246,7 @@ TOKEN MATCHING:
 - Accept contract addresses if provided
 - **Strategy-Token Validation**: If both strategy and token are mentioned, ensure token is compatible with strategy type
 
-AMOUNT PARSING:
-- Accept numeric values: "100", "0.5", "1000"
-- Percentages: if token is known and its balance is present in <userPortfolio>, compute absolute amount (e.g., if USDC balance is 51.53 and user says "30%", return "15.459" rounded to at most 6 decimals, then trim trailing zeros → "15.459").
-- Keywords: if user says "all" or "max" and token balance is present, return the full balance as numeric string (trim trailing zeros).
-- Remove currency or token symbols (e.g., "$100 USDC" -> "100").
+When converting percentages/keywords, use the exact decimal precision shown in the userPortfolio for that token.
 </instructions>
 <keys>
 ${formatZodKeys(extractedDataForDepositSchema)}

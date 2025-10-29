@@ -43,7 +43,7 @@ export interface CalculatedAmounts {
  * Calculate amount suggestions from balance using deposit-intent pattern
  *
  * @param balance - Token balance (bigint for wallet assets, number for position balances)
- * @param decimals - Token decimals (required for bigint, ignored for number)
+ * @param decimals - Token decimals (required for bigint, defaults to 6 for number)
  * @param tokenAddress - Token address to detect native ETH for gas reservation
  * @returns Calculated amounts with proper formatting
  *
@@ -58,8 +58,8 @@ export interface CalculatedAmounts {
  * // Returns: { fullAmount: "0.95", ... } - reserves 5% for gas
  *
  * @example
- * // For number position balance
- * const amounts = calculateAmountsFromBalance(100.5, undefined, "0x...");
+ * // For number position balance (with decimals)
+ * const amounts = calculateAmountsFromBalance(100.5, 6, "0x...");
  * // Returns: { fullAmount: "100.5", amount75: "75.375", ... }
  */
 export function calculateAmountsFromBalance(
@@ -91,6 +91,7 @@ export function calculateAmountsFromBalance(
   }
 
   let balanceFloat: number;
+  let formatDecimals: number;
 
   // Convert balance to float based on type
   if (typeof balance === "bigint") {
@@ -98,8 +99,11 @@ export function calculateAmountsFromBalance(
       throw new Error("decimals parameter is required when balance is bigint");
     }
     balanceFloat = parseFloat(formatUnits(balance, decimals));
+    formatDecimals = decimals;
   } else {
     balanceFloat = balance;
+    // For number balances (positions), default to 6 decimals if not provided
+    formatDecimals = decimals ?? 6;
   }
 
   // Check for valid balance
@@ -122,8 +126,9 @@ export function calculateAmountsFromBalance(
     percentages.LOW,
   ];
 
+  // Use token's actual decimals for formatting, not hardcoded 6
   const calculatedAmounts = amounts.map((pct) =>
-    (balanceFloat * pct).toFixed(6)
+    (balanceFloat * pct).toFixed(formatDecimals)
   );
 
   const [fullAmount, amount75, amount50, amount25] = calculatedAmounts;

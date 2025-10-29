@@ -249,6 +249,19 @@ export async function generateWithdrawSuggestions(params: {
     service.getWithdrawalRequests(userAddress, chainId),
   ]);
 
+  // Enhance positions with token decimal information for amount calculations
+  const enhancedPositions = positions.map((pos) => {
+    const strategy = strategies.find((s) => s.id === pos.strategyId);
+    const token = strategy?.vault?.underlyingToken;
+    return {
+      strategyId: pos.strategyId,
+      balance: pos.balance,
+      balanceUsd: pos.balanceUsd,
+      tokenSymbol: token?.symbol || "tokens",
+      tokenDecimals: token?.decimals || 18,
+    };
+  });
+
   // Generate prompt using consolidated prompt function
   return generateWithdrawIntentSuggestionsPrompt({
     intentContext,
@@ -256,11 +269,7 @@ export async function generateWithdrawSuggestions(params: {
     userAddress,
     chainId,
     returnData: intentContext.returnData || {},
-    positions: positions.map((p) => ({
-      strategyId: p.strategyId,
-      balance: p.balance,
-      balanceUsd: p.balanceUsd,
-    })),
+    positions: enhancedPositions,
     strategies: strategies.map((s) => ({
       id: s.id,
       name: s.name,
@@ -366,7 +375,9 @@ export const handleWithdrawIntent: IntentHandler = async (
             const strategyName = strategy?.name || `Strategy ${pos.strategyId}`;
             const assetSymbol =
               strategy?.vault?.underlyingToken?.symbol || "tokens";
-            const balanceDisplay = `${pos.balance.toFixed(4)} ${assetSymbol}`;
+            const tokenDecimals =
+              strategy?.vault?.underlyingToken?.decimals ?? 18;
+            const balanceDisplay = `${pos.balance.toFixed(tokenDecimals)} ${assetSymbol}`;
 
             // Format: "Strategy Name (Risk level strategy): Amount TOKEN Deposited"
             const riskLevel = strategy?.strategy

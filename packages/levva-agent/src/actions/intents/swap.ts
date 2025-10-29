@@ -22,6 +22,7 @@ import { IntentContext, IntentHandler } from "../../services/intent-manager";
 import { ActionResult } from "../../util/action-results";
 import { generateSwapIntentSuggestionsPrompt } from "../../prompts/suggest/swap-intent";
 import { ETH_NULL_ADDR } from "../../constants/eth";
+import { selectProviderState } from "../../providers/util";
 
 /**
  * Generate suggestions for SWAP intent
@@ -118,14 +119,15 @@ export const handleSwapIntent: IntentHandler = async (
     }
 
     // Handle both composedState (from action) and regular state (from IntentManager)
-    let lvva: LevvaProviderState | undefined;
-    let params: SwapParamsProviderData | undefined;
+    const lvva = selectProviderState<LevvaProviderState>(
+      LEVVA_PROVIDER_NAME,
+      state
+    );
 
-    // Try to get data from composedState structure first (new pattern)
-    if (state.data?.providers) {
-      lvva = state.data.providers[LEVVA_PROVIDER_NAME]?.data;
-      params = state.data.providers[SWAP_PARAMS_PROVIDER_NAME]?.data;
-    }
+    const params = selectProviderState<SwapParamsProviderData>(
+      SWAP_PARAMS_PROVIDER_NAME,
+      state
+    );
 
     if (!lvva?.user) {
       throw new Error("User address ID is required");

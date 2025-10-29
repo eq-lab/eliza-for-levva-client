@@ -186,10 +186,21 @@ ${generateOutputFormat()}`;
       return a.symbol.toLowerCase() === tokenSymbol?.toLowerCase();
     });
 
-    let amountContext = "";
-    if (walletAsset) {
-      amountContext = `\nUser has ${walletAsset.symbol} available in wallet.`;
-    }
+    // Calculate actual amounts to help LLM generate suggestions
+    const amounts = calculateAmountsFromBalance(
+      walletAsset?.amount ?? 0n,
+      walletAsset?.decimals ?? 18,
+      walletAsset?.token
+    );
+
+    const amountContext = amounts.hasBalance
+      ? `\nUser has ${amounts.fullAmount} ${tokenDisplay} available in wallet.
+Calculated amounts for suggestions:
+- 25%: ${amounts.amount25} ${tokenDisplay}
+- 50%: ${amounts.amount50} ${tokenDisplay}
+- 75%: ${amounts.amount75} ${tokenDisplay}
+- 100%: ${amounts.fullAmount} ${tokenDisplay}`
+      : `\nUser balance unknown for ${tokenDisplay}.`;
 
     return `<task>Generate amount suggestions for send</task>
 <intentContext>
@@ -204,10 +215,19 @@ ${conversation}
 <instructions>
 Generate 4-5 natural, conversational suggestions for send amounts:
 
-AMOUNT OPTIONS:
-- Percentage-based: "Send 25%", "Send 50%", "Send 75%", "Send all"
-- Or specific amounts if context suggests it
-- Include "Let me specify exact amount" for precision
+LABEL FORMAT (can include percentages):
+- "Send 25%", "Send 50%", "Send 75%", "Send all"
+- Or specific amounts: "Send ${amounts.amount50} ${tokenDisplay}"
+
+TEXT FORMAT (must use actual calculated amounts):
+- Use the calculated amounts provided above
+- Examples: 
+  • "Send ${amounts.amount25} ${tokenDisplay}"
+  • "Send ${amounts.amount50} ${tokenDisplay}"
+  • "Send ${amounts.amount75} ${tokenDisplay}"
+  • "Send ${amounts.fullAmount} ${tokenDisplay}"
+- Include "Let me specify exact amount" option for precision
+- NEVER use percentages in text field
 
 Each suggestion should:
 - Be natural and conversational

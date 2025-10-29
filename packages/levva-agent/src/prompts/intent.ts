@@ -1,9 +1,15 @@
 /**
  * Intent detection prompt for LLM-based intent analysis
+ *
+ * @version 2.0.0
+ * @lastModified 2025-01-29
+ * @changes v2.0.0: Migrated to Zod schema for structured output
+ * @changes v1.0.0: Initial implementation with DataDescription
  */
 
+import { z } from "zod";
 import { LEVVA_ACTIONS, INTENT_TYPE } from "../constants/enum";
-import { DataDescription, formatKeys, formatOutput } from "./util";
+import { formatZodKeys, formatZodOutput } from "./util";
 
 export interface IntentOption {
   type: INTENT_TYPE;
@@ -11,8 +17,47 @@ export interface IntentOption {
   keywords: string[];
 }
 
+/** Zod schema for intent detection analysis */
+export const intentAnalysisSchema = z
+  .object({
+    selectedIntent: z
+      .string()
+      .nullable()
+      .describe(
+        "The most appropriate intent type from available options, or null if none match. " +
+          "Must be one of the provided intent types or null."
+      ),
+    confidence: z
+      .number()
+      .min(0)
+      .max(1)
+      .describe(
+        "Confidence score from 0 to 1. " +
+          "High (0.8-1.0): Clear intent from context AND explicit action keywords. " +
+          "Medium (0.6-0.75): Some action indication but ambiguous. " +
+          "Low (0.3-0.5): Informational request, not an action. " +
+          "Very Low (0.0-0.2): No intent indication."
+      ),
+    extractedValues: z
+      .record(z.any())
+      .describe(
+        "Any values extracted from the message for this intent. " +
+          "Return empty object {} if no values extracted."
+      ),
+    reasoning: z
+      .string()
+      .describe(
+        "Brief explanation of the decision. " +
+          "Explain why this intent was selected (or not selected) and confidence level."
+      ),
+  })
+  .describe("Intent detection analysis result");
+
+/** Intent analysis type inferred from Zod schema */
+export type IntentAnalysis = z.infer<typeof intentAnalysisSchema>;
+
 /**
- * Expected structure of LLM response for intent detection
+ * @deprecated Legacy interface for backward compatibility. Use IntentAnalysis instead.
  */
 export interface LLMIntentAnalysis {
   selectedIntent: INTENT_TYPE | undefined;
@@ -20,27 +65,6 @@ export interface LLMIntentAnalysis {
   extractedValues: Record<string, any>;
   reasoning: string;
 }
-
-const dataDescription: DataDescription<LLMIntentAnalysis> = {
-  selectedIntent: {
-    type: "string",
-    description: "The most appropriate intent type, or undefined if none match",
-    default: "undefined",
-  },
-  confidence: {
-    type: "number",
-    description: "Confidence score from 0 to 1",
-  },
-  extractedValues: {
-    type: "object",
-    description: "Any values extracted from the message for this intent",
-    default: "{}",
-  },
-  reasoning: {
-    type: "string",
-    description: "Brief explanation of the decision",
-  },
-};
 
 export const createIntentDetectionPrompt = (
   message: string,
@@ -145,15 +169,15 @@ ${intentList}
 - If message starts with "Analyze", "Show", "Review", "Check", "Display" → return selectedIntent: undefined, confidence < 0.3
 - Only return a specific intent type if you're CERTAIN the user wants to PERFORM a transaction
 
-**REMINDER**: It is VALID and CORRECT to return selectedIntent: undefined
-- Most messages should return undefined (informational requests)
+**REMINDER**: It is VALID and CORRECT to return selectedIntent: null
+- Most messages should return null (informational requests)
 - Only clear action requests should return a specific intent type
 </instructions>
 <keys>
-${formatKeys(dataDescription)}
+${formatZodKeys(intentAnalysisSchema)}
 </keys>
 <output>
-${formatOutput(dataDescription)}
+${formatZodOutput(intentAnalysisSchema)}
 
 Your response should include the valid JSON block and nothing else.
 </output>`;

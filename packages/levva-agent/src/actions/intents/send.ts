@@ -1,4 +1,10 @@
-import { Memory, IAgentRuntime, State, HandlerCallback } from "@elizaos/core";
+import {
+  Memory,
+  IAgentRuntime,
+  State,
+  HandlerCallback,
+  ModelType,
+} from "@elizaos/core";
 import { UUID } from "crypto";
 import { isAddress, parseUnits, formatUnits, encodeFunctionData } from "viem";
 import { IntentContext, IntentHandler } from "../../services/intent-manager";
@@ -10,6 +16,12 @@ import { rephrase } from "../../util/generate";
 import { LevvaProviderState, LEVVA_PROVIDER_NAME } from "../../providers";
 import { selectProviderState } from "../../providers/util";
 import { generateSendIntentSuggestionsPrompt } from "../../prompts/suggest/send-intent";
+import {
+  extractSendDataFromMessagePrompt,
+  extractedSendParamsSchema,
+  ExtractedSendParams,
+} from "../../prompts/send";
+import { zodJsonSchema } from "../../prompts/util";
 
 // ERC20 Transfer ABI
 const ERC20_TRANSFER_ABI = [
@@ -68,7 +80,89 @@ export const handleSendIntent: IntentHandler = async (
       throw new Error("User address is required");
     }
 
-    const { returnData } = intentContext;
+    // Extract parameters using structured output if not already done
+    let { returnData } = intentContext;
+
+    // Check if we need to extract parameters
+    const needsExtraction = !returnData || Object.keys(returnData).length === 0;
+
+    if (needsExtraction) {
+      const cacheKey = `send-params-${message.id}`;
+      let extractedParams =
+        await runtime.getCache<ExtractedSendParams>(cacheKey);
+
+      if (!extractedParams) {
+        try {
+          // Get wallet assets for balance info
+          const assets = await service.getWalletAssets({
+            chainId: lvva.chainId,
+            address: lvva.user.address,
+          });
+
+          // Format tokens for prompt
+          const tokensText = assets
+            .map((a) => {
+              const token = service.token.getTokenFromMap({
+                chainId: lvva.chainId,
+                address: a.token,
+              });
+              const symbol =
+                token?.symbol || (a.token === ETH_NULL_ADDR ? "ETH" : a.token);
+              const decimals = token?.decimals ?? 18;
+              const balance = formatUnits(a.amount, decimals);
+              return `${symbol}: ${balance} (${decimals} decimals)`;
+            })
+            .join("\n");
+
+          // Get conversation history
+          const conversationHistory =
+            intentContext.memories?.map((m) => m.content.text).join("\n") || "";
+
+          // Call LLM with structured output
+          const prompt = extractSendDataFromMessagePrompt({
+            messages: conversationHistory + "\n" + message.content.text,
+            userPortfolio: tokensText,
+            availableTokens: tokensText,
+            returnData: returnData,
+          });
+
+          extractedParams = await runtime.useModel(ModelType.OBJECT_SMALL, {
+            prompt,
+            schema: zodJsonSchema(extractedSendParamsSchema),
+            temperature: 0,
+          });
+
+          await runtime.setCache(cacheKey, extractedParams);
+        } catch (error) {
+          runtime.logger.error("[SEND] Extraction failed:", error);
+          // Continue with empty data
+          extractedParams = {
+            thought: "Extraction failed",
+            confidence: 0,
+            tokenSymbol: null,
+            tokenAddress: null,
+            recipientAddress: null,
+            amount: null,
+          };
+        }
+      }
+
+      // Update intent context with extracted parameters
+      if (extractedParams && extractedParams.confidence > 0.5) {
+        const intentService = runtime.getService("INTENT_MANAGER");
+        if (
+          intentService &&
+          typeof (intentService as any).updateIntent === "function"
+        ) {
+          await (intentService as any).updateIntent(
+            intentContext,
+            extractedParams
+          );
+        }
+        returnData = extractedParams;
+      }
+    }
+
     const { tokenSymbol, tokenAddress, recipientAddress, amount } =
       returnData || {};
 
