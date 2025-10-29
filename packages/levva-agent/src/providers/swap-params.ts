@@ -39,7 +39,7 @@ export const swapParamsProvider: Provider = {
     const simpleReply = checkSimpleReply(
       runtime,
       state,
-      "SWAP-PARAMS",
+      SWAP_PARAMS_PROVIDER_NAME,
       "Swap analysis data"
     );
     if (simpleReply) return simpleReply;
@@ -125,11 +125,49 @@ export const swapParamsProvider: Provider = {
       // Continue without intent context if there's an error
     }
 
+    // Fetch user's wallet portfolio (all tokens with non-zero balances)
+    // This helps LLM suggest which tokens to swap from and calculate amounts
+    let userPortfolio: string | undefined;
+    try {
+      const walletAssets = await service.getWalletAssets({
+        chainId,
+        address: user.address,
+      });
+
+      // Filter non-zero balances and format with token info
+      const portfolioEntries = walletAssets
+        .filter((asset) => asset.amount > 0n)
+        .map((asset) => {
+          const token = tokens?.find(
+            (t) =>
+              t.address?.toLowerCase() === asset.token.toLowerCase() ||
+              (asset.token === ETH_NULL_ADDR && t.symbol === "ETH")
+          );
+          const symbol =
+            token?.symbol ||
+            (asset.token === ETH_NULL_ADDR ? "ETH" : "Unknown");
+          const decimals = token?.decimals ?? 18;
+          const balance = formatUnits(asset.amount, decimals);
+          return `${symbol}: ${balance} (${decimals} decimals)`;
+        })
+        .join("\n");
+
+      if (portfolioEntries) {
+        userPortfolio = portfolioEntries;
+      }
+    } catch (error) {
+      runtime.logger.warn(
+        "[SWAP-PARAMS] Failed to fetch wallet portfolio:",
+        error
+      );
+    }
+
     // Use intent context if available for better parameter extraction
     const promptContext = intentContext
       ? {
           recentMessages: state.values.recentMessages,
           tokens: tokens?.map(service.formatToken).join("\n") ?? "",
+          userPortfolio, // User's actual holdings (non-zero balances)
           intentContext: {
             type: intentContext.type,
             returnData: intentContext.returnData,
@@ -141,6 +179,7 @@ export const swapParamsProvider: Provider = {
       : {
           recentMessages: state.values.recentMessages,
           tokens: tokens?.map(service.formatToken).join("\n") ?? "",
+          userPortfolio, // User's actual holdings (non-zero balances)
         };
 
     // according to logs provider can be called multiple times for the same message, so cache llm call
@@ -277,12 +316,14 @@ Please provide a valid token symbol (like USDC, ETH, WETH) or token address (0x.
         balance?.amount ?? 0n,
         tokenIn.decimals
       );
+      // Use actual token decimals for shortfall display
+      const tokenDecimals = tokenIn.decimals ?? 18;
       const insufficientBalanceText = `## ❌ Insufficient Balance
 
 **Token**: ${tokenIn.symbol} (${tokenIn.name})
 **Requested Amount**: ${data.amount} ${tokenIn.symbol}
 **Current Balance**: ${currentBalance} ${tokenIn.symbol}
-**Shortfall**: ${(parseFloat(data.amount!) - parseFloat(currentBalance)).toFixed(6)} ${tokenIn.symbol}
+**Shortfall**: ${(parseFloat(data.amount!) - parseFloat(currentBalance)).toFixed(tokenDecimals)} ${tokenIn.symbol}
 
 You need more ${tokenIn.symbol} to complete this swap.`;
 

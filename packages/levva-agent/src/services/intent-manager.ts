@@ -14,8 +14,9 @@ import { INTENT_CONFIDENCE_THRESHOLD } from "../constants/intent";
 import {
   createIntentDetectionPrompt,
   IntentOption,
-  LLMIntentAnalysis,
+  intentAnalysisSchema,
 } from "../prompts/intent";
+import { zodJsonSchema } from "../prompts/util";
 
 export interface IntentContext {
   id: string;
@@ -738,12 +739,12 @@ export class IntentManager extends Service {
         conversationContext
       );
 
-      // Use LLM to analyze intent
-      const response = await this.runtime.useModel(ModelType.OBJECT_SMALL, {
+      // Use LLM to analyze intent with structured output
+      const analysis = await this.runtime.useModel(ModelType.OBJECT_SMALL, {
         prompt,
+        schema: zodJsonSchema(intentAnalysisSchema),
+        temperature: 0,
       });
-
-      const analysis = response as LLMIntentAnalysis;
 
       // LOG THE ACTUAL LLM RESPONSE
       this.runtime.logger.info(

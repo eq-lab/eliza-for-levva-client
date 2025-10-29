@@ -1,7 +1,21 @@
+/**
+ * Strategy selection parameter extraction prompt
+ *
+ * @deprecated This file is UNUSED in the codebase. Strategy selection is now handled
+ * by the deposit intent system (src/actions/intents/deposit.ts and src/prompts/deposit.ts).
+ *
+ * This file is kept for reference only and should be removed in a future cleanup.
+ *
+ * @version 1.0.0 (DEPRECATED)
+ * @lastModified 2025-01-29
+ */
+
 import { Strategy } from "../services/levva/pool";
 import { DataDescription, formatKeys, formatOutput } from "./util";
 
-/** Extracted strategy selection parameters from user messages */
+/**
+ * @deprecated Use deposit intent system instead. This interface is no longer used.
+ */
 export interface ExtractedDataForStrategy {
   strategy?: Strategy;
   contract?: `0x${string}`;

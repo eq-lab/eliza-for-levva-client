@@ -1,8 +1,9 @@
 /**
  * Swap parameter extraction prompt
  *
- * @version 1.1.0
- * @lastModified 2025-01-28
+ * @version 1.2.0
+ * @lastModified 2025-01-29
+ * @changes v1.2.0: Added .regex() validation for amount, balance-aware conversion
  * @changes v1.1.0: Converted to Zod schema for structured output (follows @structured-output-patterns.mdc)
  * @changes v1.0.1: Added intent context support for improved extraction
  * @changes v1.0.0: Initial implementation
@@ -24,28 +25,37 @@ export const extractedSwapParamsSchema = z
       .string()
       .nullable()
       .describe(
-        "Token symbol (e.g., 'USDC', 'ETH') or contract address (0x...) to swap FROM. " +
+        "Token symbol (e.g., 'USDC', 'ETH') or contract address to swap FROM. " +
           "Extract the source token the user wants to swap. " +
-          "Examples: 'USDC', 'WETH', '0xAf88d065e77c8cC2239327C5EDb3A432268e5831'. " +
+          "If symbol: 'USDC', 'WETH', 'ETH'. " +
+          "If address: Must be valid Ethereum address format (0x + 40 hex characters, 42 total). " +
+          "Example address: 0xAf88d065e77c8cC2239327C5EDb3A432268e5831. " +
           "Return null if not specified."
       ),
     toToken: z
       .string()
       .nullable()
       .describe(
-        "Token symbol (e.g., 'WETH', 'DAI') or contract address (0x...) to swap TO. " +
+        "Token symbol (e.g., 'WETH', 'DAI') or contract address to swap TO. " +
           "Extract the destination token the user wants to receive. " +
-          "Examples: 'WETH', 'DAI', '0x82aF49447D8a07e3bd95BD0d56f35241523fBab1'. " +
+          "If symbol: 'WETH', 'DAI', 'USDC'. " +
+          "If address: Must be valid Ethereum address format (0x + 40 hex characters, 42 total). " +
+          "Example address: 0x82aF49447D8a07e3bd95BD0d56f35241523fBab1. " +
           "Return null if not specified."
       ),
     amount: z
       .string()
+      .regex(
+        /^[0-9]+(\.[0-9]+)?$/,
+        "Amount must be numeric string without symbols"
+      )
       .nullable()
       .describe(
-        "Numeric amount as string (e.g., '100', '0.5') or percentage/keyword ('50%', 'all', 'max'). " +
-          "Extract the amount the user wants to swap, denominated in the FROM token. " +
-          'Examples: "100" (NOT "100 USDC"), "0.5" (NOT "0.5 tokens"), "50%", "all", "max". ' +
-          "Return null if not specified."
+        'Numeric amount as string (e.g., "100", "0.5"). ' +
+          "Use token decimal precision from provided balance data. " +
+          "Convert percentages/keywords using balance: " +
+          '50% → (0.5 × balance), "all"/"max" → full balance. ' +
+          "NEVER include %, currency symbols, or token symbols."
       ),
   })
   .describe("Extracted swap parameters from user messages");
@@ -56,6 +66,7 @@ export type ExtractedSwapParams = z.infer<typeof extractedSwapParamsSchema>;
 export const selectSwapDataFromMessagesPrompt = (ctx: {
   recentMessages: string;
   tokens: string;
+  userPortfolio?: string; // User's actual holdings (all tokens with non-zero balances)
   intentContext?: {
     type: string;
     returnData?: Record<string, any>;
@@ -64,15 +75,21 @@ export const selectSwapDataFromMessagesPrompt = (ctx: {
 }) => `<task>
 Extract swap transaction parameters from recent messages${ctx.intentContext ? " using intent context for improved accuracy" : ""}.
 </task>
-
+<knownTokens>
+Available tokens for swapping:
+${ctx.tokens}
+</knownTokens>
+${
+  ctx.userPortfolio
+    ? `<userPortfolio>
+User's wallet holdings (non-zero balances):
+${ctx.userPortfolio}
+</userPortfolio>`
+    : ""
+}
 <recentMessages>
 ${ctx.recentMessages}
 </recentMessages>
-
-<knownTokens>
-${ctx.tokens}
-</knownTokens>
-
 ${
   ctx.intentContext
     ? `<intentContext>
@@ -112,8 +129,22 @@ GENERAL INSTRUCTIONS:
   * Amount of tokens to swap (denominated in the FROM token)
 - If multiple swap requests exist, extract parameters for the MOST RECENT uncompleted swap
 - Handle common token aliases (e.g., "ETH" = "WETH" for wrapped operations)
-- Recognize percentage-based amounts (e.g., "50%" of balance, "all", "max")
 ${ctx.intentContext ? '- Leverage intent context to resolve ambiguous references (e.g., "that token" referring to previously mentioned tokens)' : ""}
+
+AMOUNT PARSING RULES:
+- Extract only numeric values: "100", "0.5", "1000"
+- Use <userPortfolio> to see user's actual holdings with balances and decimals
+- Percentage conversion: If user says "50%" → look up token in <userPortfolio>, compute 0.5 × balance
+- Keyword conversion: If user says "all"/"max" → look up token in <userPortfolio>, use full balance
+- Format: Match token's decimal precision shown in <userPortfolio> data
+- Trim trailing zeros (e.g., "15.460000" → "15.46")
+- If token not in portfolio or balance unavailable: Return null for amount, explain reason in thought field
+- NEVER include: %, $, currency symbols, or token symbols in the amount field
+
+TOKEN SELECTION GUIDANCE:
+- If user doesn't specify fromToken, check <userPortfolio> to suggest tokens they actually own
+- If user says "swap my X", look for X in <userPortfolio> to confirm they have it
+- Use decimal precision shown in <userPortfolio> for accurate amount formatting
 </instructions>
 
 <keys>

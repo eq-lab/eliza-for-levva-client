@@ -1,8 +1,9 @@
 /**
  * Withdrawal parameter extraction prompt
  *
- * @version 1.2.0
- * @lastModified 2025-01-28
+ * @version 1.3.0
+ * @lastModified 2025-01-29
+ * @changes v1.3.0: Added .regex() validation for amount, balance-aware conversion
  * @changes v1.2.0: Converted to Zod schema for structured output (follows @structured-output-patterns.mdc)
  * @changes v1.1.0: Standardized amount field to string type (was number | "all")
  * @changes v1.0.0: Initial implementation with request/check/claim flow
@@ -25,10 +26,10 @@ export const extractedDataForWithdrawSchema = z
     confidence: z
       .number()
       .min(0)
-      .max(100)
+      .max(1)
       .describe(
-        "Your confidence level in the extraction accuracy (0-100). " +
-          "High (80-100): All parameters clear. Medium (50-79): Some inference needed. Low (0-49): Requires clarification."
+        "Your confidence level in the extraction accuracy (0.0-1.0). " +
+          "High (0.8-1.0): All parameters clear. Medium (0.5-0.79): Some inference needed. Low (0.0-0.49): Requires clarification."
       ),
     strategyId: z
       .number()
@@ -53,11 +54,16 @@ export const extractedDataForWithdrawSchema = z
       ),
     amount: z
       .string()
-      .optional()
+      .regex(
+        /^[0-9]+(\.[0-9]+)?$/,
+        "Amount must be numeric string without symbols"
+      )
+      .nullable()
       .describe(
-        'Numeric amount as string (e.g., "100", "0.5") or "all" for full withdrawal. ' +
-          "Must match regex ^([0-9]+(\\.[0-9]+)?|all)$ when present. " +
-          'Examples: "100" (NOT "100 USDC"), "0.5" (NOT "0.5 tokens"), "all" (for full withdrawal).'
+        'Numeric amount as string (e.g., "100", "0.5"). ' +
+          "Use position balance decimal precision from provided position data. " +
+          'Convert keywords using balance: "all"/"everything"/"full" → full position balance. ' +
+          "NEVER include currency symbols, token symbols, or keywords."
       ),
     withdrawalStep: z
       .enum(["request", "check", "claim"])
@@ -106,10 +112,13 @@ ${Object.values(ctx.strategyIdMap).join("\n")}
       ? `\n<user_positions>
 Available positions:
 ${ctx.positions
-  .map(
-    (p) =>
-      `- Strategy ${p.strategyId}: ${p.balance} tokens ($${p.balanceUsd.toFixed(2)}) ${p.hasPendingWithdrawals ? "[Has pending withdrawal]" : ""}`
-  )
+  .map((p: any) => {
+    const tokenInfo =
+      p.tokenSymbol && p.tokenDecimals
+        ? ` ${p.tokenSymbol} (${p.tokenDecimals} decimals)`
+        : " tokens";
+    return `- Strategy ${p.strategyId}: ${p.balance}${tokenInfo} ($${p.balanceUsd.toFixed(2)}) ${p.hasPendingWithdrawals ? "[Has pending withdrawal]" : ""}`;
+  })
   .join("\n")}
 </user_positions>`
       : "\n<user_positions>No active positions found.</user_positions>";
@@ -172,11 +181,18 @@ CRITICAL WITHDRAWAL LOGIC:
   * If isFinalized = false: User must wait or choose a different position (suggest alternatives)
 - If no existing withdrawal for the chosen strategy: User can initiate new withdrawal (withdrawalStep = "request")
 
+AMOUNT PARSING RULES:
+- Extract only numeric values: "100", "0.5", "1000"
+- Keyword conversion: If user says "all"/"everything"/"full" AND position balance available → compute full position balance
+- Percentage conversion: If user says "50%" AND position balance available → compute 0.5 × position balance
+- Format: Match position's decimal precision shown in user_positions data
+- Trim trailing zeros (e.g., "15.460000" → "15.46")
+- If position/balance unavailable: Return null for amount, explain reason in thought field
+- NEVER include: %, currency symbols, token symbols, or keywords in the amount field
+
+When converting keywords/percentages, use the exact decimal precision shown in the position balance.
+
 EXTRACTION RULES:
-- **Amount Format**: Always return amount as a string (e.g., "100", "0.5", "all")
-  - If user mentions "all", "everything", "full", set amount to "all"
-  - If user mentions numeric amounts, return as string (e.g., "50" not 50)
-  - Strip currency/token symbols (e.g., "100 USDC" → "100")
 - If user mentions "claim" or "ready" with ID, set withdrawalStep to "claim"
 - If user mentions "status" or "check", set withdrawalStep to "check"  
 - If user mentions amount or "withdraw", set withdrawalStep to "request"

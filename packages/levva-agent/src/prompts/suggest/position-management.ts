@@ -9,6 +9,13 @@ export interface PositionManagementParams {
   portfolioText?: string; // User's current token holdings
   hasEth?: boolean; // Whether user has ETH for WETH conversion
   riskDistribution?: string; // Current risk distribution across positions
+  portfolioWithCalculations?: Array<{
+    symbol: string;
+    fullAmount: string;
+    amount75: string;
+    amount50: string;
+    amount25: string;
+  }>;
 }
 
 export const positionManagementPrompt = ({
@@ -22,6 +29,7 @@ export const positionManagementPrompt = ({
   portfolioText,
   hasEth,
   riskDistribution,
+  portfolioWithCalculations,
 }: PositionManagementParams): string => {
   // Only suggest if user has positions
   if (!hasPositions) {
@@ -54,6 +62,19 @@ ${availableStrategies || "Available strategies not provided"}
 <userPortfolio>
 ${portfolioText || "Portfolio information not available"}${ethContext}
 </userPortfolio>
+${
+  portfolioWithCalculations && portfolioWithCalculations.length > 0
+    ? `<calculatedAmounts>
+Pre-calculated amounts to help generate realistic suggestions:
+${portfolioWithCalculations
+  .map(
+    (calc) =>
+      `${calc.symbol}: 25%=${calc.amount25}, 50%=${calc.amount50}, 75%=${calc.amount75}, 100%=${calc.fullAmount}`
+  )
+  .join("\n")}
+</calculatedAmounts>`
+    : ""
+}
 <withdrawalStatus>
 ${withdrawalsSummary}
 </withdrawalStatus>
@@ -84,6 +105,7 @@ Each suggestion should:
 - Consider deposit opportunities alongside withdrawal options
 - Include actionable next steps that lead to deposit intents
 - Balance growth opportunities with risk management
+- Use pre-calculated amounts from <calculatedAmounts> section for realistic deposit suggestions
 
 **CRITICAL: Generate USER MESSAGES, not agent responses**
 The "text" field should be what the USER would TYPE to the agent, not what the agent would say back.

@@ -20,6 +20,7 @@ import { getPreviousReplyContext } from "../util/action-results";
 import { positionManagementPrompt } from "../prompts/suggest/position-management";
 import { positionDiversificationPrompt } from "../prompts/suggest/position-diversification";
 import { depositOpportunitiesPrompt } from "../prompts/suggest/deposit-opportunities";
+import { calculateAmountsFromBalance } from "../prompts/helpers/amount-suggestions";
 import { ETH_NULL_ADDR } from "../constants/eth";
 import { IntentManager, IntentContext } from "../services/intent-manager";
 import { Suggestion } from "./types";
@@ -94,9 +95,11 @@ async function handleAction(
   const prevActions = await getPreviousReplyContext(runtime, message, state);
 
   // Compose state with position params provider to ensure it's executed
-  const composedState = await runtime.composeState(message, [
-    POSITION_PARAMS_PROVIDER_NAME,
-  ]);
+  const composedState = await runtime.composeState(
+    message,
+    [POSITION_PARAMS_PROVIDER_NAME],
+    true
+  );
 
   let intentContext: IntentContext | undefined;
 
@@ -213,7 +216,9 @@ Would you like to explore any of these investment opportunities?`;
                 strategy?.name || `Strategy ${pos.strategyId}`;
               const assetSymbol =
                 strategy?.vault?.underlyingToken?.symbol || "tokens";
-              const balanceDisplay = `${pos.balance.toFixed(4)} ${assetSymbol}`;
+              const tokenDecimals =
+                strategy?.vault?.underlyingToken?.decimals ?? 18;
+              const balanceDisplay = `${pos.balance.toFixed(tokenDecimals)} ${assetSymbol}`;
 
               // Format: "Strategy Name (Risk level strategy): Amount TOKEN Deposited"
               const riskLevel = strategy?.strategy
@@ -530,6 +535,29 @@ export const suggest: Suggestion[] = [
       const uniqueRisks = [...new Set(riskLevels)];
       const riskDistribution = `Risk levels: ${uniqueRisks.join(", ")} (${riskLevels.length} positions)`;
 
+      // Pre-calculate amounts for significant tokens to help LLM
+      const portfolioWithCalculations = portfolio
+        .filter((asset) => asset.amount > 0n)
+        .slice(0, 5) // Top 5 tokens
+        .map((asset) => {
+          const tokenData = service.token.getTokenFromMap({
+            chainId,
+            address: asset.token,
+          });
+          const amounts = calculateAmountsFromBalance(
+            asset.amount,
+            tokenData?.decimals ?? 18,
+            asset.token
+          );
+          return {
+            symbol: tokenData?.symbol ?? "Unknown",
+            fullAmount: amounts.fullAmount,
+            amount75: amounts.amount75,
+            amount50: amounts.amount50,
+            amount25: amounts.amount25,
+          };
+        });
+
       return positionManagementPrompt({
         conversation,
         decision,
@@ -541,6 +569,7 @@ export const suggest: Suggestion[] = [
         portfolioText: service.wallet.formatWalletAssets(portfolio, true),
         hasEth,
         riskDistribution,
+        portfolioWithCalculations,
       });
     },
   },
@@ -586,6 +615,29 @@ export const suggest: Suggestion[] = [
       });
       const uniqueCurrentRisks = [...new Set(currentRiskLevels)];
 
+      // Pre-calculate amounts for significant tokens to help LLM
+      const portfolioWithCalculations = portfolio
+        .filter((asset) => asset.amount > 0n)
+        .slice(0, 5) // Top 5 tokens
+        .map((asset) => {
+          const tokenData = service.token.getTokenFromMap({
+            chainId,
+            address: asset.token,
+          });
+          const amounts = calculateAmountsFromBalance(
+            asset.amount,
+            tokenData?.decimals ?? 18,
+            asset.token
+          );
+          return {
+            symbol: tokenData?.symbol ?? "Unknown",
+            fullAmount: amounts.fullAmount,
+            amount75: amounts.amount75,
+            amount50: amounts.amount50,
+            amount25: amounts.amount25,
+          };
+        });
+
       return positionDiversificationPrompt({
         conversation,
         decision,
@@ -599,6 +651,7 @@ export const suggest: Suggestion[] = [
         portfolioText: service.wallet.formatWalletAssets(portfolio, true),
         hasEth,
         currentRiskLevels: uniqueCurrentRisks,
+        portfolioWithCalculations,
       });
     },
   },
@@ -635,6 +688,29 @@ export const suggest: Suggestion[] = [
         .map((asset) => asset.token)
         .slice(0, 5); // Top 5 tokens by balance
 
+      // Pre-calculate amounts for significant tokens to help LLM
+      const portfolioWithCalculations = portfolio
+        .filter((asset) => asset.amount > 0n)
+        .slice(0, 5) // Top 5 tokens
+        .map((asset) => {
+          const tokenData = service.token.getTokenFromMap({
+            chainId,
+            address: asset.token,
+          });
+          const amounts = calculateAmountsFromBalance(
+            asset.amount,
+            tokenData?.decimals ?? 18,
+            asset.token
+          );
+          return {
+            symbol: tokenData?.symbol ?? "Unknown",
+            fullAmount: amounts.fullAmount,
+            amount75: amounts.amount75,
+            amount50: amounts.amount50,
+            amount25: amounts.amount25,
+          };
+        });
+
       return depositOpportunitiesPrompt({
         conversation,
         decision,
@@ -647,6 +723,7 @@ export const suggest: Suggestion[] = [
         portfolioText: service.wallet.formatWalletAssets(portfolio, true),
         hasEth,
         significantTokens,
+        portfolioWithCalculations,
       });
     },
   },

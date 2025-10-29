@@ -44,9 +44,11 @@ export const action: Action = {
     const prevActions = await getPreviousReplyContext(runtime, message, state);
 
     // Compose state with required providers
-    const composedState = await runtime.composeState(message, [
-      STRATEGY_PARAMS_PROVIDER_NAME,
-    ]);
+    const composedState = await runtime.composeState(
+      message,
+      [STRATEGY_PARAMS_PROVIDER_NAME],
+      true
+    );
 
     try {
       if (!callback) {

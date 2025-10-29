@@ -1,23 +1,45 @@
-import { DataDescription, formatKeys, formatOutput } from "./util";
+/**
+ * Content rephrasing prompt
+ *
+ * @version 2.0.0
+ * @lastModified 2025-01-29
+ * @changes v2.0.0: Migrated to Zod schema for structured output
+ * @changes v1.0.0: Initial implementation with DataDescription
+ */
 
-/** Rephrased content output from LLM */
+import { z } from "zod";
+import { formatZodKeys, formatZodOutput } from "./util";
+
+/** Zod schema for rephrased content */
+export const rephraseSchema = z
+  .object({
+    thought: z
+      .string()
+      .nullable()
+      .describe(
+        "A short description of what the agent is thinking about and planning. " +
+          "Explain reasoning behind the rephrasing approach."
+      ),
+    message: z
+      .string()
+      .describe(
+        "The next message for the agent to send to the conversation, rephrased from initial text. " +
+          "Preserve all requested data and information while improving clarity and tone. " +
+          "NEVER omit structured data (## headers, dollar amounts, balances, addresses)."
+      ),
+  })
+  .describe("Rephrased content with thought process");
+
+/** Rephrased content type inferred from Zod schema */
+export type RephrasedContent = z.infer<typeof rephraseSchema>;
+
+/**
+ * @deprecated Legacy interface for backward compatibility. Use RephrasedContent instead.
+ */
 export interface ExtractedDataForRephrase {
   thought?: string;
   message?: string;
 }
-
-const dataDescription: DataDescription<ExtractedDataForRephrase> = {
-  thought: {
-    type: "string",
-    description:
-      "A short description of what the agent is thinking about and planning",
-  },
-  message: {
-    type: "string",
-    description:
-      "The next message for the agent to send to the conversation, rephrased from initial text. Preserve all requested data and information while improving clarity and tone.",
-  },
-};
 
 export const rephraseContentPrompt = (ctx: {
   agentName: string;
@@ -100,12 +122,12 @@ CAREFUL DEDUPLICATION RULES (Apply ONLY to conversational content):
    - Previous response was identical in substance and tone
 </instructions>
 <keys>
-${formatKeys(dataDescription)}
+${formatZodKeys(rephraseSchema)}
 
 IMPORTANT: When generating the 'message' field, preserve all requested information while rephrasing for clarity and character voice.
 </keys>
 <output>
-${formatOutput(dataDescription)}
+${formatZodOutput(rephraseSchema)}
 
 Your response should include the valid JSON block and nothing else.
 

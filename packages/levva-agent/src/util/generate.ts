@@ -7,8 +7,10 @@ import {
 } from "@elizaos/core";
 import {
   rephraseContentPrompt,
-  ExtractedDataForRephrase,
+  rephraseSchema,
+  RephrasedContent,
 } from "../prompts/rephrase";
+import { zodJsonSchema } from "../prompts/util";
 
 interface RephraseParams {
   runtime: IAgentRuntime;
@@ -58,29 +60,12 @@ export const rephrase = async ({
 
     const response = await runtime.useModel(model ?? ModelType.OBJECT_SMALL, {
       prompt,
+      schema: zodJsonSchema(rephraseSchema),
+      temperature: 0,
     });
 
-    // Parse LLM response - OBJECT_SMALL should return structured JSON
-    let parsedResponse: ExtractedDataForRephrase;
-    if (typeof response === "object" && response !== null) {
-      parsedResponse = response as ExtractedDataForRephrase;
-    } else {
-      // Fallback parsing if response is still a string
-      const cleanResponse = response.toString().trim();
-      const jsonMatch = cleanResponse.match(/\{[\s\S]*\}/);
-
-      if (jsonMatch) {
-        parsedResponse = JSON.parse(jsonMatch[0]) as ExtractedDataForRephrase;
-      } else {
-        runtime.logger.warn(
-          "Failed to parse rephrase response, using fallback"
-        );
-        parsedResponse = {
-          thought: initialThought || "Rephrasing content",
-          message: initialText || "I understand.",
-        };
-      }
-    }
+    // Response is already typed correctly with structured output
+    const parsedResponse = response as RephrasedContent;
 
     runtime.logger.debug(
       "Rephrase result:",

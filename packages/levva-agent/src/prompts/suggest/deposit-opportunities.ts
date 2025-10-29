@@ -8,6 +8,13 @@ export interface DepositOpportunitiesParams {
   portfolioText: string;
   hasEth: boolean;
   significantTokens: string[]; // Tokens with significant balances
+  portfolioWithCalculations?: Array<{
+    symbol: string;
+    fullAmount: string;
+    amount75: string;
+    amount50: string;
+    amount25: string;
+  }>;
 }
 
 export const depositOpportunitiesPrompt = ({
@@ -20,6 +27,7 @@ export const depositOpportunitiesPrompt = ({
   portfolioText,
   hasEth,
   significantTokens,
+  portfolioWithCalculations,
 }: DepositOpportunitiesParams): string => {
   const ethContext = hasEth
     ? `\nUser has ETH available for wrapping to WETH if needed for deposits.`
@@ -45,6 +53,19 @@ ${portfolioText}${ethContext}
 <significantTokens>
 User has significant balances in: ${significantTokens.join(", ")}
 </significantTokens>
+${
+  portfolioWithCalculations && portfolioWithCalculations.length > 0
+    ? `<calculatedAmounts>
+Pre-calculated amounts to help generate realistic suggestions:
+${portfolioWithCalculations
+  .map(
+    (calc) =>
+      `${calc.symbol}: 25%=${calc.amount25}, 50%=${calc.amount50}, 75%=${calc.amount75}, 100%=${calc.fullAmount}`
+  )
+  .join("\n")}
+</calculatedAmounts>`
+    : ""
+}
 <conversation>
 ${conversation}
 </conversation>
@@ -66,7 +87,8 @@ SUGGESTION FORMATS (use natural, conversational language):
 - "I want to start with the Ultra-Safe strategy using USDC" - beginner-friendly language
 
 CRITICAL REQUIREMENTS:
-- Use REAL token amounts that make sense (10-1000 USDC, 0.01-1 ETH, etc.)
+- Use pre-calculated amounts from <calculatedAmounts> section above
+- These are REAL amounts based on user's actual balances with correct decimals
 - Reference actual strategy names from availableStrategies
 - Use tokens the user actually has in significant amounts
 - Write suggestions as if the USER is speaking, not the agent

@@ -347,7 +347,8 @@ export class WalletServiceComponent extends BackgroundQueue<BalanceData> {
         const amount = formatUnits(asset.amount, decimals);
         const value = formatUnits(asset.value, USD_DECIMALS);
 
-        return `${symbol}: ${Number(amount).toFixed(6)} (≈$${Number(value).toFixed(2)})`;
+        // Use actual token decimals for display precision
+        return `${symbol}: ${Number(amount).toFixed(decimals)} (≈$${Number(value).toFixed(2)})`;
       })
       .join("\n");
 

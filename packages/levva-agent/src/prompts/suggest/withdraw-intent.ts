@@ -13,6 +13,7 @@ import {
   generateOutputFormat,
   generateCommonInstructions,
 } from "../helpers";
+import { calculateAmountsFromBalance } from "../helpers/amount-suggestions";
 
 export interface WithdrawIntentSuggestionParams {
   intentContext: IntentContext;
@@ -29,6 +30,8 @@ export interface WithdrawIntentSuggestionParams {
     strategyId: number;
     balance: number;
     balanceUsd: number;
+    tokenSymbol?: string;
+    tokenDecimals?: number;
   }>;
   strategies: Array<{
     id: number;
@@ -233,13 +236,14 @@ CRITICAL REMINDERS:
       },
     });
 
-    // Calculate actual token amounts based on balance
-    const amounts = [1, 0.75, 0.5, 0.25];
-    const fullAmount = position.balance;
-    const calculatedAmounts = amounts.map(
-      (pct) => Math.floor(fullAmount * pct * 100) / 100
+    // Calculate actual token amounts based on balance using helper
+    const tokenSymbol = position.tokenSymbol || "tokens";
+    const tokenDecimals = position.tokenDecimals || 18;
+    const amounts = calculateAmountsFromBalance(
+      position.balance,
+      tokenDecimals,
+      undefined // Not native token (position balance)
     );
-    const [, amount75, amount50, amount25] = calculatedAmounts;
 
     const instructions = generateCommonInstructions({
       suggestionType: "next-step",
@@ -247,22 +251,29 @@ CRITICAL REMINDERS:
 
 IMPORTANT: Use real token amounts, NOT percentages in the text field.
 
-Available balance: ${fullAmount} tokens ($${position.balanceUsd.toFixed(2)})
+Available balance: ${amounts.fullAmount} ${tokenSymbol} ($${position.balanceUsd.toFixed(2)})
+Token decimals: ${tokenDecimals}
 
-LABEL FORMAT:
-- "Withdraw all from [Strategy Name]"
-- "Withdraw 75% from [Strategy Name]"
-- "Withdraw 50% from [Strategy Name]"
-- "Withdraw 25% from [Strategy Name]"
+Calculated amounts for suggestions:
+- 100%: ${amounts.fullAmount} ${tokenSymbol}
+- 75%: ${amounts.amount75} ${tokenSymbol}
+- 50%: ${amounts.amount50} ${tokenSymbol}
+- 25%: ${amounts.amount25} ${tokenSymbol}
 
-TEXT FORMAT (what USER would type):
-- Use actual calculated amounts based on balance
-- Format: "Withdraw [amount] tokens from [Strategy Name]"
+LABEL FORMAT (can include percentages):
+- "Withdraw all from ${strategyName}"
+- "Withdraw 75% from ${strategyName}"
+- "Withdraw 50% from ${strategyName}"
+- "Withdraw 25% from ${strategyName}"
+
+TEXT FORMAT (must use actual calculated amounts):
+- Use the calculated amounts provided above
+- Format: "Withdraw [amount] ${tokenSymbol} from ${strategyName}"
 - Examples:
-  • "Withdraw ${fullAmount} tokens from ${strategyName}"
-  • "Withdraw ${amount75} tokens from ${strategyName}"
-  • "Withdraw ${amount50} tokens from ${strategyName}"
-  • "Withdraw ${amount25} tokens from ${strategyName}"
+  • "Withdraw ${amounts.fullAmount} ${tokenSymbol} from ${strategyName}"
+  • "Withdraw ${amounts.amount75} ${tokenSymbol} from ${strategyName}"
+  • "Withdraw ${amounts.amount50} ${tokenSymbol} from ${strategyName}"
+  • "Withdraw ${amounts.amount25} ${tokenSymbol} from ${strategyName}"
 
 DO NOT include:
 - "Specify a custom amount" suggestion (users can type custom amounts directly)
@@ -297,17 +308,31 @@ ${generateOutputFormat()}`;
       (p) => p.strategyId === returnData.strategyId
     );
 
-    // Get the token symbol from the strategy (positions use vault's underlying token)
+    // Get token info from position or strategy
     const tokenSymbol =
-      (strategy as any)?.vault?.underlyingToken?.symbol || "tokens";
+      position?.tokenSymbol ||
+      (strategy as any)?.vault?.underlyingToken?.symbol ||
+      "tokens";
+    const tokenDecimals =
+      position?.tokenDecimals ||
+      (strategy as any)?.vault?.underlyingToken?.decimals ||
+      18;
 
-    // Calculate alternative amounts based on position amount
-    const fullAmount = position?.balance || 0;
-    const amounts = [0.75, 0.5];
-    const calculatedAmounts = amounts.map(
-      (pct) => Math.floor(fullAmount * pct * 100) / 100
-    );
-    const [amount75, amount50] = calculatedAmounts;
+    // Calculate alternative amounts based on position amount using helper
+    const amounts = position
+      ? calculateAmountsFromBalance(
+          position.balance,
+          tokenDecimals,
+          undefined // Not native token (position balance)
+        )
+      : {
+          fullAmount: "",
+          amount75: "",
+          amount50: "",
+          amount25: "",
+          isNativeToken: false,
+          hasBalance: false,
+        };
 
     // Get alternative strategies for suggestions
     const alternativeStrategies = positions
@@ -329,15 +354,16 @@ ${generateOutputFormat()}`;
         Step: withdrawalStep || "request",
         ...(position
           ? {
-              "Position Amount": `${position.balance} ${tokenSymbol} ($${position.balanceUsd.toFixed(2)})`,
+              "Position Amount": `${amounts.fullAmount} ${tokenSymbol} ($${position.balanceUsd.toFixed(2)})`,
             }
           : {}),
       },
     });
 
-    const amountContext = position
-      ? `\nUser has ${fullAmount} ${tokenSymbol} in this position. Suggest specific amounts: ${amount50} ${tokenSymbol}, ${amount75} ${tokenSymbol}, or ${fullAmount} ${tokenSymbol}.`
-      : "";
+    const amountContext =
+      position && amounts.hasBalance
+        ? `\nUser has ${amounts.fullAmount} ${tokenSymbol} in this position. Suggest specific amounts: ${amounts.amount50} ${tokenSymbol}, ${amounts.amount75} ${tokenSymbol}, or ${amounts.fullAmount} ${tokenSymbol}.`
+        : "";
 
     const strategyContext =
       alternativeStrategies.length > 0

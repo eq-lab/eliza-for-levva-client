@@ -57,13 +57,16 @@ export const action: Action = {
       }
 
       // 2. Compose state and get provider data
-      const composedState = await runtime.composeState(message, [
-        SWAP_PARAMS_PROVIDER_NAME,
-      ]);
+      const composedState = await runtime.composeState(
+        message,
+        [SWAP_PARAMS_PROVIDER_NAME],
+        true
+      );
 
-      const providerResult =
-        composedState.data?.providers?.[SWAP_PARAMS_PROVIDER_NAME];
-      const providerData = providerResult?.data as SwapParamsProviderData;
+      const providerData = selectProviderState<SwapParamsProviderData>(
+        SWAP_PARAMS_PROVIDER_NAME,
+        composedState
+      );
 
       if (!providerData) {
         throw new Error(

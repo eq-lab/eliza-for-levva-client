@@ -12,6 +12,7 @@ export const selectProviderState = <T>(
   }
 
   const provider = state.data.providers[name];
+  console.log(`[${name}] Provider state`, provider);
 
   if (!provider) {
     return undefined;
@@ -38,6 +39,8 @@ export const checkSimpleReply = (
     "ACTION_STATE",
     state
   );
+
+  console.log("Simple reply check", state?.data.actionPlan);
 
   const shouldSimpleReply = !actionState?.actionPlan?.steps;
   runtime.logger.debug(`[${providerName}] Should simple reply`, {
