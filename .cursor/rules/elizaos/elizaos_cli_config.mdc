@@ -11,18 +11,18 @@ Configuration in ElizaOS is handled through a layered and context-aware system, 
 
 ```mermaid
 graph TD
-    subgraph "User Action"
+    subgraph User Action
         A[elizaos create] --> B(Interactive Prompts);
         C[elizaos start] --> D[Runtime Initialization];
         E[elizaos env] --> F(Manage .env File);
     end
 
-    subgraph "Configuration Sources (Order of Precedence)"
+    subgraph Configuration Sources (Order of Precedence)
         G(1. Built-in Defaults) --> H(2. .env File);
         H --> I(3. CLI Flags);
     end
     
-    subgraph "File System & Path Resolution"
+    subgraph File System & Path Resolution
         J[UserEnvironment Utility] --> K{Find Project Root};
         K -->|Monorepo?| L[packages/core exists];
         K -->|Standard| M[Current Directory];
@@ -30,7 +30,7 @@ graph TD
         J --> O[Resolve .eliza/config.json Path];
     end
     
-    subgraph "Runtime Loading"
+    subgraph Runtime Loading
         D --> P(Load .env into process.env);
         P --> Q(Apply CLI Flags);
         Q --> R(Start AgentServer w/ Config);

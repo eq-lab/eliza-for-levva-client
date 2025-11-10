@@ -1,6 +1,6 @@
 ---
-description:
-globs:
+description: Comprehensive reference for all core types and interfaces used throughout ElizaOS
+globs: packages/*/src/**/*.ts,packages/*/dist/**/*.d.ts
 alwaysApply: true
 ---
 
@@ -518,7 +518,7 @@ interface IAgentRuntime extends IDatabaseAdapter {
     state?: State,
     didRespond?: boolean,
     callback?: HandlerCallback,
-    responses?: Memory[]
+    responses?: Memory[
   ): Promise<Evaluator[] | null>;
 
   // Task methods
@@ -542,7 +542,7 @@ type Handler = (
   state?: State,
   options?: { [key: string]: unknown },
   callback?: HandlerCallback,
-  responses?: Memory[]
+  responses?: Memory[
 ) => Promise<ActionResult | void | boolean | null>;
 ```
 

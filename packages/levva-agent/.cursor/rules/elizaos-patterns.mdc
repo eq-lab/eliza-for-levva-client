@@ -1,0 +1,176 @@
+---
+description: ElizaOS framework patterns and conventions including useModel patterns and validation anti-patterns
+globs: **/levva-agent/src/**/*.ts,**/levva-agent/src/**/*.js
+alwaysApply: true
+---
+
+# ElizaOS Framework Patterns and Conventions
+
+## Model Usage Patterns
+
+### useModel for Object Generation
+Use the `runtime.useModel()` pattern for structured object generation in providers and actions:
+
+```typescript
+// ✅ Correct pattern for object generation
+const result = await runtime.useModel(
+  ModelType.OBJECT_SMALL,
+  { prompt }
+);
+
+// ✅ For complex structured data
+const analysis = await runtime.useModel(
+  ModelType.OBJECT_LARGE, 
+  { 
+    prompt: analysisPrompt,
+    schema: analysisSchema // Optional schema validation
+  }
+);
+```
+
+### Model Type Selection
+- **`ModelType.OBJECT_SMALL`**: Simple structured objects, quick responses
+- **`ModelType.OBJECT_LARGE`**: Complex analysis, detailed structured data
+- **`ModelType.TEXT`**: Plain text generation
+- **`ModelType.EMBEDDING`**: Vector embeddings for similarity search
+
+### Best Practices
+- Always await model calls - they are async operations
+- Use appropriate model size for the complexity of the task
+- Include clear, specific prompts for better object generation
+- Consider schema validation for critical structured data
+
+## Validation and State Management
+
+### CRITICAL: Avoid State Composition in Validators
+
+**❌ NEVER do this - leads to infinite loops:**
+```typescript
+// This creates infinite recursion
+const validator = (runtime: IAgentRuntime, message: Memory) => {
+  // Calling useModel or other state-changing operations in validator
+  const result = await runtime.useModel(ModelType.OBJECT_SMALL, { prompt });
+  return result.isValid;
+};
+```
+
+**✅ Correct approach - pure validation functions:**
+```typescript
+// Validators should be pure functions that only examine existing state
+const validator = (runtime: IAgentRuntime, message: Memory) => {
+  // Only check existing properties, no state changes
+  return message.content.text.includes(specific pattern);
+};
+
+// Separate state composition from validation
+const handler = async (runtime: IAgentRuntime, message: Memory) => {
+  if (validator(runtime, message)) {
+    // State changes happen in handlers, not validators
+    const result = await runtime.useModel(ModelType.OBJECT_SMALL, { prompt });
+    return result;
+  }
+};
+```
+
+### Validation Rules
+1. **Pure functions only**: Validators must not modify state or trigger side effects
+2. **Synchronous checks**: Avoid async operations in validators
+3. **Examine existing data**: Only check properties already available
+4. **No model calls**: Never call `useModel` or similar state-changing methods
+5. **Fast execution**: Keep validation logic lightweight and quick
+
+## Plugin Architecture Patterns
+
+### Service Registration
+```typescript
+// Register services in plugin initialization
+export const plugin: Plugin = {
+  name: my-plugin,
+  services: [MyService],
+  actions: [myAction],
+  providers: [myProvider]
+};
+```
+
+### Action Implementation
+```typescript
+export const myAction: Action = {
+  name: MY_ACTION,
+  similes: [do something,perform action],
+  validate: (runtime, message) => {
+    // Pure validation only
+    return message.content.text.includes(trigger);
+  },
+  handler: async (runtime, message) => {
+    // State changes and model calls here
+    const result = await runtime.useModel(ModelType.OBJECT_SMALL, {
+      prompt: Generate response based on:  + message.content.text
+    });
+    return result;
+  }
+};
+```
+
+### Provider Implementation
+```typescript
+export const myProvider: Provider = {
+  get: async (runtime, message) => {
+    // Model calls are appropriate in providers
+    const data = await runtime.useModel(ModelType.OBJECT_SMALL, {
+      prompt: Analyze context:  + message.content.text
+    });
+    return data;
+  }
+};
+```
+
+## Memory and Context Management
+
+### Memory Storage Patterns
+- Use `runtime.messageManager` for message persistence
+- Leverage `runtime.cacheManager` for temporary data
+- Store structured data with proper typing
+
+### Context Building
+- Providers build context for actions
+- Actions consume context and produce results
+- Evaluators process results and update state
+
+## Error Handling Patterns
+
+### Graceful Degradation
+```typescript
+try {
+  const result = await runtime.useModel(ModelType.OBJECT_SMALL, { prompt });
+  return result;
+} catch (error) {
+  console.error(Model generation failed:, error);
+  // Provide fallback behavior
+  return { success: false, error: error.message };
+}
+```
+
+### Validation Error Handling
+```typescript
+// In validators - return boolean, don't throw
+const validator = (runtime: IAgentRuntime, message: Memory) => {
+  try {
+    return message.content.text.length > 0;
+  } catch (error) {
+    return false; // Fail closed
+  }
+};
+```
+
+## Performance Considerations
+
+### Model Call Optimization
+- Cache frequently requested data
+- Use appropriate model sizes
+- Batch related operations when possible
+- Implement timeouts for model calls
+
+### Memory Management
+- Clean up large objects after use
+- Use weak references for temporary data
+- Monitor memory usage in long-running processes

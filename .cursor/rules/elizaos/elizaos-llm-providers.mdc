@@ -18,7 +18,7 @@ graph TD
     E --> F[Return Result];
     A --> F;
 
-    subgraph "Plugin Registration"
+    subgraph Plugin Registration
         G[Plugin Init] --> H[runtime.registerModel(type, handler, provider, priority)];
         H --> I[Runtime adds handler to sorted list for 'type'];
     end

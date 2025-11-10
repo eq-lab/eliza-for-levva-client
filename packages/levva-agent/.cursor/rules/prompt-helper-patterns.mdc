@@ -1,0 +1,175 @@
+---
+description: Patterns for using prompt helper functions to eliminate duplication in intent-based suggestions
+globs: **/levva-agent/src/prompts/suggest/**/*.ts,**/levva-agent/src/prompts/**/*.ts
+alwaysApply: false
+---
+
+# Prompt Helper Function Patterns
+
+## When to Use Helper Functions
+
+When creating or modifying intent-based suggestion prompts, ALWAYS use helper functions from `src/prompts/helpers/` to eliminate duplication.
+
+## Required Imports
+
+```typescript
+import {
+  generateIntentContextSection,
+  generateOutputFormat,
+  generateCommonInstructions,
+} from ../helpers;
+```
+
+## Standard Pattern for Intent Suggestions
+
+### 1. Generate Intent Context
+
+**Instead of manually writing:**
+```typescript
+// ❌ DON'T DO THIS
+return `<intentContext>
+Intent Type: DEPOSIT
+Status: Amount selection needed
+User Address: ${userAddress}
+Chain ID: ${chainId}
+Strategy: ${strategyName}
+Token: ${tokenSymbol}
+</intentContext>`;
+```
+
+**Use the helper:**
+```typescript
+// ✅ DO THIS
+const intentContext = generateIntentContextSection({
+  intentType: DEPOSIT,
+  status: Amount selection needed,
+  userAddress,
+  chainId,
+  parameters: {
+    Strategy: strategyName,
+    Token: tokenSymbol,
+  },
+});
+```
+
+### 2. Generate Instructions Section
+
+**Instead of manually writing:**
+```typescript
+// ❌ DON'T DO THIS
+return `<instructions>
+Generate suggestions...
+
+Each suggestion should:
+- Be natural and conversational
+- Lead to next step
+- Include cancellation option
+</instructions>`;
+```
+
+**Use the helper:**
+```typescript
+// ✅ DO THIS
+const instructions = generateCommonInstructions({
+  suggestionType: next-step, // or confirmation or missing-info
+  specificInstructions: `Generate 3-5 suggestions for amount selection:
+
+PRIORITIES:
+1. Specific amounts
+2. Percentage-based amounts
+3. Ask for guidance`,
+  includeCancellation: true, // optional, defaults to true
+});
+```
+
+### 3. Generate Output Format
+
+**Instead of manually writing:**
+```typescript
+// ❌ DON'T DO THIS
+return `<output>
+Respond using JSON format:
+{
+  suggestions: [
+    {
+      label: Action label,
+      text: User message
+    }
+  ]
+}
+</output>`;
+```
+
+**Use the helper:**
+```typescript
+// ✅ DO THIS
+return `<task>...</task>
+${intentContext}
+<conversation>${conversation}</conversation>
+${instructions}
+${generateOutputFormat()}`;
+```
+
+## Complete Example
+
+```typescript
+export function generateDepositAmountSuggestions(params: Params): string {
+  const { strategyId, tokenSymbol, userAddress, chainId, conversation } = params;
+
+  // 1. Generate intent context with helpers
+  const intentContext = generateIntentContextSection({
+    intentType: DEPOSIT,
+    status: Amount selection needed,
+    userAddress,
+    chainId,
+    parameters: {
+      Strategy: `Strategy #${strategyId}`,
+      Token: tokenSymbol,
+    },
+  });
+
+  // 2. Generate instructions with helpers
+  const instructions = generateCommonInstructions({
+    suggestionType: next-step,
+    specificInstructions: `Generate 3-5 amount suggestions:
+- Specific amounts (e.g., 100 ${tokenSymbol})
+- Percentage-based (e.g., 50% of my ${tokenSymbol})
+- Maximum amount
+- Ask for guidance`,
+  });
+
+  // 3. Build complete prompt with helpers
+  return `<task>Generate amount suggestions for deposit</task>
+${intentContext}
+<conversation>
+${conversation}
+</conversation>
+${instructions}
+${generateOutputFormat()}`;
+}
+```
+
+## Benefits of This Pattern
+
+1. **Eliminates Duplication:** Intent context, instructions, and output format written once
+2. **Consistency:** All prompts use same structure
+3. **Maintainability:** Change helpers once, affects all prompts
+4. **Type Safety:** Helpers are properly typed
+5. **Reduced Errors:** No manual JSON formatting errors
+
+## Refactoring Checklist
+
+When refactoring an existing prompt:
+
+- [ ] Add helper imports at top of file
+- [ ] Replace manual `<intentContext>` with `generateIntentContextSection()`
+- [ ] Replace manual `<instructions>` with `generateCommonInstructions()`
+- [ ] Replace manual `<output>` with `generateOutputFormat()`
+- [ ] Verify build passes
+- [ ] Test prompt still works correctly
+
+## See Also
+
+- `src/prompts/helpers/intent-suggestion-base.ts` - Helper function source
+- `src/prompts/suggest/deposit-intent.ts` - Reference implementation
+- `docs/prompt-design-guidelines.md` - Full design patterns

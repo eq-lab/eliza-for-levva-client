@@ -23,7 +23,7 @@ graph TD
     I -->|OpenAI| K[Prompt for OPENAI_API_KEY];
     I -->|Claude| L[Prompt for ANTHROPIC_API_KEY];
 
-    subgraph "Project Setup"
+    subgraph Project Setup
         direction LR
         G --> M[Copy project-starter template];
         H --> M;
@@ -38,7 +38,7 @@ graph TD
     P --> Q[Install Dependencies];
     Q --> R[Build Plugin];
 
-    subgraph "Execution"
+    subgraph Execution
         direction LR
         S[elizaos start] --> T{Detect Dir Type};
         T -->|Project| U[Load Project Agents];
@@ -205,7 +205,7 @@ elizaos start --character ./path/to/my-agent.json
 elizaos start --character ./agent1.json ./agent2.json
 
 # ✅ DO: Load characters using comma-separated values
-elizaos start --character="./agent1.json, ./agent2.json"
+elizaos start --character=./agent1.json, ./agent2.json
 
 # Note: When using --character, the agents defined in your
 # project's `src/index.ts` will be ignored.
@@ -277,7 +277,7 @@ plugins
     const packageName = findPluginPackageName(pluginArg, allDependencies);
     
     if (!packageName) {
-      throw new PluginNotFoundError(`Plugin "${pluginArg}" not found in dependencies`);
+      throw new PluginNotFoundError(`Plugin ${pluginArg} not found in dependencies`);
     }
     
     // Remove plugin and clean up configuration
@@ -508,7 +508,7 @@ export const validateProjectName = (name: string): boolean => {
   // Check for reserved names
   const reservedNames = ['elizaos', 'eliza', 'node_modules', 'package'];
   if (reservedNames.includes(name.toLowerCase())) {
-    throw new ProjectValidationError(`Project name "${name}" is reserved`);
+    throw new ProjectValidationError(`Project name ${name} is reserved`);
   }
   
   return true;
@@ -586,12 +586,12 @@ export const badValidation = (name: string): boolean => {
 export const normalizePluginNameForDisplay = (pluginInput: string): string => {
   let baseName = pluginInput;
   
-  // Handle scoped formats like "@scope/plugin-name" or "scope/plugin-name"
+  // Handle scoped formats like @scope/plugin-name or scope/plugin-name
   if (pluginInput.includes('/')) {
     const parts = pluginInput.split('/');
     baseName = parts[parts.length - 1];
   }
-  // Handle "@plugin-name" format
+  // Handle @plugin-name format
   else if (pluginInput.startsWith('@')) {
     baseName = pluginInput.substring(1);
   }
@@ -712,7 +712,7 @@ export async function installDependencies(
   } catch (error) {
     console.warn(
       'Failed to install dependencies automatically. ' +
-      'Please run "bun install" manually in the project directory.'
+      'Please run bun install manually in the project directory.'
     );
     throw new PluginInstallationError(
       'Dependency installation failed',
@@ -836,7 +836,7 @@ async function goodErrorHandling() {
   } catch (error) {
     if (error instanceof NetworkError) {
       console.error('❌ Network error occurred. Please check your internet connection.');
-      console.error('💡 Try running "elizaos plugins update" to refresh the registry.');
+      console.error('💡 Try running elizaos plugins update to refresh the registry.');
     } else if (error instanceof ValidationError) {
       console.error(`❌ Validation failed: ${error.message}`);
       console.error('💡 Check the project name and try again.');

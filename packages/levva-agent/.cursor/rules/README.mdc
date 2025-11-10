@@ -1,0 +1,144 @@
+---
+description: Index of all available Cursor rules for the ElizaOS Levva Agent project
+globs: []
+alwaysApply: false
+---
+
+# Cursor Rules Organization and Cross-References
+
+This directory contains workspace-specific rules and patterns for the ElizaOS Levva Agent project. These rules provide guidance on architecture, patterns, and best practices specific to this codebase.
+
+## Available Rules (Optimized September 2025)
+
+### 🏗️ **Core Framework Rules**
+
+- **elizaos-patterns**: ElizaOS framework patterns and conventions (includes useModel patterns and validation anti-patterns)
+- **action-patterns**: Action handler patterns, return values, and validation best practices
+- **caching-patterns**: ElizaOS caching patterns and correct cache API usage
+- **error-handling**: Error handling patterns and security considerations
+
+### 🎯 **Intent System & Actions**
+
+- **intent-based-actions**: Complete intent-based action resolution system with proof of concept documentation
+- **provider-intent-patterns**: Provider-intent integration patterns for context-aware behavior and specialized data extraction
+- **position-management**: Position management patterns and API integration
+- **levva-business-logic**: Levva protocol specific business logic and patterns
+
+### 🧪 **Testing & Quality**
+
+- **test-organization**: Comprehensive testing patterns including chat testing framework and cleanup guidelines
+- **testing-patterns**: General testing patterns and best practices
+
+### 🔧 **Development Tools**
+
+- **debugging-patterns**: Debugging patterns and troubleshooting guidelines (includes Bun debugging with debug.bun.sh)
+- **llm-prompt-debugging**: Comprehensive LLM prompt debugging, limitations, and consistency guidelines
+- **structured-output-core**: Core patterns for LLM structured output (schema design, type annotation, temperature 0)
+- **structured-output-validation**: Standard validation patterns for addresses, confidence scores, and numeric amounts
+- **structured-output-testing**: Testing patterns for LLM structured output using OpenRouter and Vercel AI SDK
+- **conversation-flow-patterns**: Natural conversation flow patterns and context-aware prompting for better UX
+- **code-style**: Code style standards and linting configuration
+- **ethereum-constants**: Ethereum constants and address patterns (ETH_NULL_ADDR usage)
+- **typescript-conventions**: TypeScript coding conventions and best practices (undefined vs null, type safety)
+- **api-integration-patterns**: API integration patterns, schema validation, and error handling best practices
+- **cleanup-verification**: Verification and cleanup patterns when removing or refactoring code (ALWAYS check usages before removal)
+- **decimal-handling-patterns**: Decimal handling for BigInt calculations, USD value representation, and token decimals
+- **turbo-env-caching**: Turbo environment variable caching patterns and troubleshooting (CRITICAL for Docker/.env issues)
+
+### 🏛️ **Architecture & Infrastructure**
+
+- **blockchain-integration**: Blockchain integration patterns and best practices
+- **database-patterns**: Database schema and ORM patterns using Drizzle
+- **service-component-architecture**: Core ServiceComponent patterns and best practices (282 lines)
+- **background-queue-pattern**: BackgroundQueue for async operations in ServiceComponents (231 lines)
+- **service-component-migration**: Step-by-step guide for extracting ServiceComponents (237 lines)
+- **service-organization**: Service module organization and extraction guidelines
+- **suggestion-system**: Suggestion system patterns and implementation
+
+### 📚 **Documentation & Structure**
+
+- **cursor-rules-structure**: Correct Cursor rules directory structure and format requirements
+- **package-management**: Package management guidelines (Always use Bun)
+- **project-overview**: ElizaOS Levva Agent project overview and architecture
+
+## Key Insights and Anti-Patterns
+
+### Critical Anti-Patterns to Avoid
+
+1. **State Composition in Validators** (elizaos-patterns.mdc)
+
+   - NEVER call `useModel` or state-changing operations in validator functions
+   - This creates infinite loops and breaks the validation system
+   - Keep validators as pure functions that only examine existing state
+
+2. **Improper Model Usage** (elizaos-patterns.mdc, structured-output-core.mdc)
+
+   - Use `runtime.useModel(ModelType.OBJECT_SMALL, { prompt })` for structured object generation
+   - **ALWAYS** use `schema: zodJsonSchema(mySchema)` and `temperature: 0` for OBJECT_SMALL/OBJECT_LARGE
+   - Define Zod schemas with detailed, explicit field descriptions including examples
+   - Apply validation patterns from structured-output-validation.mdc (addresses, confidence, amounts)
+   - Choose appropriate model types for the complexity of the task
+   - Always await model calls as they are async operations
+
+3. **Debug Script Issues** (debugging-patterns.mdc)
+
+   - Use `bun --inspect-brk` for debugging with https://debug.bun.sh/
+   - Implement graceful shutdown handling for debug scripts
+   - Distinguish debugger-induced interruptions from actual errors
+
+4. **Wrong Rules Directory** (cursor-rules-structure.mdc)
+
+   - Use `.cursor/rules/` directory, NOT `.cursorrules/`
+   - Use `.mdc` format with YAML frontmatter for structured rules
+   - Follow proper rule types and scoping patterns
+
+5. **Decimal Handling Mistakes** (decimal-handling-patterns.mdc)
+
+   - Use `USD_DECIMALS` constant (9) for USD values, NOT 18
+   - Get token decimals from `getTokenFromMap`, don't assume 18
+   - Use self-documenting constants instead of magic numbers or verbose comments
+   - Keep formatting functions synchronous and pure
+   - Leverage already-fetched data instead of making redundant API calls
+
+6. **Turbo Environment Variable Caching** (turbo-env-caching.mdc)
+   - Turbo ONLY tracks environment variables listed in the `env` array in `turbo.json`
+   - Changing `.env` files or using `--env-file` won't work if vars aren't in turbo.json
+   - This causes cached environment variables from previous runs
+   - **Solution**: Add ALL runtime env vars to `turbo.json` tasks, or use `cache: false`
+
+## Cross-References
+
+### ElizaOS Framework
+
+- Core patterns: elizaos-patterns.mdc
+- Structured output (core): structured-output-core.mdc (schema design, temperature)
+- Structured output (validation): structured-output-validation.mdc (addresses, confidence, amounts)
+- Structured output (testing): structured-output-testing.mdc (OpenRouter utilities)
+- Testing approaches: testing-patterns.mdc
+- Error handling: error-handling.mdc
+
+### Blockchain & DeFi
+
+- Integration patterns: blockchain-integration.mdc
+- Business logic: levva-business-logic.mdc
+- Position management: position-management.mdc
+
+### Development Workflow
+
+- Database operations: database-patterns.mdc
+- Debugging techniques: debugging-patterns.mdc
+- Intent resolution: intent-based-actions.mdc
+- Rules structure: cursor-rules-structure.mdc
+
+### Service Architecture
+
+- Core patterns: service-component-architecture.mdc
+- Async operations: background-queue-pattern.mdc
+- Extraction guide: service-component-migration.mdc
+- Module organization: service-organization.mdc
+
+## Usage
+
+These rules are automatically available to the AI assistant when working in this workspace. Reference them by name when asking for guidance on specific patterns or when implementing new features.
+
+Example: Follow the elizaos-patterns rule for implementing this provider or Apply debugging-patterns for setting up the debug environment.

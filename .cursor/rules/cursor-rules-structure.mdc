@@ -1,0 +1,362 @@
+---
+description: Correct Cursor rules directory structure, format requirements, and nested rules pattern
+globs: .cursor/**/*,**/*.mdc
+alwaysApply: true
+---
+
+# Cursor Rules Structure and Format
+
+## CRITICAL: Correct Directory Structure
+
+**✅ CORRECT**: Use `.cursor/rules/` directory
+
+```
+project/
+  .cursor/
+    rules/
+      rule-name.mdc
+      another-rule.mdc
+```
+
+**❌ WRONG**: Never use `.cursorrules/` directory
+
+```
+project/
+  .cursorrules/  # This is WRONG - deprecated legacy format
+```
+
+---
+
+## 🏗️ Nested Rules Pattern
+
+Based on [Cursor's nested rules documentation](https://cursor.com/docs/context/rules#nested-rules), you can organize rules hierarchically:
+
+### **When to Use Nested Rules**
+
+Nested rules allow different parts of your codebase to have their own specific rules that only apply in their context.
+
+**✅ USE NESTED RULES FOR:**
+
+- **Large monorepos** with distinct packages/modules
+- **Different tech stacks** in the same repo (frontend/backend)
+- **Package-specific patterns** that don't apply globally
+- **Reducing glob complexity** - rules apply to their subtree automatically
+
+### **Nested Structure Example**
+
+```
+project/
+  .cursor/rules/              # ← Global rules (apply everywhere)
+    run-commands.mdc
+    package-management.mdc
+
+  packages/
+    core/
+      .cursor/rules/          # ← Core package rules (apply to core/ only)
+        types-reference.mdc
+        plugin-patterns.mdc
+
+    levva-agent/
+      .cursor/rules/          # ← Levva-specific rules (apply to levva-agent/ only)
+        action-patterns.mdc
+        intent-detection.mdc
+        structured-output.mdc
+
+    client/
+      .cursor/rules/          # ← Client-specific rules (apply to client/ only)
+        react-patterns.mdc
+        ui-components.mdc
+```
+
+### **Rule Resolution Order**
+
+When working in a file, Cursor applies rules from **most specific to most general**:
+
+1. **Closest `.cursor/rules/`** in current or parent directory
+2. **Project root `.cursor/rules/`**
+3. Rules are **merged** (not overridden)
+
+**Example**: When editing `packages/levva-agent/src/actions/swap.ts`:
+
+- ✅ Applies: `packages/levva-agent/.cursor/rules/action-patterns.mdc`
+- ✅ Applies: `.cursor/rules/package-management.mdc`
+- ✅ Both are active simultaneously
+
+---
+
+## 🎯 When to Use Nested vs Flat Structure
+
+### **Use Nested Structure When:**
+
+| Scenario                                     | Example                                                              |
+| -------------------------------------------- | -------------------------------------------------------------------- |
+| **Multiple packages** with distinct patterns | `packages/core/.cursor/rules/` vs `packages/client/.cursor/rules/`   |
+| **Different tech stacks**                    | `frontend/.cursor/rules/` (React) vs `backend/.cursor/rules/` (Node) |
+| **Avoiding glob conflicts**                  | Instead of complex `globs: packages/levva-agent/**/*.ts`             |
+| **Team-specific rules**                      | `team-a/.cursor/rules/` vs `team-b/.cursor/rules/`                   |
+
+### **Use Flat Structure When:**
+
+| Scenario             | Example                           |
+| -------------------- | --------------------------------- |
+| **Small projects**   | Single package, simple structure  |
+| **Shared patterns**  | Rules apply to entire codebase    |
+| **Simple mono-repo** | All packages follow same patterns |
+
+---
+
+## 📋 Migration to Nested Rules
+
+### **Current Flat Structure**
+
+```
+.cursor/rules/
+  levva/
+    action-patterns.mdc          # globs: packages/levva-agent/src/actions/**/*.ts
+    intent-detection.mdc         # globs: packages/levva-agent/src/services/**/*.ts
+  elizaos/
+    actions.mdc                  # globs: packages/*/src/**/*.ts
+    types-reference.mdc          # globs: packages/*/src/**/*.ts
+```
+
+**Problems:**
+
+- Complex glob patterns required
+- Rules in wrong conceptual location
+- Harder to maintain as project grows
+
+### **Improved Nested Structure**
+
+```
+.cursor/rules/                   # Global rules only
+  package-management.mdc         # globs: ] (applies everywhere)
+  run-commands.mdc               # globs: ] (applies everywhere)
+
+packages/
+  levva-agent/
+    .cursor/rules/               # Levva-specific rules
+      action-patterns.mdc        # globs: src/actions/**/*.ts (relative!)
+      intent-detection.mdc       # globs: src/services/**/*.ts (relative!)
+
+  core/
+    .cursor/rules/               # Core package rules
+      types-reference.mdc        # globs: src/**/*.ts (relative!)
+      plugin-patterns.mdc        # globs: src/index.ts (relative!)
+```
+
+**Benefits:**
+
+- ✅ Simpler glob patterns (relative to rule location)
+- ✅ Rules colocated with code they describe
+- ✅ Natural scoping (levva rules don't apply to core package)
+- ✅ Easier to maintain and understand
+
+### **Glob Patterns in Nested Rules**
+
+**CRITICAL**: In nested rules, globs are **relative to the rule's directory**:
+
+```typescript
+// In: packages/levva-agent/.cursor/rules/action-patterns.mdc
+---
+globs: src/actions/**/*.ts  # ✅ Relative to packages/levva-agent/
+---
+
+// Instead of:
+globs: packages/levva-agent/src/actions/**/*.ts  # ❌ Not needed!
+```
+
+---
+
+## Rule File Format
+
+### MDC Format Required
+
+All rules must use `.mdc` extension (MDC = Markdown with metadata):
+
+```mdc
+---
+description: Brief description of what this rule does
+globs: src/**/*.ts,*.config.js  # Relative to rule directory
+alwaysApply: false  # or true for always-active rules
+---
+
+# Rule Content
+
+Your rule content in markdown format...
+```
+
+### Rule Types
+
+Based on the [Cursor documentation](https://docs.cursor.com/en/context/rules):
+
+| Rule Type           | Configuration        | Description                                         |
+| ------------------- | -------------------- | --------------------------------------------------- |
+| **Always**          | `alwaysApply: true`  | Always included in model context                    |
+| **Auto Attached**   | `globs: pattern`     | Included when files matching pattern are referenced |
+| **Agent Requested** | `description: ...`   | AI decides whether to include it                    |
+| **Manual**          | `alwaysApply: false` | Only when explicitly mentioned with @ruleName       |
+
+---
+
+## Best Practices
+
+### File Organization
+
+- **Keep rules under 500 lines** - split large rules into focused modules
+- **Use descriptive filenames** - `kebab-case` recommended
+- **Colocate with code** - nested rules near the code they describe
+- **Group by domain** - not by rule type
+
+### Content Guidelines
+
+- **Provide concrete examples** or referenced files
+- **Avoid vague guidance** - write like clear internal docs
+- **Include `@filename.ts`** references to include files in context
+- **Focus on actionable** specific instructions
+
+### Glob Patterns
+
+**✅ DO:**
+
+```yaml
+globs: src/**/*.ts              # Relative to rule directory
+globs: src/actions/**/*.ts      # Specific subdirectory
+globs: *.config.js,*.config.ts # Specific file patterns
+```
+
+**❌ DON'T:**
+
+```yaml
+globs: **/*                     # Too broad
+globs:                          # Empty (unless alwaysApply: true)
+globs: packages/levva-agent/**  # Absolute paths (use nested rules instead)
+```
+
+---
+
+## Migration from Legacy Format
+
+If you have `.cursorrules` files:
+
+1. Create `.cursor/rules/` directory
+2. Convert files to `.mdc` format with metadata
+3. Remove old `.cursorrules` directory
+4. Update any references in documentation
+5. Consider nested structure for better organization
+
+---
+
+## Alternative: AGENTS.md
+
+For simple cases, use `AGENTS.md` in project root:
+
+- Plain markdown file (no metadata required)
+- Simpler than structured rules
+- Limited to root level only
+- Cannot be scoped or split across files
+
+**When to use AGENTS.md vs .cursor/rules/:**
+
+- ✅ **AGENTS.md**: Simple projects, single agent, < 100 lines of rules
+- ✅ **.cursor/rules/**: Complex projects, multiple domains, > 100 lines of rules
+
+---
+
+## Common Mistakes to Avoid
+
+1. **Wrong directory**: Using `.cursorrules/` instead of `.cursor/rules/`
+2. **Wrong extension**: Using `.md` instead of `.mdc` for structured rules
+3. **Missing metadata**: Forgetting the YAML frontmatter in `.mdc` files
+4. **Overly broad globs**: Using patterns that match too many files
+5. **Vague descriptions**: Not providing clear descriptions for Agent Requested rules
+6. **Absolute paths in nested rules**: Use relative paths in nested rules
+7. **Not using nested rules**: Complex glob patterns instead of nested structure
+
+---
+
+## Verification Commands
+
+### Check Your Rules Setup
+
+```bash
+# List all rule files
+find . -name .cursor -type d
+
+# Check for legacy format (should not exist)
+ls -la .cursorrules/
+# Should return No such file or directory
+
+# Verify nested rules structure
+tree -L 3 -I 'node_modules' -I 'dist' -a . | grep .cursor
+
+# Count rules per location
+find . -path */.cursor/rules/*.mdc | wc -l
+```
+
+### Test Glob Patterns
+
+```bash
+# Test if a glob pattern matches files (from rule directory)
+cd packages/levva-agent/.cursor/rules/
+find ../.. -path src/actions/**/*.ts | head -5
+
+# Should return actual TypeScript files
+```
+
+---
+
+## Recommended Structure for This Project
+
+### **Current State** (Flat)
+
+```
+.cursor/rules/
+  ├── levva/           (41 rules)
+  └── elizaos/         (24 rules)
+```
+
+### **Recommended State** (Nested)
+
+```
+.cursor/rules/                        # Global rules
+  ├── package-management.mdc
+  ├── run-commands.mdc
+  └── elizaos/                        # ElizaOS framework rules
+      ├── actions.mdc
+      ├── providers.mdc
+      └── services.mdc
+
+packages/
+  ├── levva-agent/
+  │   └── .cursor/rules/              # Levva-specific rules
+  │       ├── action-patterns.mdc
+  │       ├── intent-detection.mdc
+  │       └── structured-output/
+  │           ├── core.mdc
+  │           └── validation.mdc
+  │
+  ├── core/
+  │   └── .cursor/rules/              # Core package rules
+  │       ├── types-reference.mdc
+  │       └── plugin-patterns.mdc
+  │
+  └── client/
+      └── .cursor/rules/              # Client-specific rules
+          ├── react-patterns.mdc
+          └── ui-components.mdc
+```
+
+**Benefits:**
+
+- Rules colocated with relevant code
+- Simpler glob patterns
+- Natural scoping by location
+- Easier to maintain and discover
+
+---
+
+## References
+
+- [Cursor Rules Documentation](https://cursor.com/docs/context/rules)
+- [Nested Rules Pattern](https://cursor.com/docs/context/rules#nested-rules)
+- [AGENTS.md Alternative](https://docs.cursor.com/en/context/rules)

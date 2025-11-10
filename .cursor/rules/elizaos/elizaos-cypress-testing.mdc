@@ -95,21 +95,21 @@ describe('Plugin UI Tests', () => {
     cy.get('body').should('not.contain', 'Not Found');
 
     // Verify UI elements
-    cy.get('[data-testid="main-heading"]').should('be.visible');
-    cy.get('[data-testid="agent-info"]').should('contain', agentId);
+    cy.get('[data-testid=main-heading]').should('be.visible');
+    cy.get('[data-testid=agent-info]').should('contain', agentId);
   });
 
   it('should interact with UI elements', () => {
     cy.visit(`/api/agents/${agentId}/plugins/my-plugin/display`);
 
     // Test button clicks
-    cy.get('[data-testid="action-button"]').click();
-    cy.get('[data-testid="result"]').should('be.visible');
+    cy.get('[data-testid=action-button]').click();
+    cy.get('[data-testid=result]').should('be.visible');
 
     // Test form submission
-    cy.get('input[name="query"]').type('test query');
+    cy.get('input[name=query]').type('test query');
     cy.get('form').submit();
-    cy.get('[data-testid="results"]').should('contain', 'test query');
+    cy.get('[data-testid=results]').should('contain', 'test query');
   });
 });
 ```
@@ -154,9 +154,9 @@ describe('React Component Tests', () => {
     cy.get('#root').should('exist');
 
     // Test React-specific behaviors
-    cy.get('[data-testid="counter"]').should('contain', '0');
-    cy.get('[data-testid="increment"]').click();
-    cy.get('[data-testid="counter"]').should('contain', '1');
+    cy.get('[data-testid=counter]').should('contain', '0');
+    cy.get('[data-testid=increment]').click();
+    cy.get('[data-testid=counter]').should('contain', '1');
   });
 
   it('should handle React hooks and state', () => {
@@ -164,9 +164,9 @@ describe('React Component Tests', () => {
 
     // Test async data loading
     cy.intercept('GET', '**/api/data', { fixture: 'mockData.json' });
-    cy.get('[data-testid="load-data"]').click();
-    cy.get('[data-testid="loading"]').should('be.visible');
-    cy.get('[data-testid="data-list"]').should('have.length.greaterThan', 0);
+    cy.get('[data-testid=load-data]').click();
+    cy.get('[data-testid=loading]').should('be.visible');
+    cy.get('[data-testid=data-list]').should('have.length.greaterThan', 0);
   });
 });
 ```
@@ -237,7 +237,7 @@ npx cypress open
 npx cypress run
 
 # Run specific test
-npx cypress run --spec "cypress/e2e/my-test.cy.ts"
+npx cypress run --spec cypress/e2e/my-test.cy.ts
 ```
 
 ## Environment Variables
@@ -261,10 +261,10 @@ The CLI detects Cypress failures through:
 
 ```html
 <!-- In your HTML -->
-<button data-testid="submit-button">Submit</button>
+<button data-testid=submit-button>Submit</button>
 
 <!-- In your tests -->
-cy.get('[data-testid="submit-button"]').click();
+cy.get('[data-testid=submit-button]').click();
 ```
 
 ### 2. Handle Async Operations
@@ -276,7 +276,7 @@ cy.visit('/page');
 cy.wait('@getData');
 
 // Wait for elements
-cy.get('[data-testid="result"]', { timeout: 10000 }).should('be.visible');
+cy.get('[data-testid=result]', { timeout: 10000 }).should('be.visible');
 ```
 
 ### 3. Clean State Between Tests
@@ -300,7 +300,7 @@ it('should handle errors gracefully', () => {
   });
 
   cy.visit('/page');
-  cy.get('[data-testid="error-message"]').should('contain', 'Server error');
+  cy.get('[data-testid=error-message]').should('contain', 'Server error');
 });
 ```
 
@@ -311,7 +311,7 @@ it('should handle errors gracefully', () => {
 cy.wait(2000);
 
 // ✅ Good
-cy.get('[data-testid="loaded"]').should('be.visible');
+cy.get('[data-testid=loaded]').should('be.visible');
 ```
 
 ## Common Issues

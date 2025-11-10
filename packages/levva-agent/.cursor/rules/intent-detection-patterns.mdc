@@ -1,0 +1,297 @@
+---
+description: Intent detection patterns, thresholds, and keyword guidelines for conservative intent creation
+alwaysApply: true
+---
+
+# Intent Detection Patterns and Best Practices
+
+## 🎯 Core Principle
+
+**Be Conservative**: Only create intents when the user clearly wants to PERFORM a transaction, not when they're asking for information.
+
+## Confidence Threshold
+
+**Current threshold**: `0.75` (75%)
+
+**Location**: `src/services/intent-manager.ts:218`
+
+```typescript
+async handleIntentDetectionAndCreation(
+  // ...
+  confidenceThreshold: number = 0.75  // Requires 75% confidence
+)
+```
+
+**Why 0.75?**
+- Prevents false positives from informational requests
+- Requires clear action intent before starting transaction flows
+- Reduces user friction from unwanted intent creation
+
+## Intent Detection Prompt Guidelines
+
+**Location**: `src/prompts/intent.ts`
+
+### Action vs Informational Words
+
+**✅ ACTION WORDS** (should trigger intents):
+- deposit, withdraw, swap, send
+- invest, stake, transfer
+- cash out, redeem, claim
+
+**❌ INFORMATIONAL WORDS** (should NOT trigger intents):
+- review, show, check, view
+- tell me, what, how
+- display, list, explain
+
+### Confidence Scoring Guidelines
+
+```
+High (0.8-1.0):   Clear action + explicit keywords
+                  Example: Deposit 100 USDC into Brave strategy
+
+Medium (0.6-0.75): Ambiguous or partial action indication
+                   Example: I want to do something with my positions
+                   (Below threshold - won't trigger intent)
+
+Low (0.3-0.5):    Informational request
+                  Example: Show me my positions
+                  Review my portfolio
+
+Very Low (0.0-0.2): No intent indication
+```
+
+## Keyword Selection Principles
+
+### ✅ GOOD Keywords (Action-Specific)
+
+**DEPOSIT Intent**:
+```typescript
+keywords: [
+  deposit,invest,stake,
+  add funds,put money,
+  increase position,add to position,
+  fund,contribute
+]
+```
+
+**SEND Intent**:
+```typescript
+keywords: [send,transfer,donate
+```
+
+**SWAP Intent**:
+```typescript
+keywords: [
+  swap,exchange,trade,
+  convert,change,
+  wrap,unwrap
+]
+```
+
+**WITHDRAW Intent**:
+```typescript
+keywords: [
+  withdraw,redeem,cash out,
+  claim,liquidate,unstake,
+  get out,take out
+]
+```
+
+### ❌ BAD Keywords (Too Generic/Ambiguous)
+
+**Removed from DEPOSIT**:
+- ❌ strategy - triggers on Show me strategies
+- ❌ earning strategy - informational query
+- ❌ select strategy - browsing, not depositing
+
+**Removed from SEND**:
+- ❌ pay - triggers on What can I pay with?
+- ❌ move - ambiguous (move funds between strategies?)
+- ❌ give - conversational (give me details)
+
+**Removed from WITHDRAW**:
+- ❌ exit - too generic (can mean many things)
+
+### Keyword Selection Checklist
+
+Before adding a keyword, ask:
+- [ ] Is this word an ACTION verb (not informational)?
+- [ ] Does it clearly indicate intent to perform a transaction?
+- [ ] Would show me X or what is X avoid triggering it?
+- [ ] Is it specific to this intent type?
+- [ ] Won't it conflict with common conversational phrases?
+
+## Missing Parameter Handling
+
+### CRITICAL: Provide Context
+
+When an intent starts with missing parameters, **always show relevant context** to help the user.
+
+#### ✅ WITHDRAW Intent (Good Example)
+
+```typescript
+if (!strategyId || !strategy) {
+  const positionsSummary = params?.positionsSummary || No active positions found;
+  const totalValue = params?.totalPositionValue 
+    ? `\n**Total Portfolio Value**: $${params.totalPositionValue.toFixed(2)}`
+    : ;
+
+  contextualResponse = `I see you want to withdraw from a position. Here are your available positions:
+
+${positionsSummary}${totalValue}
+
+Please specify which position you'd like to withdraw from (by strategy name or number).`;
+}
+```
+
+**Why Good**: Shows user what positions they have before asking them to choose.
+
+#### ✅ SEND Intent (Good Example)
+
+```typescript
+if (missingParam === token) {
+  const assets = await service.getWalletAssets({...});
+  
+  const tokensAvailable = assets
+    .filter((a) => a.amount > 0n)
+    .map((a) => getTokenSymbol(a))
+    .slice(0, 8)
+    .join(,);
+  
+  contextualResponse = `Which token would you like to send?
+
+You have: ${tokensAvailable}
+
+Please specify a token symbol like USDC or ETH.`;
+}
+```
+
+**Why Good**: Shows user what tokens they have before asking them to choose.
+
+#### ✅ DEPOSIT Intent (Good Example)
+
+```typescript
+if (missingParam === strategy) {
+  const strategiesText = positionParams.strategies
+    .map((s) => service.strategy.formatStrategy(s))
+    .join(\n);
+
+  contextualResponse = `I can help you choose an investment strategy.
+
+### Available Strategies
+${strategiesText}`;
+}
+```
+
+**Why Good**: Shows available strategies before asking user to choose.
+
+#### ❌ BAD Example (No Context)
+
+```typescript
+if (!tokenSymbol) {
+  contextualResponse = Which token would you like to use?;
+}
+```
+
+**Why Bad**: User doesn't know what tokens are available.
+
+## Common Pitfalls
+
+### 1. Generic Keywords Triggering Informational Queries
+
+**Problem**:
+```
+USER: Show me strategies
+AGENT: [Starts DEPOSIT intent] Which strategy would you like to deposit into?
+```
+
+**Solution**: Remove generic keywords like strategy from intent keywords.
+
+### 2. Low Confidence Threshold Creating False Positives
+
+**Problem** (with threshold = 0.6):
+```
+USER: Review my positions
+AGENT: [Starts WITHDRAW intent] Which position would you like to withdraw from?
+```
+
+**Solution**: Raise threshold to 0.75, update prompt to be conservative.
+
+### 3. Missing Context Making Users Guess
+
+**Problem**:
+```
+USER: [SEND intent started]
+AGENT: Which token would you like to send?
+USER: What tokens do I have?
+```
+
+**Solution**: Show wallet tokens in the prompt.
+
+## Testing Recommendations
+
+### Test Cases for Intent Detection
+
+**Informational requests (should NOT start intents)**:
+- Show me strategies
+- Review my portfolio
+- Check my DeFi status
+- What positions do I have?
+- How are my investments performing?
+- Tell me about the Brave strategy
+
+**Action requests (SHOULD start intents with confidence > 0.75)**:
+- Deposit 100 USDC into Brave strategy
+- Withdraw all from my position
+- Send 0.1 ETH to 0x...
+- Swap 50 USDC to ETH
+- I want to exit my position
+
+**Ambiguous requests (should default to informational)**:
+- What about my positions?
+- Help me with my portfolio
+- I'm thinking about investing
+
+### Expected Behavior
+
+| User Message | Expected | Confidence |
+|--------------|----------|-----------|
+| Show my positions | Display positions, NO intent | 0.3-0.5 |
+| Review portfolio | Display analysis, NO intent | 0.3-0.5 |
+| Withdraw 100 USDC | START WITHDRAW intent | 0.8-1.0 |
+| Deposit into Brave | START DEPOSIT intent | 0.8-1.0 |
+| What strategies? | List strategies, NO intent | 0.2-0.4 |
+
+## Monitoring Metrics
+
+Track these metrics to ensure intent detection is working correctly:
+
+1. **False Positive Rate**: Intents started on informational queries
+   - Target: < 5%
+   - Monitor: show,review,check messages that create intents
+
+2. **Average Confidence**: For actual intent creations
+   - Target: > 0.8
+   - Below 0.75 shouldn't create intents
+
+3. **User Friction**: Intents cancelled immediately
+   - Target: < 10%
+   - High cancellation rate suggests too many false positives
+
+4. **Completion Rate**: Intents that reach transaction
+   - Target: > 60%
+   - Low rate suggests poor parameter guidance
+
+## Related Files
+
+- `src/services/intent-manager.ts` - Intent detection logic and threshold
+- `src/prompts/intent.ts` - Intent detection prompt with guidelines
+- `src/actions/position.ts` - DEPOSIT and WITHDRAW intent registration
+- `src/actions/wallet.ts` - SEND intent registration
+- `src/actions/swap.ts` - SWAP intent registration
+- `src/actions/intents/*.ts` - Intent handlers with missing param logic
+
+## Version History
+
+- **v1.1.0** (2025-01-07): Raised threshold to 0.75, cleaned keywords, added context
+- **v1.0.0**: Initial implementation with 0.6 threshold

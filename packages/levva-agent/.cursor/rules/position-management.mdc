@@ -1,0 +1,157 @@
+---
+description: Position management patterns and API integration
+globs: **/levva-agent/src/actions/position.ts,**/levva-agent/src/providers/position-params.ts,**/levva-agent/src/api/levva/**/*.ts
+alwaysApply: false
+---
+
+# Position Management Guidelines
+
+## Module Structure
+Position management follows the general service organization pattern (see `service-organization.mdc`):
+- **`services/levva/class.ts`**: Cached API methods and stateful operations
+- **`services/levva/positions.ts`**: Pure helper functions and interfaces
+
+This maintains caching functionality while extracting reusable helpers.
+
+## API Integration
+- **User Positions**: `GET /api/v1/strategies/user-positions/{address}`
+- **Withdrawal Requests**: `GET /api/v2/vaults/{vaultId}/withdrawal-requests/{address}`
+- Use LevvaService timed cache methods with 5-minute TTL
+- Handle API failures gracefully with empty arrays as fallbacks
+
+## Data Flow Pattern
+```typescript
+// In LevvaService - use timed cache
+getUserPositions = this.timedCache(
+  300000, // 5 minutes TTL
+  async (address: `0x${string}`) => {
+    const result = await getUserPositions(address);
+    return result.success ? result.data : [];
+  },
+  this.getUserPositionsCacheKey
+);
+```
+
+## Provider Implementation
+- Use LevvaService methods instead of direct API calls
+- Provide formatted summaries for display
+- Include both raw data and formatted text
+- Handle missing data gracefully
+
+## Action Context Management
+- Access previous action results using `runtime.stateCache` with key `${message.id}_action_results`
+- Use typed utilities: `getPreviousReplyContext()`, `getLastActionResult()`, `getPreviousActionResults()`
+- Avoid repeating information from previous REPLY actions
+- Include previous context in response when relevant
+
+```typescript
+import { getPreviousReplyContext } from ../util/action-results;
+
+// In action handler
+const previousContext = await getPreviousReplyContext(runtime, message);
+// Use previousContext in response to avoid repetition
+```
+
+## Position Analysis
+- Calculate total portfolio value from position USD values
+- Show P&L with proper sign formatting (+/-)
+- Group positions by strategy and risk level
+- Suggest diversification based on current holdings
+
+## Withdrawal Status Management
+
+### Status Types and Display
+- **Pending**: `!req.isFinalized` - withdrawals still processing
+- **Ready to Claim**: `req.isFinalized` - withdrawals ready for user action
+- Show both types in summary: `**Pending**: X request(s) processing, **Ready to Claim**: Y request(s) ready`
+- Format withdrawal amounts with proper token symbols
+- Group by vault ID for organization
+
+### Management Options Logic
+```typescript
+// Prioritize ready withdrawals for immediate action
+if (positionParams.hasReadyWithdrawals) {
+  managementSuggestions.push(- **Claim Funds**: Claim your ready withdrawal requests);
+}
+
+if (positionParams.hasPendingWithdrawals) {
+  managementSuggestions.push(- **Check Status**: Monitor withdrawal progress);
+}
+
+// Only show quick withdraw if no pending withdrawals
+if (positionParams.hasPositions && !positionParams.hasPendingWithdrawals) {
+  managementSuggestions.push(- **Quick Withdraw**: Start withdrawal process for any position);
+}
+```
+
+## Strategy Filtering and Display
+
+### Available Strategies Logic
+- **CRITICAL**: Filter out strategies where user already has positions
+- Compare using `pos.strategyId === strategy.id` (not `strategy.contractAddress`)
+- Use strategies from provider data (has `.id`) not service methods (returns `StrategyEntry[]`)
+
+```typescript
+// ✅ CORRECT: Use provider strategies with .id property
+const availableStrategies = positionParams.strategies.filter((strategy) => {
+  const hasPosition = positionParams.userPositions.some(
+    (pos) => pos.strategyId === strategy.id
+  );
+  return !hasPosition;
+});
+
+// ❌ WRONG: Don't use service.getStrategies() which returns StrategyEntry[]
+// const strategies = await service.getStrategies(chainId); // Missing .id property
+```
+
+### Strategy Display Format
+```typescript
+// Format for display (raw API response format)
+availableStrategies.map((strategy) => 
+  `${strategy.name} - Contract: ${strategy.vault?.address}. Type: vault. ${strategy.description}`
+)
+
+// Not service.formatStrategy() which expects StrategyEntry format
+```
+
+## Position Summary Enhancement Patterns
+
+### Data Structure Consistency
+- **PositionSummary Interface**: Include `hasReadyWithdrawals` alongside `hasPendingWithdrawals`
+- **Provider Data**: Ensure all interfaces match the enhanced summary structure
+- **Error Handling**: Include new fields in error fallback objects
+
+### Withdrawal Summary Formatting
+```typescript
+export const formatWithdrawalsSummary = (withdrawals: WithdrawalRequest[]): string => {
+  if (withdrawals.length === 0) return No withdrawal requests;
+  
+  const pendingWithdrawals = withdrawals.filter((req) => !req.isFinalized);
+  const readyWithdrawals = withdrawals.filter((req) => req.isFinalized);
+  
+  const summaryParts: string[] = [];
+  if (pendingWithdrawals.length > 0) {
+    summaryParts.push(`**Pending**: ${pendingWithdrawals.length} request(s) processing`);
+  }
+  if (readyWithdrawals.length > 0) {
+    summaryParts.push(`**Ready to Claim**: ${readyWithdrawals.length} request(s) ready`);
+  }
+  
+  return summaryParts.join(,);
+};
+```
+
+## Error Handling
+- Log API failures but continue with cached/empty data
+- Provide meaningful error messages to users
+- Gracefully handle missing position data
+- **Always validate addresses with `isHex` before API calls**
+
+```typescript
+import { isHex } from viem;
+
+// In position-params provider
+if (!isHex(user.address)) {
+  throw new Error(`Invalid Ethereum address format: ${user.address}`);
+}
+```

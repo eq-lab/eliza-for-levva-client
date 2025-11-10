@@ -6,7 +6,7 @@ alwaysApply: false
 
 # ElizaOS Providers System
 
-Providers are the sources of information for agents. They act as the agent's "senses", injecting real-time information and context into the agent's decision-making process.
+Providers are the sources of information for agents. They act as the agent's senses, injecting real-time information and context into the agent's decision-making process.
 
 ## Core Concepts
 

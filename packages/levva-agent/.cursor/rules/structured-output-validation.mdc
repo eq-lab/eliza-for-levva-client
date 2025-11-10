@@ -1,0 +1,521 @@
+---
+description: Validation patterns for structured output schemas (Ethereum addresses, confidence scores, numeric amounts)
+globs: **/levva-agent/src/prompts/**/*.ts
+alwaysApply: false
+---
+
+# Structured Output Validation Patterns
+
+## 🎯 **Purpose**
+
+This rule defines standard validation patterns for common field types in LLM structured output schemas, ensuring consistency and correctness across all prompts.
+
+---
+
+## 🔐 **Ethereum Address Validation**
+
+**CRITICAL**: All Ethereum address fields MUST use regex validation to ensure proper format (0x + 40 hex characters = 42 total length).
+
+### **Pattern**
+
+```typescript
+import { z } from zod;
+
+// ✅ CORRECT: Ethereum address with regex validation
+tokenAddress: z
+  .string()
+  .regex(
+    /^0x[a-fA-F0-9]{40}$/,
+    Token address must be valid Ethereum address (0x + 40 hex chars)
+  )
+  .optional()
+  .describe(
+    The contract address of the token.  +
+      Must be valid Ethereum address format: 0x + 40 hex characters (42 total).  +
+      Example: 0xAf88d065e77c8cC2239327C5EDb3A432268e5831
+  ),
+
+recipientAddress: z
+  .string()
+  .regex(
+    /^0x[a-fA-F0-9]{40}$/,
+    Recipient must be valid Ethereum address (0x + 40 hex chars)
+  )
+  .nullable()
+  .describe(
+    Recipient wallet address (must be valid Ethereum address format: 0x + 40 hex characters).  +
+      Extract from phrases like 'send to 0x...', 'transfer to address', etc.  +
+      Return null if not specified. NEVER guess or assume addresses.
+  ),
+
+contractAddress: z
+  .string()
+  .regex(
+    /^0x[a-fA-F0-9]{40}$/,
+    Contract address must be valid Ethereum address (0x + 40 hex chars)
+  )
+  .optional()
+  .describe(
+    Smart contract address (must be valid Ethereum address format: 0x + 40 hex characters).  +
+      Extract from strategy or contract references.  +
+      Example: 0x1234567890123456789012345678901234567890
+  ),
+```
+
+### **Common Mistakes**
+
+```typescript
+// ❌ WRONG: No regex validation
+tokenAddress: z
+  .string()
+  .optional()
+  .describe(The contract address of the token (e.g., 0xAf88...)),
+
+// ❌ WRONG: Using .length() instead of regex
+tokenAddress: z
+  .string()
+  .length(42)
+  .describe(Token address),
+// Problem: Doesn't validate hex format or 0x prefix
+
+// ❌ WRONG: Vague error message
+tokenAddress: z
+  .string()
+  .regex(/^0x[a-fA-F0-9]{40}$/, Invalid address),
+// Problem: Not helpful for debugging
+```
+
+### **When to use nullable vs optional**
+
+- **`.nullable()`**: For fields that can be explicitly null in extraction results
+  - Example: `recipientAddress` - null means user hasn't specified recipient yet
+  - LLM can return `null` to indicate absence
+- **`.optional()`**: For fields that may be completely omitted from the object
+  - Example: `tokenAddress` - may not appear in the returned object at all
+  - LLM doesn't include the key if not applicable
+
+### **Complete Example**
+
+```typescript
+// src/prompts/send.ts
+export const extractedSendParamsSchema = z.object({
+  thought: z.string().describe(Analysis of send request),
+
+  recipientAddress: z
+    .string()
+    .regex(/^0x[a-fA-F0-9]{40}$/)
+    .nullable()
+    .describe(Recipient wallet address (0x + 40 hex chars) or null),
+
+  tokenAddress: z
+    .string()
+    .regex(/^0x[a-fA-F0-9]{40}$/)
+    .optional()
+    .describe(Token contract address (0x + 40 hex chars)),
+
+  amount: z
+    .string()
+    .regex(/^[0-9]+(\.[0-9]+)?$/)
+    .nullable()
+    .describe(Numeric amount as string),
+
+  confidence: z.number().min(0).max(1).describe(Confidence (0.0-1.0)),
+});
+```
+
+---
+
+## 📊 **Confidence Score Validation**
+
+**CRITICAL**: All confidence fields MUST use 0-1 scale with `.min(0).max(1)` validation and consistent descriptions.
+
+### **Pattern**
+
+```typescript
+// ✅ CORRECT: Confidence with 0-1 scale
+confidence: z
+  .number()
+  .min(0)
+  .max(1)
+  .describe(
+    Your confidence level in the extraction accuracy (0.0-1.0).  +
+      High (0.8-1.0): All parameters clear.  +
+      Medium (0.5-0.79): Some inference needed.  +
+      Low (0.0-0.49): Requires clarification.
+  ),
+```
+
+### **Confidence Scale Guidelines**
+
+| Range        | Level  | Meaning                                    | Example                                           |
+| ------------ | ------ | ------------------------------------------ | ------------------------------------------------- |
+| **0.8-1.0**  | High   | All parameters clear, confident extraction | Send 100 USDC to 0x123... - all params explicit |
+| **0.5-0.79** | Medium | Some inference needed, partial clarity     | Send USDC to Alice - missing amount & address   |
+| **0.0-0.49** | Low    | Requires clarification, high uncertainty   | Send some tokens - multiple params missing      |
+
+### **Display Formatting**
+
+```typescript
+// When displaying to user, convert to percentage
+const confidenceLine =
+  typeof confidence === number
+    ? `\n- Confidence: ${(confidence * 100).toFixed(0)}%`
+    : ;
+// Example: 0.85 → 85%
+```
+
+### **Common Mistakes**
+
+```typescript
+// ❌ WRONG: Using 0-100 scale
+confidence: z
+  .number()
+  .min(0)
+  .max(100)
+  .describe(Confidence level (0-100)),
+// Problem: Inconsistent with other prompts
+
+// ❌ WRONG: Missing min/max validation
+confidence: z
+  .number()
+  .describe(Confidence level (0.0-1.0)),
+// Problem: LLM could return invalid values like 1.5 or -0.3
+
+// ❌ WRONG: Using integer instead of float
+confidence: z
+  .number()
+  .int()
+  .min(0)
+  .max(1)
+  .describe(Confidence (0 or 1)),
+// Problem: Forces binary confidence instead of nuanced scoring
+```
+
+### **Code Usage Patterns**
+
+```typescript
+// ✅ Checking confidence in intent handlers
+if (extractedParams.confidence >= 0.75) {
+  // High enough confidence to proceed
+  await createIntent(extractedParams);
+} else {
+  // Low confidence - ask for clarification
+  return {
+    text: I need more information. Could you clarify your request?,
+  };
+}
+
+// ✅ Displaying confidence to user
+const confidencePercent = Math.round(confidence * 100);
+return `I'm ${confidencePercent}% confident I understand your request correctly.`;
+
+// ❌ WRONG: Treating 0-1 as 0-100
+if (extractedParams.confidence >= 75) {
+  // This will never be true since confidence is 0-1!
+  await createIntent(extractedParams);
+}
+```
+
+### **Complete Example**
+
+```typescript
+// src/prompts/swap.ts
+export const extractedSwapParamsSchema = z.object({
+  thought: z.string().describe(Analysis of swap parameters),
+
+  fromToken: z.string().nullable().describe(Source token),
+  toToken: z.string().nullable().describe(Destination token),
+  amount: z
+    .string()
+    .regex(/^[0-9]+(\.[0-9]+)?$/)
+    .nullable(),
+
+  confidence: z
+    .number()
+    .min(0)
+    .max(1)
+    .describe(
+      Your confidence level in the extraction accuracy (0.0-1.0).  +
+        High (0.8-1.0): All parameters clear.  +
+        Medium (0.5-0.79): Some inference needed.  +
+        Low (0.0-0.49): Requires clarification.
+    ),
+});
+```
+
+---
+
+## 🔢 **Numeric Amount Validation**
+
+**CRITICAL**: Amount fields must validate numeric strings without symbols using regex.
+
+### **Pattern**
+
+```typescript
+// ✅ CORRECT: Amount with regex validation
+amount: z
+  .string()
+  .regex(
+    /^[0-9]+(\.[0-9]+)?$/,
+    Amount must be numeric string without symbols
+  )
+  .nullable()
+  .describe(
+    'Numeric amount as string (e.g., 100,0.5). ' +
+      Use token decimal precision from provided balance data.  +
+      Convert percentages/keywords using balance:  +
+      '50% → (0.5 × balance), all/max → full balance. ' +
+      NEVER include %, currency symbols, or token symbols.
+  ),
+```
+
+### **Amount Extraction Rules**
+
+**Extract only numeric values:**
+
+- ✅ 100 (valid)
+- ✅ 0.5 (valid)
+- ✅ 1000.50 (valid)
+- ❌ 100% (invalid - must convert to numeric)
+- ❌ $100 (invalid - remove symbol)
+- ❌ 100 USDC (invalid - remove token symbol)
+- ❌ all (invalid - must convert to actual balance)
+
+**Convert percentages using balance:**
+
+- Input: 50% with balance = 200
+- Output: 100 (0.5 × 200)
+
+**Convert keywords using balance:**
+
+- Input: all with balance = 200
+- Output: 200
+- Input: max with balance = 200
+- Output: 200
+- Input: everything with balance = 200
+- Output: 200
+
+**Match token's decimal precision:**
+
+- USDC (6 decimals): 100.123456 ✅, 100.1234567 ❌
+- ETH (18 decimals): 0.000000000000000001 ✅
+- WBTC (8 decimals): 0.12345678 ✅
+
+### **Common Mistakes**
+
+```typescript
+// ❌ WRONG: No regex validation
+amount: z
+  .string()
+  .nullable()
+  .describe(Amount to swap),
+
+// ❌ WRONG: Allowing symbols in extraction
+amount: z
+  .string()
+  .nullable()
+  .describe(Amount (e.g., '100 USDC' or '50%')),
+// Problem: LLM will include symbols, breaking validation
+
+// ❌ WRONG: Using number type instead of string
+amount: z
+  .number()
+  .positive()
+  .describe(Amount to send),
+// Problem: Loses precision for large numbers, can't handle decimals properly
+
+// ❌ WRONG: Not providing balance context in prompt
+// Problem: LLM can't convert 50% without knowing balance
+```
+
+### **Prompt Context Requirements**
+
+**CRITICAL**: Always provide balance data with token decimals in prompt context:
+
+```typescript
+// ✅ CORRECT: Provide full portfolio with decimals
+const userPortfolio = walletAssets
+  .filter((asset) => asset.amount > 0n)
+  .map((asset) => {
+    const tokenData = service.token.getTokenFromMap({
+      chainId,
+      address: asset.token,
+    });
+    const decimals = tokenData?.decimals ?? 18;
+    const symbol = tokenData?.symbol ?? Unknown;
+    const balance = formatUnits(asset.amount, decimals);
+    return `${symbol}: ${balance} (${decimals} decimals)`;
+  })
+  .join(\n);
+
+// Pass to prompt
+const prompt = `
+<userPortfolio>
+${userPortfolio}
+</userPortfolio>
+
+AMOUNT PARSING RULES:
+- Extract ONLY numeric values (no %, $, or token symbols)
+- Use token decimal precision from balance data above
+- Convert percentages: 50% → (0.5 × balance)
+- Convert all/max → full balance
+`;
+```
+
+### **Pre-Calculated Amounts Pattern**
+
+**Best Practice**: Pre-calculate common percentage amounts to help LLM:
+
+```typescript
+import { calculateAmountsFromBalance } from ../prompts/helpers/amount-suggestions;
+
+// ✅ CORRECT: Pre-calculate amounts for LLM
+const portfolioWithCalculations = portfolio
+  .filter((asset) => asset.amount > 0n)
+  .slice(0, 5) // Top 5 tokens
+  .map((asset) => {
+    const tokenData = service.token.getTokenFromMap({
+      chainId,
+      address: asset.token,
+    });
+    const amounts = calculateAmountsFromBalance(
+      asset.amount,
+      tokenData?.decimals ?? 18,
+      asset.token
+    );
+    return {
+      symbol: tokenData?.symbol ?? Unknown,
+      fullAmount: amounts.fullAmount, // 100%
+      amount75: amounts.amount75, // 75%
+      amount50: amounts.amount50, // 50%
+      amount25: amounts.amount25, // 25%
+    };
+  });
+
+// Include in prompt
+const prompt = `
+<calculatedAmounts>
+Pre-calculated amounts to help generate accurate extractions:
+${portfolioWithCalculations
+  .map(
+    (calc) =>
+      `${calc.symbol}: 25%=${calc.amount25}, 50%=${calc.amount50}, 75%=${calc.amount75}, 100%=${calc.fullAmount}`
+  )
+  .join(\n)}
+</calculatedAmounts>
+
+Use these pre-calculated values when extracting amounts.
+`;
+```
+
+**Why pre-calculate?**
+
+- ✅ LLMs are bad at math - let them copy exact values
+- ✅ Ensures correct decimal precision for each token
+- ✅ Handles native token gas reservation automatically
+- ✅ Prevents tiny amount errors (e.g., 0.000000000001 ETH)
+
+### **Complete Example**
+
+```typescript
+// src/prompts/deposit.ts
+export const extractedDataForDepositSchema = z.object({
+  thought: z
+    .string()
+    .describe(
+      Your analysis of the deposit request and parameter extraction.  +
+        Include reasoning about token selection, amount calculation, and confidence.
+    ),
+
+  tokenAddress: z
+    .string()
+    .regex(/^0x[a-fA-F0-9]{40}$/)
+    .optional()
+    .describe(Token contract address (0x + 40 hex chars)),
+
+  amount: z
+    .string()
+    .regex(
+      /^[0-9]+(\.[0-9]+)?$/,
+      Amount must be numeric string without symbols
+    )
+    .nullable()
+    .describe(
+      'Numeric amount as string (e.g., 100,0.5). ' +
+        Use token decimal precision from provided balance data.  +
+        Convert 50% → (0.5 × balance), 'all'/'max' → full balance.  +
+        NEVER include %, $, currency symbols, or token symbols.
+    ),
+
+  confidence: z.number().min(0).max(1).describe(Confidence level (0.0-1.0)),
+});
+
+// In prompt
+export const extractDepositDataFromMessagePrompt = (ctx: {
+  userPortfolio: string;
+  strategies: string;
+  // ...
+}) => `
+<userPortfolio>
+${ctx.userPortfolio}
+</userPortfolio>
+
+AMOUNT PARSING RULES:
+- Extract ONLY numeric values: 100,0.5,1000
+- Use token decimal precision from balance data above
+- Convert percentages: 50% → (0.5 × balance)
+- Convert all/max/everything → full balance
+- NEVER include: %, $, currency symbols, or token symbols
+- Match token's decimal precision (USDC=6, ETH=18, etc.)
+`;
+```
+
+---
+
+## ✅ **Validation Checklist**
+
+Before merging any prompt with structured output:
+
+### **Ethereum Addresses**
+
+- [ ] All address fields use `.regex(/^0x[a-fA-F0-9]{40}$/)`
+- [ ] Error messages are descriptive (0x + 40 hex chars)
+- [ ] Descriptions include format example
+- [ ] Correct use of `.nullable()` vs `.optional()`
+
+### **Confidence Scores**
+
+- [ ] Uses `.number().min(0).max(1)`
+- [ ] Description includes scale guidelines (0.8-1.0, 0.5-0.79, 0.0-0.49)
+- [ ] Code expects 0-1 scale (not 0-100)
+- [ ] Display converts to percentage: `(confidence * 100).toFixed(0)}%`
+
+### **Numeric Amounts**
+
+- [ ] Uses `.string().regex(/^[0-9]+(\.[0-9]+)?$/)`
+- [ ] Description prohibits symbols (%, $, token symbols)
+- [ ] Prompt provides balance data with token decimals
+- [ ] Prompt includes amount parsing rules
+- [ ] Pre-calculated amounts provided for top tokens (if applicable)
+- [ ] Conversion rules documented (50% → 0.5 × balance, all → balance)
+
+---
+
+## 📚 **Related Rules**
+
+- **@structured-output-core.mdc** - Core patterns for structured output
+- **@decimal-handling-patterns.mdc** - BigInt handling and decimal precision
+- **@ethereum-constants.mdc** - ETH_NULL_ADDR and address constants
+- **@structured-output-testing.mdc** - Testing validation patterns
+
+---
+
+## 🎓 **Key Principles**
+
+1. **Validate at Schema Level**: Use `.regex()`, `.min()`, `.max()` - don't rely only on descriptions
+2. **Consistent Patterns**: All addresses use same format, all confidence same scale
+3. **Help the LLM**: Provide balance data, pre-calculate amounts, clear instructions
+4. **Type Safety**: String for amounts (precision), number for confidence (scale)
+5. **Clear Errors**: Descriptive error messages aid debugging
+
+**Remember**: The LLM only sees your schema descriptions and prompt context. Make them explicit, provide data, and validate rigorously!

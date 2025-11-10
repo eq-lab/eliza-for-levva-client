@@ -1,0 +1,338 @@
+---
+description: Verification and cleanup patterns when removing or refactoring code
+alwaysApply: true
+---
+
+# Cleanup Verification Patterns
+
+## 🚨 **CRITICAL: Always Check Usages Before Removing Code**
+
+### **Rule: Never remove code without verifying it's not used elsewhere**
+
+Before removing any code element (function, interface, class, constant, etc.), you **MUST**:
+
+1. **Search for all usages** using `grep` or `codebase_search`
+2. **Update or remove all usages** before removing the definition
+3. **Verify no linter errors** after removal
+4. **Run build** to ensure no compilation errors
+
+**This is non-negotiable.** Removing code without verification breaks the codebase.
+
+---
+
+## 📋 **Cleanup Checklist**
+
+### **When Removing Code Elements**
+
+#### **Step 1: Identify All Usages**
+```bash
+# Use grep to find all references
+grep -r ElementName src/
+```
+
+#### **Step 2: Categorize Usages**
+- **Imports**: Files that import the element
+- **Type annotations**: Where it's used as a type
+- **Implementations**: Classes that implement interfaces
+- **Function calls**: Where functions are called
+- **References**: Any other references
+
+#### **Step 3: Plan Removal Strategy**
+- **Can usages be removed?** If yes, remove them first
+- **Can usages be replaced?** If yes, update them to use alternatives
+- **Are usages necessary?** If yes, don't remove the code element
+
+#### **Step 4: Execute Removal**
+1. Remove or update all usages first
+2. Remove the code element definition last
+3. Verify with linter
+4. Run build to confirm
+
+#### **Step 5: Verify**
+```bash
+# Check linter
+bun run read_lints
+
+# Run build
+bun run build
+
+# Run tests (if applicable)
+bun run test
+```
+
+---
+
+## ✅ **Common Cleanup Scenarios**
+
+### **Removing an Interface**
+
+**❌ WRONG:**
+```typescript
+// Just delete the interface
+export interface MyInterface {
+  method(): void;
+}
+```
+
+**✅ CORRECT:**
+```bash
+# 1. Search for usages
+grep -r MyInterface src/
+
+# 2. Found usages:
+# - src/services/my-service.ts:10 (import)
+# - src/services/my-service.ts:15 (implements)
+
+# 3. Remove implementation first
+# Update: class MyService implements MyInterface
+# To: class MyService
+
+# 4. Remove import
+# Remove: import { MyInterface } from ./interfaces;
+
+# 5. Now safe to remove interface definition
+# Delete interface from source file
+
+# 6. Verify
+bun run build
+```
+
+### **Removing a Function**
+
+**Process:**
+1. Search for all calls to the function
+2. Update callers to use alternative or remove calls
+3. Remove function definition
+4. Verify build
+
+### **Removing a Constant**
+
+**Process:**
+1. Search for all references to the constant
+2. Replace with literal values or alternative constants
+3. Remove constant definition
+4. Verify build
+
+### **Removing a Type/Interface Export**
+
+**Process:**
+1. Search for all imports of the type
+2. Remove imports or replace with alternative types
+3. Remove export from source file
+4. Verify build
+
+---
+
+## 🔍 **Search Patterns**
+
+### **Finding All References**
+```bash
+# Exact match (case-sensitive)
+grep -r ExactName src/
+
+# Case-insensitive
+grep -ri name src/
+
+# With line numbers
+grep -rn ElementName src/
+
+# Only in TypeScript files
+grep -r ElementName src/ --include=*.ts
+
+# Show context (3 lines before/after)
+grep -rn -C 3 ElementName src/
+```
+
+### **Using Codebase Search**
+```typescript
+// For semantic understanding of usage
+codebase_search({
+  query: Where is MyInterface used?,
+  target_directories: []
+});
+```
+
+---
+
+## 🛡️ **Safe Refactoring Patterns**
+
+### **Pattern 1: Mark as Deprecated First**
+```typescript
+/** @deprecated Use NewInterface instead */
+export interface OldInterface {
+  method(): void;
+}
+```
+
+**Benefits:**
+- Signals intent to remove
+- Gives time to migrate usages
+- Prevents new usages
+
+### **Pattern 2: Create Transitional Wrapper**
+```typescript
+// New implementation
+export function newFunction() { /* ... */ }
+
+// Transitional wrapper
+/** @deprecated Use newFunction() instead */
+export function oldFunction() {
+  return newFunction();
+}
+```
+
+**Benefits:**
+- Maintains backward compatibility
+- Allows gradual migration
+- Clear migration path
+
+### **Pattern 3: Incremental Removal**
+1. **Phase 1**: Mark as deprecated, create alternative
+2. **Phase 2**: Migrate all usages to alternative
+3. **Phase 3**: Remove deprecated code
+4. **Verify**: Each phase with build and tests
+
+---
+
+## 📊 **Verification Steps**
+
+### **After Every Removal**
+
+1. **Linter Check**
+   ```bash
+   # Check specific files
+   bun run read_lints [path/to/file.ts
+   
+   # Check all files
+   bun run read_lints
+   ```
+
+2. **Build Check**
+   ```bash
+   bun run build
+   ```
+
+3. **Test Check** (if applicable)
+   ```bash
+   # Unit tests
+   bun run test
+   
+   # Integration tests
+   bun run test:integration
+   
+   # E2E tests
+   bun run test:e2e
+   ```
+
+4. **Import Check**
+   ```bash
+   # Verify no unused imports remain
+   grep -r import.*ElementName src/
+   ```
+
+---
+
+## 🎯 **Best Practices**
+
+### **DO:**
+- ✅ Always search for usages before removing code
+- ✅ Remove usages before removing definitions
+- ✅ Verify with linter and build after removal
+- ✅ Use deprecation warnings for public APIs
+- ✅ Document why code is being removed in commit messages
+- ✅ Check for string literal references (e.g., in tests, configs)
+
+### **DON'T:**
+- ❌ Remove code without checking for usages
+- ❌ Assume code is unused without verification
+- ❌ Skip verification steps
+- ❌ Remove code just because it looks unused
+- ❌ Forget to check test files for references
+- ❌ Ignore linter warnings after removal
+
+---
+
+## 🔄 **Integration with Other Rules**
+
+This rule complements:
+- **@code-style.mdc**: Ensures clean, consistent codebase
+- **@service-component-architecture.mdc**: Guides proper service decomposition
+- **@testing-patterns.mdc**: Ensures tests are updated when code is removed
+- **@error-handling.mdc**: Maintains proper error handling during refactoring
+
+---
+
+## 📝 **Example: Complete Removal Flow**
+
+```bash
+# Task: Remove WalletInterface
+
+# Step 1: Search for usages
+$ grep -r WalletInterface src/
+src/services/levva/wallet.ts:347:export interface WalletInterface {
+src/services/levva/class.ts:33:  WalletInterface,
+src/services/levva/class.ts:55:  implements ILevvaService, PendleInterface, WalletInterface
+
+# Step 2: Analyze usages
+# - wallet.ts: Definition (to be removed last)
+# - class.ts: Import (to be removed)
+# - class.ts: Implementation (to be removed)
+
+# Step 3: Remove usages first
+# - Remove from import statement
+# - Remove from implements clause
+
+# Step 4: Remove definition
+# - Delete interface from wallet.ts
+
+# Step 5: Verify
+$ bun run build
+✅ Build success
+
+# Step 6: Commit with clear message
+$ git add .
+$ git commit -m refactor: remove unused WalletInterface
+
+- Removed WalletInterface as it's no longer needed with composition pattern
+- Updated LevvaService to not implement WalletInterface
+- Verified no usages remain in codebase
+```
+
+---
+
+## 🎓 **Learning from Mistakes**
+
+### **Common Mistake: Removing Without Checking**
+**What happened**: Removed `WalletInterface` without checking usages, breaking `class.ts`
+**Lesson**: Always use `grep` to find all references before removal
+**Solution**: Search → Update Usages → Remove Definition → Verify
+
+### **Why This Matters**
+- Prevents build breakage
+- Avoids runtime errors
+- Maintains codebase integrity
+- Saves debugging time
+- Shows thoroughness and professionalism
+
+---
+
+## 🚀 **Quick Reference**
+
+**Before removing any code:**
+```bash
+# 1. Search
+grep -r CodeElement src/
+
+# 2. Update usages
+# (edit files that use the element)
+
+# 3. Remove definition
+# (delete the code element)
+
+# 4. Verify
+bun run build
+```
+
+**Remember: Search → Update → Remove → Verify**
+
+This is a fundamental skill in refactoring. Master it, and your refactoring will be safe and professional.

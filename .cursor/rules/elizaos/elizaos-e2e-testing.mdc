@@ -1,6 +1,7 @@
 ---
-title: ElizaOS End-to-End Runtime Testing Guide
-alwaysApply: true
+description: End-to-end runtime testing guide for ElizaOS projects and plugins
+globs: packages/**/__tests__/e2e/**/*.ts,packages/**/e2e/**/*.ts
+alwaysApply: false
 ---
 
 # ElizaOS End-to-End Runtime Testing
