@@ -180,6 +180,7 @@ export const action: Action = {
         data: {
           actionName: LEVVA_ACTIONS.SWAP_TOKENS,
           response: responseContent,
+          thought,
           messageGenerated: true,
         },
         success: true,
@@ -224,6 +225,7 @@ export const action: Action = {
         data: {
           actionName: LEVVA_ACTIONS.SWAP_TOKENS,
           error: errorMessage,
+          thought: responseContent?.thought,
         },
         success: false,
         error: error as Error,

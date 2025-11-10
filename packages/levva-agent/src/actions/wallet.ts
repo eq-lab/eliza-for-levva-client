@@ -361,6 +361,7 @@ ${news
         data: {
           actionName: LEVVA_ACTIONS.ANALYZE_WALLET,
           error: errorMessage,
+          thought,
         },
         success: false,
         error: error as Error,

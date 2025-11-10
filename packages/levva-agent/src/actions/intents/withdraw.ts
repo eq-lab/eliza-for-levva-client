@@ -336,12 +336,14 @@ export const handleWithdrawIntent: IntentHandler = async (
         responded: true,
         lastReply: errorContent.text,
         lastReplyTime: Date.now(),
+        thoughtProcess: errorContent?.thought,
       },
       data: {
         actionName: LEVVA_ACTIONS.MANAGE_POSITIONS,
         intentType: "WITHDRAW",
         intentId: intentContext.id,
         needsMoreInfo: true,
+        thought: errorContent?.thought,
       },
     };
   }
@@ -417,6 +419,7 @@ export const handleWithdrawIntent: IntentHandler = async (
         responded: true,
         lastReply: errorContent.text,
         lastReplyTime: Date.now(),
+        thoughtProcess: errorContent?.thought,
       },
       data: {
         actionName: LEVVA_ACTIONS.MANAGE_POSITIONS,
@@ -424,6 +427,7 @@ export const handleWithdrawIntent: IntentHandler = async (
         intentId: intentContext.id,
         needsMoreInfo: true,
         showedPositions: true,
+        thought: errorContent?.thought,
       },
     };
   }
@@ -459,12 +463,14 @@ export const handleWithdrawIntent: IntentHandler = async (
               responded: true,
               lastReply: errorContent.text,
               lastReplyTime: Date.now(),
+              thoughtProcess: errorContent?.thought,
             },
             data: {
               actionName: LEVVA_ACTIONS.MANAGE_POSITIONS,
               intentType: "WITHDRAW",
               intentId: intentContext.id,
               needsMoreInfo: true,
+              thought: errorContent?.thought,
             },
           };
         }
@@ -539,6 +545,7 @@ NFT Address: ${withdrawal.withdrawalNftAddress}`,
         strategyId,
         userAddress: address,
         response: responseContent,
+        thought: responseContent?.thought,
       },
     };
   } catch (error) {
@@ -564,11 +571,13 @@ NFT Address: ${withdrawal.withdrawalNftAddress}`,
         responded: true,
         lastReply: errorContent.text,
         lastReplyTime: Date.now(),
+        thoughtProcess: errorContent?.thought,
       },
       data: {
         actionName: LEVVA_ACTIONS.MANAGE_POSITIONS,
         intentType: "WITHDRAW",
         error: (error as Error).message,
+        thought: errorContent?.thought,
       },
       error: error as Error,
     };

@@ -299,11 +299,13 @@ export const handleSendIntent: IntentHandler = async (
         responded: true,
         lastReply: responseContent.text,
         lastReplyTime: Date.now(),
+        thoughtProcess: responseContent?.thought,
       },
       data: {
         actionName: "ANALYZE_WALLET",
         error: errorMessage,
         intentId: intentContext.id,
+        thought: errorContent?.thought,
       },
     };
   }
@@ -396,6 +398,7 @@ const handleMissingSendParameters = async (
       responded: true,
       lastReply: errorContent.text,
       lastReplyTime: Date.now(),
+      thoughtProcess: errorContent?.thought,
     },
     data: {
       actionName: "ANALYZE_WALLET",
@@ -404,6 +407,7 @@ const handleMissingSendParameters = async (
       needsMoreInfo: true,
       missingParameter: missingParam,
       knownParameters: { tokenSymbol, tokenAddress, recipientAddress, amount },
+      thought: errorContent?.thought,
     },
   };
 };
@@ -500,6 +504,7 @@ Your transfer is ready to execute. The transaction will send ${amount} ${tokenSy
         responded: true,
         lastReply: responseContent.text,
         lastReplyTime: Date.now(),
+        thoughtProcess: responseContent?.thought,
       },
       data: {
         actionName: "SEND_TOKENS",
@@ -508,6 +513,7 @@ Your transfer is ready to execute. The transaction will send ${amount} ${tokenSy
         amount,
         recipientAddress,
         transactionPrepared: true,
+        thought,
       },
     };
   } catch (error) {

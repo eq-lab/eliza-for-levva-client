@@ -364,6 +364,7 @@ ${availableStrategies
       data: {
         actionName: LEVVA_ACTIONS.MANAGE_POSITIONS,
         error: errorMessage,
+        thought,
       },
       success: false,
       error: error as Error,
