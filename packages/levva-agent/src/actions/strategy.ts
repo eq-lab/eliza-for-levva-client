@@ -146,6 +146,7 @@ export const action: Action = {
           recommendation: true,
           strategiesCount: params.strategies.length,
           guidanceProvided: true,
+          thought,
         },
         success: true,
       };
@@ -182,6 +183,7 @@ export const action: Action = {
         data: {
           actionName: LEVVA_ACTIONS.SELECT_STRATEGY,
           error: errorMessage,
+          thought: responseContent?.thought,
         },
         success: false,
         error: error as Error,

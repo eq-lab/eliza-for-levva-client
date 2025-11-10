@@ -420,6 +420,7 @@ async function handleSwapError(
       intentId: intentContext.id,
       intentType: intentContext.type,
       error: errorMessage,
+      thought: responseContent?.thought,
     },
     success: false,
     error: error,

@@ -387,12 +387,14 @@ export const handleDepositIntent: IntentHandler = async (
         responded: true,
         lastReply: errorContent.text,
         lastReplyTime: Date.now(),
+        thoughtProcess: errorContent?.thought,
       },
       data: {
         actionName: LEVVA_ACTIONS.MANAGE_POSITIONS,
         intentType: "DEPOSIT",
         intentId: intentContext.id,
         error: error instanceof Error ? error.message : "Unknown error",
+        thought: errorContent?.thought,
       },
     };
   }
@@ -536,6 +538,7 @@ ${strategiesText}`;
       responded: true,
       lastReply: errorContent.text,
       lastReplyTime: Date.now(),
+      thoughtProcess: errorContent?.thought,
     },
     data: {
       actionName: LEVVA_ACTIONS.MANAGE_POSITIONS,
@@ -551,6 +554,7 @@ ${strategiesText}`;
         tokenAddress,
         amount,
       },
+      thought: errorContent?.thought,
     },
   };
 }
@@ -703,6 +707,7 @@ async function executeDepositTransaction(
         responded: true,
         lastReply: content.text,
         lastReplyTime: Date.now(),
+        thoughtProcess: content?.thought,
       },
       data: {
         actionName: LEVVA_ACTIONS.MANAGE_POSITIONS,
@@ -712,6 +717,7 @@ async function executeDepositTransaction(
         amount,
         token: tokenSymbol || tokenAddress,
         leverage: leverage || 1,
+        thought: content?.thought,
       },
     };
   } catch (error) {
@@ -736,12 +742,14 @@ async function executeDepositTransaction(
         responded: true,
         lastReply: errorContent.text,
         lastReplyTime: Date.now(),
+        thoughtProcess: errorContent?.thought,
       },
       data: {
         actionName: LEVVA_ACTIONS.MANAGE_POSITIONS,
         intentType: "DEPOSIT",
         intentId: intentContext.id,
         error: error instanceof Error ? error.message : "Unknown error",
+        thought: errorContent?.thought,
       },
     };
   }
