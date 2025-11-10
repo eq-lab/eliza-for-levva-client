@@ -102,7 +102,7 @@ export const suggestionsEvaluator: Evaluator = {
       }
 
       // Set loading state
-      loadingKey = `suggestions_loading:${user.address}:${chainId}`;
+      loadingKey = `suggestions_loading:${user.address}:${chainId}:${channelId}`;
       // @ts-expect-error - stateCache exists on runtime but not in interface
       await runtime.stateCache.set(loadingKey, true);
 
@@ -310,9 +310,12 @@ export const suggestionsEvaluator: Evaluator = {
         });
       }
 
-      await runtime.setCache(`suggestions:${user.address}:${chainId}`, {
-        value: result?.suggestions ?? [],
-      });
+      await runtime.setCache(
+        `suggestions:${user.address}:${chainId}:${channelId}`,
+        {
+          value: result?.suggestions ?? [],
+        }
+      );
 
       // Clear loading state
       // @ts-expect-error - stateCache exists on runtime but not in interface
