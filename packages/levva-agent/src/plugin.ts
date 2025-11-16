@@ -23,6 +23,7 @@ import { IntentManager } from "./services/intent-manager";
 import { MessageRateLimiter } from "./services/message-rate-limiter";
 import { LEVVA_SERVICE } from "./constants/enum";
 import { RedisService } from "./services/redis";
+import { pendleParamsProvider } from "./providers/pendle-params";
 
 /**
  * Define the configuration schema for the plugin with the following properties:
@@ -141,6 +142,7 @@ const plugin: Plugin = {
     levvaProvider,
     newsProvider,
     swapParamsProvider,
+    pendleParamsProvider,
     strategyParamsProvider,
     positionParamsProvider,
   ],

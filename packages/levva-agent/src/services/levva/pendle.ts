@@ -1,6 +1,5 @@
 import { PoolConstants } from "./pool";
 import pendleAdapterAbi from "./abi/pendle.adapter.abi";
-import type { PendleActiveMarkets } from "../../api/market/pendle";
 import { getChain, getClient } from "../../util/eth";
 import { ETH_NULL_ADDR } from "../../constants/eth";
 
@@ -43,8 +42,3 @@ export const getPendleParams = async (
     slippage,
   };
 };
-
-export interface PendleInterface {
-  getPendleMarkets(params: { chainId: number }): Promise<PendleActiveMarkets>;
-  getPendleParams: typeof getPendleParams;
-}

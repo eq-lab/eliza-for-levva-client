@@ -32,7 +32,8 @@ export const SWAP_PARAMS_PROVIDER_NAME = "SWAP_PARAMS";
 export const swapParamsProvider: Provider = {
   name: SWAP_PARAMS_PROVIDER_NAME,
   description:
-    "Parameters for swap transaction. Enable this provider if user wants to swap tokens.",
+    "Parameters for regular token swaps via KyberSwap, including ETH wrapping/unwrapping. " +
+    "Enable this provider if user wants to swap ERC-20 tokens, wrap ETH to WETH, or unwrap WETH to ETH.",
   dynamic: true,
   async get(runtime, message, state) {
     // Check for simple reply mode first

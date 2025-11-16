@@ -9,8 +9,6 @@ import {
   UUID,
 } from "@elizaos/core";
 import { LEVVA_SERVICE } from "../../constants/enum";
-import { getActiveMarkets, PendleActiveMarkets } from "../../api/market/pendle";
-import { CacheEntry } from "../../types/core";
 import { ILevvaService } from "../../types/service";
 import { CalldataWithDescription } from "../../types/tx";
 import { balancesTable } from "../../schema/balances";
@@ -24,15 +22,15 @@ import {
   getVaultConstants,
 } from "./pool";
 import { StrategyComponent } from "./strategy";
-import {
-  PendleInterface,
-  getPendleParams as getPendleParamsImpl,
-} from "./pendle";
 import { WalletServiceComponent } from "./wallet";
 import vaultAbi from "./abi/vault.abi";
 import withdrawalNftAbi from "./abi/vault.withdrawal-nft.abi";
 import { getChannelByName, getMessages } from "./messages";
-import { getUserPositions, getWithdrawalRequests } from "../../api/levva";
+import {
+  getActivePendleMarkets,
+  getUserPositions,
+  getWithdrawalRequests,
+} from "../../api/levva";
 import { createPositionSummary } from "./positions";
 import { checkSecret } from "./secrets";
 import { TokenServiceComponent } from "./token";
@@ -46,10 +44,7 @@ function checkPlugins(runtime: IAgentRuntime) {
   return REQUIRED_PLUGINS.every((plugin) => set.has(plugin));
 }
 
-export class LevvaService
-  extends Service
-  implements ILevvaService, PendleInterface
-{
+export class LevvaService extends Service implements ILevvaService {
   public readonly runtime: IAgentRuntime;
 
   // Service composition components - NEW functionality only
@@ -288,47 +283,22 @@ export class LevvaService
   }
 
   // -- End of Position Management --
-  private getPendleMarketsCacheKey = (
-    chainId: number,
-    {
-      baseToken,
-      quoteToken,
-    }: { baseToken: `0x${string}`; quoteToken: `0x${string}` }
-  ) => `pendle-markets:${chainId}:${baseToken}:${quoteToken}`;
 
-  getPendleParams = createPermanentCache(
+  getPendleMarkets = createTimedCache(
     this,
-    getPendleParamsImpl,
-    this.getPendleMarketsCacheKey
+    3600000, // 1 hour in milliseconds
+    async (chainId: number) => {
+      const result = await getActivePendleMarkets(chainId);
+      const supportedUnderlyingTypes = ["Stable", "ETH", "BTC"];
+
+      return result.success
+        ? result.data.filter((market) =>
+            supportedUnderlyingTypes.includes(market.underlyingType)
+          )
+        : undefined;
+    },
+    (chainId: number) => `pendle-markets:${chainId}`
   );
-
-  async getPendleMarkets(params: { chainId: number }) {
-    const ttl = 3600000;
-    const cacheKey = `pendle-markets:${params.chainId}`;
-
-    const cached =
-      await this.runtime.getCache<CacheEntry<PendleActiveMarkets>>(cacheKey);
-
-    if (cached?.timestamp && Date.now() - cached.timestamp < ttl) {
-      return cached.value;
-    }
-
-    const markets = await getActiveMarkets(params.chainId);
-
-    if (!markets.success) {
-      this.runtime.logger.error("Failed to get pendle markets", markets.error);
-      throw new Error("Failed to get pendle markets");
-    }
-
-    const value = markets.data.markets;
-
-    await this.runtime.setCache(cacheKey, {
-      timestamp: Date.now(),
-      value,
-    });
-
-    return value;
-  }
 
   async createCalldata(
     calls: CalldataWithDescription[]

@@ -1,5 +1,6 @@
 import { LEVVA_API_V1_BASEURL, LEVVA_API_V2_BASEURL } from "./constants";
 import {
+  pendleMarketResponseSchema,
   strategiesResponseSchema,
   tokenResponseSchema,
   userPositionsResponseSchema,
@@ -42,4 +43,11 @@ export const getToken = async (
   const response = await fetch(url);
   const data = await response.json();
   return tokenResponseSchema.safeParse(data);
+};
+
+export const getActivePendleMarkets = async (chainId: number) => {
+  const url = `${LEVVA_API_V2_BASEURL}/pools/markets?PublicChainId=${chainId}&ActiveOnly=true`;
+  const response = await fetch(url);
+  const data = await response.json();
+  return pendleMarketResponseSchema.safeParse(data);
 };

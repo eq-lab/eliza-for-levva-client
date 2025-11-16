@@ -12,36 +12,37 @@ import { Suggestion } from "./types";
 import { getPreviousReplyContext } from "../util/action-results";
 import { handleSwapIntent, generateSwapSuggestions } from "./intents/swap";
 import { IntentManager } from "../services/intent-manager";
+import { PENDLE_PARAMS_PROVIDER_NAME } from "../providers/pendle-params";
 
 const description =
-  "Handle token swap requests using intent-based system with multi-step process support including Kyber swaps and ETH wrapping/unwrapping.";
+  "Handle Pendle PT token swap, deposit, and withdraw requests using intent-based system with multi-step process support.";
 
 export const action: Action = {
-  name: LEVVA_ACTIONS.SWAP_TOKENS,
+  name: LEVVA_ACTIONS.SELECT_PENDLE_STRATEGY,
   description,
   similes: [
-    "SWAP_TOKENS",
-    "EXCHANGE_TOKENS",
-    "SWAP_ASSETS",
-    "EXCHANGE_ASSETS",
-    "swap tokens",
-    "swap assets",
-    "exchange tokens",
-    "exchange assets",
+    "SELECT_PENDLE_STRATEGY",
+    "buy Pendle PT",
+    "purchase Pendle PT",
+    "long Pendle PT",
+    "invest in Pendle PT",
+    "sell Pendle PT",
+    "exit Pendle PT",
+    "withdraw Pendle PT",
+    "remove liquidity from Pendle pool",
+    "deposit to Pendle pool",
+    "add liquidity to Pendle pool",
+    "provide liquidity to Pendle pool",
   ],
 
   validate: async () => {
-    // fixme validations run in ACTIONS provider on 1st runtime.composeState call
-    // runtime.composeState gets all providers in Promise.all, so provider position does not seem to matter
-    // consider implementing composeState sequentially, or calling compose state in validator(seems unreliable)
-    // so for now decide to always include
     return true;
   },
 
   handler: async (runtime, message, state, options, callback) => {
     try {
       runtime.logger.info(
-        "SWAP_TOKENS action called with composeState pattern"
+        "SELECT_PENDLE_STRATEGY action called with composeState pattern"
       );
 
       // 1. Get required services
@@ -57,7 +58,7 @@ export const action: Action = {
       // 2. Compose state and get provider data
       const composedState = await runtime.composeState(
         message,
-        [SWAP_PARAMS_PROVIDER_NAME],
+        [PENDLE_PARAMS_PROVIDER_NAME],
         true
       );
 
@@ -281,26 +282,48 @@ export const action: Action = {
 
 // Register the swap intent
 IntentManager.registerIntent({
-  type: INTENT_TYPE.SWAP,
-  domain: LEVVA_ACTIONS.SWAP_TOKENS,
+  type: INTENT_TYPE.SELECT_PENDLE_STRATEGY,
+  domain: LEVVA_ACTIONS.SELECT_PENDLE_STRATEGY,
   keywords: [
-    "swap",
-    "exchange",
-    "trade",
-    "convert",
-    "change",
-    "swap tokens",
-    "exchange tokens",
-    "trade tokens",
-    "convert tokens",
-    "wrap",
-    "unwrap",
-    "bridge",
+    // Buy PT tokens
+    "buy Pendle PT",
+    "purchase Pendle PT",
+    "buy PT tokens",
+    "long Pendle",
+    "invest in Pendle PT",
+    "swap to Pendle PT",
+    "get Pendle PT",
+
+    // Sell PT tokens
+    "sell Pendle PT",
+    "sell PT tokens",
+    "exit Pendle position",
+    "close Pendle position",
+    "convert PT to",
+
+    // Deposit/Provide Liquidity
+    "deposit to Pendle",
+    "provide liquidity to Pendle",
+    "add liquidity Pendle",
+    "deposit Pendle pool",
+    "LP Pendle",
+    "farm on Pendle",
+
+    // Withdraw Liquidity
+    "withdraw from Pendle",
+    "remove liquidity Pendle",
+    "exit Pendle pool",
+    "unstake Pendle",
+
+    // General Pendle references
+    "Pendle",
+    "PT token",
+    "principal token",
   ],
   handler: handleSwapIntent,
   generateSuggestions: generateSwapSuggestions,
   description:
-    "Handle token swap requests with multi-step process support including Kyber swaps and ETH wrapping/unwrapping",
+    "Handle Pendle PT token swap, deposit, and withdraw requests with multi-step process support",
 });
 
 // Removed legacy suggestion system - all swap suggestions now handled by intent-aware system

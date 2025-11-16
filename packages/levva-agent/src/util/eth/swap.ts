@@ -1,11 +1,4 @@
-import {
-  Chain,
-  formatUnits,
-  isHex,
-  maxUint256,
-  StateOverride,
-  toHex,
-} from "viem";
+import { Chain, formatUnits, isHex } from "viem";
 import { estimationTemplate } from "../../templates";
 import type { SwapEstimation, SwapInfo } from "../../types/swap";
 import { TokenDataWithInfo } from "src/types/token";
@@ -14,8 +7,7 @@ import { CalldataWithDescription } from "src/types/tx";
 import { getClient } from "./client";
 import { getSwapRouteV1, postSwapRouteV1 } from "src/api/swap/kyber";
 import { getPendleSwap } from "src/api/swap/pendle";
-import { getAllowance, getErc20ApprovalStorageSlot } from "./allowance";
-import { getToken, upsertToken } from "../db";
+import { getAllowance } from "./allowance";
 import { wethHelper } from "./weth";
 
 export const formatEstimation = (estimation: SwapEstimation) => {

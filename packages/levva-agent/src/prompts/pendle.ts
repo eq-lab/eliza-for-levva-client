@@ -1,46 +1,48 @@
 /**
- * Swap parameter extraction prompt
+ * Penfle parameter extraction prompt
  *
- * @version 1.2.0
- * @lastModified 2025-01-29
- * @changes v1.2.0: Added .regex() validation for amount, balance-aware conversion
- * @changes v1.1.0: Converted to Zod schema for structured output (follows @structured-output-patterns.mdc)
- * @changes v1.0.1: Added intent context support for improved extraction
+ * @version 1.0.0
+ * @lastModified 2025-11-17
  * @changes v1.0.0: Initial implementation
  */
 
 import { z } from "zod";
 import { formatZodKeys, formatZodOutput } from "./util";
 
-/** Zod schema for extracted swap parameters from user messages */
-export const extractedSwapParamsSchema = z
+/** Zod schema for extracted Pendle parameters from user messages */
+export const extractedPendleParamsSchema = z
   .object({
     thought: z
       .string()
       .describe(
-        "Your analysis of the swap request and parameter extraction. " +
+        "Your analysis of the Pendle PT token swap, deposit, and withdraw request and parameter extraction. " +
           "Include reasoning about token identification, amount interpretation, and any ambiguities resolved using context."
       ),
-    fromToken: z
+    tokenClass: z
+      .enum(["stable", "btc", "eth"])
+      .nullable()
+      .describe(
+        "Token category from <supportedTokens> format: 'stable', 'btc', or 'eth'. " +
+          "Examples: 'USD' → 'stable', 'BTC: WBTC' → 'btc', 'ETH: WETH' → 'eth'. " +
+          "Extract from the prefix of supported token entries. " +
+          "Return null if not specified or cannot be determined."
+      ),
+    token: z
       .string()
       .nullable()
       .describe(
-        "Token symbol (e.g., 'USDC', 'ETH') or contract address to swap FROM. " +
-          "Extract the source token the user wants to swap. " +
-          "If symbol: 'USDC', 'WETH', 'ETH'. " +
-          "If address: Must be valid Ethereum address format (0x + 40 hex characters, 42 total). " +
-          "Example address: 0xAf88d065e77c8cC2239327C5EDb3A432268e5831. " +
+        "Underlying token symbol for the PT token (e.g., 'USDC', 'USDe', 'WBTC', 'WETH'). " +
+          "Must match one of the {token} values in <supportedTokens> list. " +
           "Return null if not specified."
       ),
-    toToken: z
-      .string()
+    maturityDays: z
+      .number()
+      .int()
       .nullable()
       .describe(
-        "Token symbol (e.g., 'WETH', 'DAI') or contract address to swap TO. " +
-          "Extract the destination token the user wants to receive. " +
-          "If symbol: 'WETH', 'DAI', 'USDC'. " +
-          "If address: Must be valid Ethereum address format (0x + 40 hex characters, 42 total). " +
-          "Example address: 0x82aF49447D8a07e3bd95BD0d56f35241523fBab1. " +
+        "Integer representing days from now until PT token maturity date. " +
+          "Convert temporal expressions (e.g., '30 days' → 30, '3 months' → 90). " +
+          "For absolute dates, calculate days from UTC now till the specified date. " +
           "Return null if not specified."
       ),
     amount: z
@@ -57,30 +59,38 @@ export const extractedSwapParamsSchema = z
           '50% → (0.5 × balance), "all"/"max" → full balance. ' +
           "NEVER include %, currency symbols, or token symbols."
       ),
+    type: z
+      .enum(["deposit", "withdraw", "buy", "sell"])
+      .nullable()
+      .describe(
+        "Type of Pendle operation: 'deposit' (add liquidity), 'withdraw' (remove liquidity), 'buy' (purchase PT tokens), 'sell' (sell PT tokens). " +
+          "Detect from user's intent: 'deposit to Pendle' → 'deposit', 'buy PT' → 'buy', 'swap to PT' → 'buy', 'sell PT' → 'sell'. " +
+          "Return null if operation type cannot be determined from the message."
+      ),
   })
   .describe(
-    "Extracted swap parameters from user messages (Kyber swap and wrapping/unwrapping operations)"
+    "Extracted Pendle PT token swap, deposit, and withdraw transaction parameters from user messages"
   );
 
-/** Extracted swap parameters type inferred from Zod schema */
-export type ExtractedSwapParams = z.infer<typeof extractedSwapParamsSchema>;
+/** Extracted Pendle parameters type inferred from Zod schema */
+export type ExtractedPendleParams = z.infer<typeof extractedPendleParamsSchema>;
 
-export const selectSwapDataFromMessagesPrompt = (ctx: {
+export const selectPendleDataFromMessagesPrompt = (ctx: {
   recentMessages: string;
-  tokens: string;
-  userPortfolio?: string; // User's actual holdings (all tokens with non-zero balances)
+  userPortfolio?: string;
+  pendleTokens?: string;
   intentContext?: {
     type: string;
     returnData?: Record<string, any>;
     memories?: string;
   };
 }) => `<task>
-Extract swap transaction parameters from recent messages${ctx.intentContext ? " using intent context for improved accuracy" : ""}.
+Extract Pendle transaction parameters from recent messages${ctx.intentContext ? " using intent context for improved accuracy" : ""}.
 </task>
-<knownTokens>
-Available tokens for swapping:
-${ctx.tokens}
-</knownTokens>
+<supportedTokens>
+Supported Pendle tokens:
+${ctx.pendleTokens}
+</supportedTokens>
 ${
   ctx.userPortfolio
     ? `<userPortfolio>
@@ -124,12 +134,12 @@ GENERAL INSTRUCTIONS:
     : ""
 }
 - Ignore messages for transactions that are either canceled or confirmed
-- Choose token symbol from known token symbols if ambiguous
-- Extract the following information for the swap transaction:
+- Choose token symbol {token} from <supportedTokens> symbols if ambiguous
+- Extract the following information for the pendle swap transaction:
   * Token symbol or address to swap FROM (source token)
   * Token symbol or address to swap TO (destination token)  
   * Amount of tokens to swap (denominated in the FROM token)
-- If multiple swap requests exist, extract parameters for the MOST RECENT uncompleted swap
+- If multiple pendle swap requests exist, extract parameters for the MOST RECENT uncompleted swap
 - Handle common token aliases (e.g., "ETH" = "WETH" for wrapped operations)
 ${ctx.intentContext ? '- Leverage intent context to resolve ambiguous references (e.g., "that token" referring to previously mentioned tokens)' : ""}
 
@@ -144,17 +154,29 @@ AMOUNT PARSING RULES:
 - NEVER include: %, $, currency symbols, or token symbols in the amount field
 
 TOKEN SELECTION GUIDANCE:
-- If user doesn't specify fromToken, check <userPortfolio> to suggest tokens they actually own
-- If user says "swap my X", look for X in <userPortfolio> to confirm they have it
-- Use decimal precision shown in <userPortfolio> for accurate amount formatting
+- The user MUST explicitly specify the token - do not infer or suggest if missing
+- The token MUST be one of the {token} values from <supportedTokens> list
+- Match the token symbol case-insensitively (e.g., "usdc" matches "USDC", "USDe" matches "usde")
+- If the user specifies a token not in <supportedTokens>, return null and explain in the thought field
+
+DAYS UNTIL MATURITY SELECTION GUIDANCE:
+- The maturityDays value MUST be an integer representing the number of days from now until the token's maturity date
+- Detect temporal expressions and convert to days:
+  * "30 days" → 30
+  * "3 weeks" → 21 (3 × 7)
+  * "2 months" → 60 (2 × 30, approximate)
+  * "1 year" → 365
+- If the user specifies an absolute date (e.g., "December 2025", "2025-12-31"):
+  * Calculate the number of days from UTC now to that date
+- Maturity dates must be in the future - if calculated days is ≤ 0, return null
 </instructions>
 
 <keys>
-${formatZodKeys(extractedSwapParamsSchema)}
+${formatZodKeys(extractedPendleParamsSchema)}
 </keys>
 
 <output>
-${formatZodOutput(extractedSwapParamsSchema)}
+${formatZodOutput(extractedPendleParamsSchema)}
 
 CRITICAL: Your response must contain ONLY the JSON object, no explanations or additional text.
 </output>`;

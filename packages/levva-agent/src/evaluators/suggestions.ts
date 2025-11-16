@@ -9,7 +9,7 @@ import {
 } from "@elizaos/core";
 import { plugin } from "@elizaos/plugin-sql";
 import { modules } from "../actions/modules";
-import { LEVVA_SERVICE } from "../constants/enum";
+import { LEVVA_ACTIONS, LEVVA_SERVICE } from "../constants/enum";
 import { defaultSuggestionPrompt } from "../prompts/suggest/default";
 import {
   defaultSuggestionSchema,
@@ -182,9 +182,10 @@ export const suggestionsEvaluator: Evaluator = {
           // This handles cases where intent might be in a different domain (edge case)
           if (!activeIntent) {
             const allDomains = [
-              "MANAGE_POSITIONS",
-              "SWAP_TOKENS",
-              "ANALYZE_WALLET",
+              LEVVA_ACTIONS.MANAGE_POSITIONS,
+              LEVVA_ACTIONS.SWAP_TOKENS,
+              LEVVA_ACTIONS.ANALYZE_WALLET,
+              LEVVA_ACTIONS.SELECT_PENDLE_STRATEGY,
             ];
             const domainsToCheck = actionLookup
               ? allDomains.filter((d) => d !== actionLookup)
