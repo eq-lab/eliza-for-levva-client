@@ -100,6 +100,7 @@ export const withdrawalRequestsResponseSchema = z.array(
 
 // Token response schema
 export const tokenResponseSchema = tokenSchema;
+export const tokensResponseSchema = z.array(tokenSchema);
 
 // Pendle market response schema
 export const pendleMarketResponseSchema = z.array(pendleMarketSchema);

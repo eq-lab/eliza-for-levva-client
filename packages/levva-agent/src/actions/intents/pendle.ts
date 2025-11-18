@@ -1,4 +1,4 @@
-import { parseUnits } from "viem";
+import { encodeFunctionData, erc20Abi, formatUnits, parseUnits } from "viem";
 import {
   type IAgentRuntime,
   type Memory,
@@ -8,26 +8,24 @@ import {
 } from "@elizaos/core";
 import { LEVVA_ACTIONS, LEVVA_SERVICE } from "../../constants/enum";
 import { LEVVA_PROVIDER_NAME, LevvaProviderState } from "../../providers";
-import {
-  SWAP_PARAMS_PROVIDER_NAME,
-  SwapParamsProviderData,
-} from "../../providers/swap-params";
 import { LevvaService } from "../../services/levva/class";
 import { CalldataWithDescription } from "../../types/tx";
-import { getChain } from "../../util";
 import { rephrase } from "../../util/generate";
-import { formatEstimation, selectSwapRouter } from "../../util/eth/swap";
-import { unwrapEth, wrapEth } from "../../util/eth/weth";
 import { IntentContext, IntentHandler } from "../../services/intent-manager";
 import { ActionResult } from "../../util/action-results";
-import { generateSwapIntentSuggestionsPrompt } from "../../prompts/suggest/swap-intent";
 import { ETH_NULL_ADDR } from "../../constants/eth";
 import { selectProviderState } from "../../providers/util";
+import {
+  PENDLE_PARAMS_PROVIDER_NAME,
+  PendleParamsProviderData,
+} from "../../providers/pendle-params";
+import { generatePendleStrategyIntentSuggestionsPrompt } from "../../prompts/suggest/pendle-intent";
+import { getPendleConvert } from "../../api/pendle";
 
 /**
- * Generate suggestions for SWAP intent
+ * Generate suggestions for Pendle strategy intent
  */
-export async function generateSwapSuggestions(params: {
+export async function generatePendleStrategySuggestions(params: {
   runtime: IAgentRuntime;
   intentContext: IntentContext;
   conversation: string;
@@ -68,7 +66,7 @@ export async function generateSwapSuggestions(params: {
   const availableTokens = await service.token.getAvailableTokens({ chainId });
 
   // Generate prompt using consolidated prompt function
-  return generateSwapIntentSuggestionsPrompt({
+  return generatePendleStrategyIntentSuggestionsPrompt({
     intentContext,
     conversation,
     userAddress,
@@ -83,12 +81,11 @@ export async function generateSwapSuggestions(params: {
 }
 
 /**
- * Swap Intent Handler
+ * Pendle strategy Intent Handler
  *
- * Handles token swapping operations with intent context tracking.
- * Supports Kyber swaps, ETH wrapping/unwrapping with multi-step workflows.
+ * Handles Pendle strategy operations with intent context tracking.
  */
-export const handleSwapIntent: IntentHandler = async (
+export const handlePendleStrategyIntent: IntentHandler = async (
   runtime: IAgentRuntime,
   message: Memory,
   state: State,
@@ -97,7 +94,7 @@ export const handleSwapIntent: IntentHandler = async (
   prevActions?: any
 ): Promise<ActionResult> => {
   try {
-    runtime.logger.info("Handling SWAP intent", {
+    runtime.logger.info("Handling Pendle strategy intent", {
       intentId: intentContext.id,
       intentType: intentContext.type,
     });
@@ -119,30 +116,35 @@ export const handleSwapIntent: IntentHandler = async (
     }
 
     // Handle both composedState (from action) and regular state (from IntentManager)
-    const lvva = selectProviderState<LevvaProviderState>(
+    const levvaProviderState = selectProviderState<LevvaProviderState>(
       LEVVA_PROVIDER_NAME,
       state
     );
 
-    const params = selectProviderState<SwapParamsProviderData>(
-      SWAP_PARAMS_PROVIDER_NAME,
+    const params = selectProviderState<PendleParamsProviderData>(
+      PENDLE_PARAMS_PROVIDER_NAME,
       state
     );
 
-    if (!lvva?.user) {
+    if (!levvaProviderState?.user) {
       throw new Error("User address ID is required");
     }
 
     if (!params) {
       throw new Error(
-        `Failed to get provider(${SWAP_PARAMS_PROVIDER_NAME}) results`
+        `Failed to get provider(${PENDLE_PARAMS_PROVIDER_NAME}) results`
       );
     }
 
     // Check if we have all required parameters
-    if (!params.type || !params.tokenIn || !params.tokenOut || !params.amount) {
+    if (
+      !params.type ||
+      !params.tokenInData ||
+      !params.pendleMarketAddress ||
+      !params.amountIn
+    ) {
       // Missing parameters - ask user for more information
-      return await handleMissingSwapParameters(
+      return await handleMissingPendleStrategyParameters(
         runtime,
         message,
         state,
@@ -152,21 +154,21 @@ export const handleSwapIntent: IntentHandler = async (
       );
     }
 
-    // All parameters available - execute the swap
-    return await executeSwapTransaction(
+    // All parameters available - execute the Pendle strategy
+    return await executePendleStrategyTransaction(
       runtime,
       message,
       state,
       callback,
       intentContext,
       params,
-      lvva,
+      levvaProviderState,
       service,
       prevActions
     );
   } catch (error) {
-    runtime.logger.error("Error in SWAP intent handler:", error);
-    return await handleSwapError(
+    runtime.logger.error("Error in Pendle strategy intent handler:", error);
+    return await handlePendleStrategyError(
       runtime,
       message,
       state,
@@ -179,9 +181,9 @@ export const handleSwapIntent: IntentHandler = async (
 };
 
 /**
- * Handle case where swap parameters are missing
+ * Handle case where Pendle strategy parameters are missing
  */
-async function handleMissingSwapParameters(
+async function handleMissingPendleStrategyParameters(
   runtime: IAgentRuntime,
   message: Memory,
   state: State,
@@ -189,19 +191,22 @@ async function handleMissingSwapParameters(
   intentContext: IntentContext,
   prevActions?: any
 ): Promise<ActionResult> {
-  runtime.logger.info("Missing swap parameters, asking user for input", {
-    intentId: intentContext.id,
-  });
+  runtime.logger.info(
+    "Missing Pendle strategy parameters, asking user for input",
+    {
+      intentId: intentContext.id,
+    }
+  );
 
-  if (!state.values.swap) {
-    throw new Error("Failed to get swap parameters");
+  if (!state.values.strategy) {
+    throw new Error("Failed to get Pendle strategy parameters");
   }
 
   const content: Content = {
     thought:
-      "Need to ask user for missing swap parameters to continue the intent",
-    text: state.values.swap,
-    actions: ["SWAP_TOKENS"],
+      "Need to ask user for missing Pendle strategy parameters to continue the intent",
+    text: state.values.strategy,
+    actions: [`${LEVVA_ACTIONS.SELECT_PENDLE_STRATEGY}`],
     source: message.content.source,
   };
 
@@ -223,7 +228,7 @@ async function handleMissingSwapParameters(
       thoughtProcess: responseContent?.thought,
     },
     data: {
-      actionName: `${LEVVA_ACTIONS.SWAP_TOKENS}`,
+      actionName: `${LEVVA_ACTIONS.SELECT_PENDLE_STRATEGY}`,
       intentId: intentContext.id,
       intentType: intentContext.type,
       response: responseContent,
@@ -238,84 +243,110 @@ async function handleMissingSwapParameters(
 }
 
 /**
- * Execute the swap transaction with all parameters available
+ * Execute the Pendle strategy transaction with all parameters available
  */
-async function executeSwapTransaction(
+async function executePendleStrategyTransaction(
   runtime: IAgentRuntime,
   message: Memory,
   state: State,
   callback: HandlerCallback,
   intentContext: IntentContext,
-  params: SwapParamsProviderData,
-  lvva: LevvaProviderState,
-  service: LevvaService,
+  params: PendleParamsProviderData,
+  levvaProviderState: LevvaProviderState,
+  levvaService: LevvaService,
   prevActions?: any
 ): Promise<ActionResult> {
-  const { tokenIn, tokenOut, amount, type } = params;
+  const { tokenInData, pendleMarketAddress, amountIn, type } = params;
 
-  runtime.logger.info("Executing swap transaction", {
+  runtime.logger.info("Executing Pendle strategy transaction", {
     intentId: intentContext.id,
     type,
-    amount,
-    tokenIn: tokenIn?.symbol,
-    tokenOut: tokenOut?.symbol,
+    amountIn,
+    tokenInSymbol: tokenInData?.symbol,
+    pendleMarketAddress: pendleMarketAddress,
   });
 
-  const amountUnits = parseUnits(amount!, tokenIn!.decimals);
-  const chain = getChain(lvva.chainId);
-  let calldata: CalldataWithDescription[];
+  const amountUnits = parseUnits(amountIn!, tokenInData!.decimals);
+  let calldata: CalldataWithDescription[] = [];
   let thought: string;
   let text: string;
 
   switch (type) {
-    case "kyber": {
-      const swap = selectSwapRouter(tokenIn!, tokenOut!);
+    case "buy": {
+      const tokenInAddress =
+        tokenInData?.symbol == "ETH"
+          ? ETH_NULL_ADDR
+          : (tokenInData!.address! as `0x${string}`);
 
-      const { calls, estimation } = await swap(runtime, {
-        address: lvva.user!.address,
-        amountIn: amountUnits,
-        chain,
-        decimals: tokenIn!.decimals,
+      const pendleMarketTokens = await levvaService.getPendleMarketTokens(
+        levvaProviderState.chainId,
+        pendleMarketAddress as `0x${string}`
+      );
+
+      const ptTokenData = await levvaService.token.getTokenDataWithInfo({
+        chainId: levvaProviderState.chainId,
+        symbolOrAddress: pendleMarketTokens!.ptAddress,
       });
 
-      calldata = calls;
+      const convert = await getPendleConvert({
+        receiver: levvaProviderState.user!.address as `0x${string}`,
+        chainId: `${levvaProviderState.chainId}`,
+        tokensIn: tokenInAddress,
+        tokensOut: pendleMarketTokens!.ptAddress as `0x${string}`,
+        amountsIn: `${amountUnits}`,
+        slippage: "0.005",
+        enableAggregator: "true",
+      });
+
+      if (!convert || !convert.routes || convert.routes.length === 0) {
+        throw new Error("Failed to get Pendle swap details. Try again later.");
+      }
+
+      if (convert.requiredApprovals.length > 0) {
+        for (const approval of convert.requiredApprovals) {
+          calldata.push({
+            to: approval.token as `0x${string}`,
+            data: encodeFunctionData({
+              abi: erc20Abi,
+              functionName: "approve",
+              args: [
+                pendleMarketAddress! as `0x${string}`,
+                BigInt(approval.amount),
+              ],
+            }),
+            title: `Approve ${formatUnits(BigInt(approval.amount), tokenInData!.decimals!)} ${tokenInData!.symbol!}`,
+            description: `Approve spending ${formatUnits(BigInt(approval.amount), tokenInData!.decimals!)} ${tokenInData!.symbol!} to ${ptTokenData?.symbol!}`,
+          });
+        }
+      }
+
+      const route = convert.routes[0].tx;
+
+      calldata.push({
+        to: route.to as `0x${string}`,
+        data: route.data as `0x${string}`,
+        value: route.value,
+        title: `Swap ${amountIn} ${tokenInData!.symbol} to ${ptTokenData?.symbol!}`,
+        description: `Swap ${amountIn!} ${tokenInData!.symbol} to ${ptTokenData?.symbol!}`,
+      });
+
       const description =
-        calls.length > 1
-          ? `### Transaction steps\n${calls.map((c, i) => `${i + 1}. ${c.description}`).join("\n")}`
-          : `${calls[0].description}\n\n${formatEstimation(estimation)}`;
-      thought = `Prepared Kyber swap transaction for intent ${intentContext.id} to swap ${amount} ${tokenIn!.symbol} to ${tokenOut!.symbol}`;
+        calldata.length > 1
+          ? `### Transaction steps\n${calldata.map((c, i) => `${i + 1}. ${c.description}`).join("\n")}`
+          : calldata[0].description;
+      thought = `Prepared Pendle strategy transaction for intent ${intentContext.id}: ${type} ${pendleMarketAddress} for ${amountIn} ${tokenInData!.symbol!}`;
       text = `${description}\n\nPlease approve transactions in your wallet.`;
       break;
     }
-    case "wrap": {
-      calldata = [
-        wrapEth(amountUnits, {
-          address: tokenOut!.address!,
-          decimals: tokenOut!.decimals,
-        }),
-      ];
-
-      thought = `Prepared ETH wrap transaction for intent ${intentContext.id} to wrap ${amount} ${tokenIn!.symbol} to ${tokenOut!.symbol}`;
-      text = `Wrapping ${amount} ${tokenIn!.symbol} to ${tokenOut!.symbol}\n\nPlease approve transactions in your wallet.`;
-      break;
-    }
-    case "unwrap": {
-      calldata = [
-        unwrapEth(amountUnits, {
-          address: tokenIn!.address!,
-          decimals: tokenIn!.decimals,
-        }),
-      ];
-
-      thought = `Prepared ETH unwrap transaction for intent ${intentContext.id} to unwrap ${amount} ${tokenIn!.symbol} to ${tokenOut!.symbol}`;
-      text = `Unwrapping ${amount} ${tokenIn!.symbol} to ${tokenOut!.symbol}\n\nPlease approve transactions in your wallet.`;
-      break;
-    }
+    // TODO: implement cases below
+    case "sell":
+    case "deposit":
+    case "withdraw":
     default:
-      throw new Error(`Unknown swap type: ${type}`);
+      throw new Error(`Unknown Pendle strategy type: ${type}`);
   }
 
-  const hash = await service.createCalldata(calldata);
+  const hash = await levvaService.createCalldata(calldata);
 
   const json = {
     id: "calls.json",
@@ -325,7 +356,7 @@ async function executeSwapTransaction(
   const content: Content = {
     thought,
     text,
-    actions: ["SWAP_TOKENS"],
+    actions: [`${LEVVA_ACTIONS.SELECT_PENDLE_STRATEGY}`],
     source: message.content.source,
     attachments: [json],
   };
@@ -348,7 +379,7 @@ async function executeSwapTransaction(
       thoughtProcess: responseContent?.thought,
     },
     data: {
-      actionName: `${LEVVA_ACTIONS.SWAP_TOKENS}`,
+      actionName: `${LEVVA_ACTIONS.SELECT_PENDLE_STRATEGY}`,
       intentId: intentContext.id,
       intentType: intentContext.type,
       response: responseContent,
@@ -358,12 +389,11 @@ async function executeSwapTransaction(
       messageGenerated: true,
       transactionPrepared: true,
       calldataHash: hash,
-      swapDetails: {
+      pendleStrategyDetails: {
         type,
-        amount,
-        tokenIn: tokenIn!.symbol,
-        tokenOut: tokenOut!.symbol,
-        amountUnits: amountUnits.toString(),
+        amountIn,
+        tokenIn: tokenInData,
+        pendleMarketAddress: pendleMarketAddress,
       },
     },
     success: true,
@@ -371,9 +401,9 @@ async function executeSwapTransaction(
 }
 
 /**
- * Handle swap errors with intent context
+ * Handle Pendle strategy errors with intent context
  */
-async function handleSwapError(
+async function handlePendleStrategyError(
   runtime: IAgentRuntime,
   message: Memory,
   state: State,
@@ -382,21 +412,21 @@ async function handleSwapError(
   error: Error,
   prevActions?: any
 ): Promise<ActionResult> {
-  runtime.logger.error("Swap intent error", {
+  runtime.logger.error("Pendle strategy intent error", {
     intentId: intentContext.id,
     error: error.message,
   });
 
   const errorMessage = error.message ?? "unknown error";
-  const thought = `Swap intent ${intentContext.id} failed with error: ${errorMessage}. I should tell the user about the error.`;
-  const text = `Failed to prepare swap transaction, reason: ${errorMessage}. Please try again.`;
+  const thought = `Pendle strategy intent ${intentContext.id} failed with error: ${errorMessage}. I should tell the user about the error.`;
+  const text = `Failed to prepare Pendle strategy transaction, reason: ${errorMessage}. Please try again.`;
 
   const responseContent = await rephrase({
     runtime,
     content: {
       text,
       thought,
-      actions: ["SWAP_TOKENS"],
+      actions: [`${LEVVA_ACTIONS.SELECT_PENDLE_STRATEGY}`],
       source: message.content.source,
     },
     state: state!,
@@ -406,7 +436,7 @@ async function handleSwapError(
   await callback?.(responseContent);
 
   return {
-    text: `Error generating swap transaction: ${errorMessage}.`,
+    text: `Error generating Pendle strategy transaction: ${errorMessage}.`,
     values: {
       success: false,
       responded: true,
@@ -416,7 +446,7 @@ async function handleSwapError(
       thoughtProcess: responseContent?.thought,
     },
     data: {
-      actionName: `${LEVVA_ACTIONS.SWAP_TOKENS}`,
+      actionName: `${LEVVA_ACTIONS.SELECT_PENDLE_STRATEGY}`,
       intentId: intentContext.id,
       intentType: intentContext.type,
       error: errorMessage,
@@ -428,16 +458,16 @@ async function handleSwapError(
 }
 
 /**
- * Swap completion handler for evaluators
- * Called when a swap transaction is confirmed
+ * Pendle strategy completion handler for evaluators
+ * Called when a Pendle strategy transaction is confirmed
  */
-export const onSwapSuccess = async (
+export const onPendleStrategySuccess = async (
   runtime: IAgentRuntime,
   intentContext: IntentContext,
   transactionReceipt: any
 ): Promise<boolean> => {
   try {
-    runtime.logger.info("Swap transaction completed successfully", {
+    runtime.logger.info("Pendle strategy transaction completed successfully", {
       intentId: intentContext.id,
       transactionHash: transactionReceipt.transactionHash,
     });

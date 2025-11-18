@@ -1,18 +1,20 @@
 import { type Action } from "@elizaos/core";
 import { LEVVA_ACTIONS, LEVVA_SERVICE, INTENT_TYPE } from "../constants/enum";
-import {
-  SWAP_PARAMS_PROVIDER_NAME,
-  SwapParamsProviderData,
-} from "../providers/swap-params";
 import { LEVVA_PROVIDER_NAME, LevvaProviderState } from "../providers";
 import { selectProviderState } from "../providers/util";
 import { LevvaService } from "../services/levva/class";
 import { rephrase } from "../util/generate";
 import { Suggestion } from "./types";
 import { getPreviousReplyContext } from "../util/action-results";
-import { handleSwapIntent, generateSwapSuggestions } from "./intents/swap";
 import { IntentManager } from "../services/intent-manager";
-import { PENDLE_PARAMS_PROVIDER_NAME } from "../providers/pendle-params";
+import {
+  PENDLE_PARAMS_PROVIDER_NAME,
+  PendleParamsProviderData,
+} from "../providers/pendle-params";
+import {
+  generatePendleStrategySuggestions,
+  handlePendleStrategyIntent,
+} from "./intents";
 
 const description =
   "Handle Pendle PT token swap, deposit, and withdraw requests using intent-based system with multi-step process support.";
@@ -46,12 +48,12 @@ export const action: Action = {
       );
 
       // 1. Get required services
-      const service = runtime.getService<LevvaService>(
+      const levvaService = runtime.getService<LevvaService>(
         LEVVA_SERVICE.LEVVA_COMMON
       );
-      if (!service) {
+      if (!levvaService) {
         throw new Error(
-          "LevvaService not found - required for swap operations"
+          "LevvaService not found - required for Pendle operations"
         );
       }
 
@@ -62,14 +64,14 @@ export const action: Action = {
         true
       );
 
-      const providerData = selectProviderState<SwapParamsProviderData>(
-        SWAP_PARAMS_PROVIDER_NAME,
+      const providerData = selectProviderState<PendleParamsProviderData>(
+        PENDLE_PARAMS_PROVIDER_NAME,
         composedState
       );
 
       if (!providerData) {
         throw new Error(
-          `Failed to get provider(${SWAP_PARAMS_PROVIDER_NAME}) results`
+          `Failed to get provider(${PENDLE_PARAMS_PROVIDER_NAME}) results`
         );
       }
 
@@ -80,13 +82,13 @@ export const action: Action = {
         composedState
       );
 
-      // 4. Get user info from lvva provider
-      const lvva = selectProviderState<LevvaProviderState>(
+      // 4. Get user info from levva provider
+      const levvaProviderState = selectProviderState<LevvaProviderState>(
         LEVVA_PROVIDER_NAME,
         composedState
       );
 
-      if (!lvva?.user) {
+      if (!levvaProviderState?.user) {
         throw new Error("User address is required");
       }
 
@@ -98,7 +100,7 @@ export const action: Action = {
         });
 
         // Use intent handler with context from provider
-        return await handleSwapIntent(
+        return await handlePendleStrategyIntent(
           runtime,
           message,
           composedState,
@@ -108,15 +110,15 @@ export const action: Action = {
         );
       }
 
-      // 6. If no intent context but we have swap parameters, handle as direct swap request
+      // 6. If no intent context but we have Pendle parameters, handle as direct Pendle strategy request
       if (
         providerData.type &&
-        providerData.tokenIn &&
-        providerData.tokenOut &&
-        providerData.amount
+        providerData.tokenInData &&
+        providerData.pendleMarketAddress &&
+        providerData.amountIn
       ) {
         runtime.logger.info(
-          "Processing direct swap request without intent context"
+          "Processing direct Pendle strategy request without intent context"
         );
 
         // Create a minimal intent context for the swap handler
@@ -125,18 +127,18 @@ export const action: Action = {
         );
         if (intentManager) {
           const intentContext = await intentManager.createIntent({
-            type: INTENT_TYPE.SWAP,
-            domain: LEVVA_ACTIONS.SWAP_TOKENS,
+            type: INTENT_TYPE.SELECT_PENDLE_STRATEGY,
+            domain: LEVVA_ACTIONS.SELECT_PENDLE_STRATEGY,
             userId: (message as any).userId || "unknown",
             channelId: message.roomId,
             metadata: {
-              userAddress: lvva.user.address,
-              chainId: lvva.chainId,
-              directSwap: true,
+              userAddress: levvaProviderState.user.address,
+              chainId: levvaProviderState.chainId,
+              directSwap: true, // TODO
             },
           });
 
-          return await handleSwapIntent(
+          return await handlePendleStrategyIntent(
             runtime,
             message,
             composedState,
@@ -147,18 +149,18 @@ export const action: Action = {
         }
       }
 
-      // 7. If no clear swap parameters, provide helpful guidance
+      // 7. If no clear Pendle parameters, provide helpful guidance
       const thought =
-        "User message doesn't contain clear swap parameters. I should ask for clarification.";
+        "User message doesn't contain clear Pendle parameters. I should ask for clarification.";
       const text =
-        "I'd be happy to help you swap tokens! Please specify which tokens you'd like to swap and the amount. For example: 'Swap 100 USDC to ETH' or 'Exchange 0.5 ETH for USDT'.";
+        "I'd be happy to help you with Pendle! Please specify which tokens you'd like to buy, sell, deposit, or withdraw and the amount. For example: 'Buy 100 USDC PT' or 'Sell 0.5 ETH PT' or 'Deposit 100 USDC to Pendle pool' or 'Withdraw 0.5 ETH from Pendle pool'.";
 
       const responseContent = await rephrase({
         runtime,
         content: {
           text,
           thought,
-          actions: ["SWAP_TOKENS"],
+          actions: [`${LEVVA_ACTIONS.SELECT_PENDLE_STRATEGY}`],
           source: message.content.source,
         },
         state: composedState,
@@ -168,7 +170,7 @@ export const action: Action = {
       await callback!(responseContent);
 
       return {
-        text: `Generated ${LEVVA_ACTIONS.SWAP_TOKENS}: ${responseContent?.text}`,
+        text: `Generated ${LEVVA_ACTIONS.SELECT_PENDLE_STRATEGY}: ${responseContent?.text}`,
         values: {
           success: true,
           responded: true,
@@ -177,7 +179,7 @@ export const action: Action = {
           thoughtProcess: responseContent?.thought,
         },
         data: {
-          actionName: LEVVA_ACTIONS.SWAP_TOKENS,
+          actionName: `${LEVVA_ACTIONS.SELECT_PENDLE_STRATEGY}`,
           response: responseContent,
           thought,
           messageGenerated: true,
@@ -185,10 +187,10 @@ export const action: Action = {
         success: true,
       };
     } catch (error) {
-      runtime.logger.error("Error in SWAP_TOKENS action:", error);
+      runtime.logger.error("Error in SELECT_PENDLE_STRATEGY action:", error);
       const errorMessage = (error as Error).message ?? "unknown error";
       const thought = `Action failed with error: ${errorMessage}. I should tell the user about the error.`;
-      const text = `Failed to process swap request, reason: ${errorMessage}. Please try again.`;
+      const text = `Failed to process Pendle request, reason: ${errorMessage}. Please try again.`;
 
       // Get previous actions context for error handling
       const prevActions = await getPreviousReplyContext(
@@ -202,7 +204,7 @@ export const action: Action = {
         content: {
           text,
           thought,
-          actions: ["SWAP_TOKENS"],
+          actions: [`${LEVVA_ACTIONS.SELECT_PENDLE_STRATEGY}`],
           source: message.content.source,
         },
         state: state || ({} as any),
@@ -212,7 +214,7 @@ export const action: Action = {
       await callback?.(responseContent);
 
       return {
-        text: `Error processing swap request: ${errorMessage}.`,
+        text: `Error processing Pendle strategy request: ${errorMessage}.`,
         values: {
           success: false,
           responded: true,
@@ -222,7 +224,7 @@ export const action: Action = {
           thoughtProcess: responseContent?.thought,
         },
         data: {
-          actionName: LEVVA_ACTIONS.SWAP_TOKENS,
+          actionName: `${LEVVA_ACTIONS.SELECT_PENDLE_STRATEGY}`,
           error: errorMessage,
           thought: responseContent?.thought,
         },
@@ -280,7 +282,7 @@ export const action: Action = {
   ],
 };
 
-// Register the swap intent
+// Register the Pendle strategy intent
 IntentManager.registerIntent({
   type: INTENT_TYPE.SELECT_PENDLE_STRATEGY,
   domain: LEVVA_ACTIONS.SELECT_PENDLE_STRATEGY,
@@ -320,8 +322,8 @@ IntentManager.registerIntent({
     "PT token",
     "principal token",
   ],
-  handler: handleSwapIntent,
-  generateSuggestions: generateSwapSuggestions,
+  handler: handlePendleStrategyIntent,
+  generateSuggestions: generatePendleStrategySuggestions,
   description:
     "Handle Pendle PT token swap, deposit, and withdraw requests with multi-step process support",
 });

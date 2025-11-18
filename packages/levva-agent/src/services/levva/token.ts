@@ -11,7 +11,7 @@ import {
 } from "../../util";
 import { TokenData, TokenDataWithInfo } from "../../types/token";
 import { ETH_NULL_ADDR } from "../../constants/eth";
-import { getToken } from "../../api/levva";
+import { getToken, getTokens } from "../../api/levva";
 import { createTimedCache } from "./cache-util";
 
 export class TokenServiceComponent {
@@ -155,5 +155,25 @@ export class TokenServiceComponent {
       return result.success ? result.data : undefined;
     },
     this.getExternalTokenDataCacheKey
+  );
+
+  private getExternalTokensDataCacheKey = (chainId: number) =>
+    `external-tokens-data:${chainId}`;
+
+  getTokensPrices = createTimedCache(
+    this,
+    900000, // 15 minutes in milliseconds
+    async (chainId: number) => {
+      const result = await getTokens(chainId);
+      return result.success
+        ? new Map(
+            result.data.map((token) => [
+              token.address.toLowerCase(),
+              token.priceUsd,
+            ])
+          )
+        : undefined;
+    },
+    this.getExternalTokensDataCacheKey
   );
 }

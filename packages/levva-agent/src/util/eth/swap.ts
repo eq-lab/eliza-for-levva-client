@@ -6,9 +6,7 @@ import { IAgentRuntime } from "@elizaos/core";
 import { CalldataWithDescription } from "src/types/tx";
 import { getClient } from "./client";
 import { getSwapRouteV1, postSwapRouteV1 } from "src/api/swap/kyber";
-import { getPendleSwap } from "src/api/swap/pendle";
 import { getAllowance } from "./allowance";
-import { wethHelper } from "./weth";
 
 export const formatEstimation = (estimation: SwapEstimation) => {
   const usd = Boolean(estimation.amountOutUsd && estimation.gasUsd);
@@ -50,12 +48,6 @@ export function selectSwapRouter(
 ) {
   // by default use kyber
   let router: SwapInfo = { type: "kyber" };
-
-  if (tokenIn.info?.swap?.type === "pendle") {
-    router = tokenIn.info.swap;
-  } else if (tokenOut.info?.swap?.type === "pendle") {
-    router = tokenOut.info.swap;
-  }
 
   if (router.type === "kyber") {
     return async (
@@ -133,146 +125,7 @@ export function selectSwapRouter(
 
       return { calls, estimation };
     };
-  } else {
-    const { market, slippage } = router;
-
-    return async (
-      runtime: IAgentRuntime,
-      { address, amountIn, chain, decimals }: SwapParams
-    ): Promise<{
-      calls: CalldataWithDescription[];
-      estimation: SwapEstimation;
-    }> => {
-      const amount = formatUnits(amountIn, decimals);
-      const client = getClient(chain);
-      const calls: CalldataWithDescription[] = [];
-
-      // pendle router does not support native tokens; need to wrap first
-      const weth = await wethHelper(runtime, {
-        chainId: chain.id,
-        tokenIn: tokenIn.address,
-        tokenOut: tokenOut.address,
-      });
-
-      if (weth?.side === "in") {
-        calls.push(weth.getCall(amountIn));
-      }
-
-      const { data: swap, tx } =
-        (await getPendleSwap({
-          chainId: chain.id.toString() as `${number}`,
-          market,
-          receiver: address,
-          slippage: slippage?.toString() as `${number}`,
-          enableAggregator: "true",
-          amountIn: amountIn.toString() as `${number}`,
-          tokenIn: (tokenIn.address ?? weth?.address)!,
-          tokenOut: (tokenOut.address ?? weth?.address)!,
-        })) ?? {};
-
-      if (!swap || !tx) {
-        throw new Error("Failed to get pendle swap data");
-      }
-
-      const { amountOut } = swap;
-      const { to, data, value } = tx;
-
-      if (!amountOut || !isHex(to) || !isHex(data)) {
-        throw new Error("Failed to get pendle swap data");
-      }
-
-      let allowanceSlot: `0x${string}` | undefined;
-
-      const { approve, allowance } = await getAllowance({
-        sender: address,
-        spender: to,
-        token: (tokenIn.address ?? weth?.address)!,
-        amount: amountIn,
-        client,
-        decimals: tokenIn.decimals,
-        symbol: tokenIn.symbol,
-      });
-
-      if (approve) {
-        calls.push(approve);
-
-        if (tokenIn.info?.allowanceSlot) {
-          allowanceSlot = tokenIn.info.allowanceSlot;
-        } else {
-          // fixme need to calculate allowance slot in dedicated script
-          /*
-          const { storageSlot } = await getErc20ApprovalStorageSlot(
-            allowance,
-            client,
-            tokenIn.address,
-            address,
-            to,
-            30
-          );
-
-          console.log({ storageSlot });
-          allowanceSlot = storageSlot;
-          const { address: tokenInAddress, info, ...rest } = tokenIn;
-
-          await upsertToken(runtime, {
-            ...rest,
-            address: tokenInAddress,
-            chainId: chain.id,
-            info: { ...info, allowanceSlot },
-          });
-          */
-        }
-      }
-
-      calls.push({
-        to,
-        data,
-        value,
-        title: `Swap ${amount} ${tokenIn.symbol} to ${tokenOut.symbol}`,
-        description: `Swap ${amount} ${tokenIn.symbol} to ${tokenOut.symbol} on Pendle`,
-      });
-
-      const estimation: SwapEstimation = {
-        amountOut,
-        decimals: tokenOut.decimals,
-        symbol: tokenOut.symbol,
-        // todo fix gas estimation
-        gas: "failed",
-        gasPrice: "failed",
-      };
-
-      /*
-      let stateOverride: StateOverride | undefined;
-
-      if (allowanceSlot) {
-        stateOverride = [
-          {
-            address,
-            stateDiff: [
-              {
-                slot: allowanceSlot,
-                value: toHex(maxUint256),
-              },
-            ],
-          },
-        ];
-      }
-
-      // fixme gas estimation
-
-      const gas = await client.estimateGas({
-        account: address,
-        to,
-        data,
-        value,
-        stateOverride,
-      });
-
-      console.log({ gas });
-      // override allowance state and estimate gas
-      */
-
-      return { calls, estimation: estimation as SwapEstimation };
-    };
   }
+
+  throw new Error(`Unknown swap router: ${router.type}`);
 }

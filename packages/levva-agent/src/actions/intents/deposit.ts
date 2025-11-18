@@ -390,7 +390,7 @@ export const handleDepositIntent: IntentHandler = async (
         thoughtProcess: errorContent?.thought,
       },
       data: {
-        actionName: LEVVA_ACTIONS.MANAGE_POSITIONS,
+        actionName: `${LEVVA_ACTIONS.MANAGE_POSITIONS}`,
         intentType: "DEPOSIT",
         intentId: intentContext.id,
         error: error instanceof Error ? error.message : "Unknown error",
@@ -541,7 +541,7 @@ ${strategiesText}`;
       thoughtProcess: errorContent?.thought,
     },
     data: {
-      actionName: LEVVA_ACTIONS.MANAGE_POSITIONS,
+      actionName: `${LEVVA_ACTIONS.MANAGE_POSITIONS}`,
       intentType: "DEPOSIT",
       intentId: intentContext.id,
       needsMoreInfo: true,
@@ -710,7 +710,7 @@ async function executeDepositTransaction(
         thoughtProcess: content?.thought,
       },
       data: {
-        actionName: LEVVA_ACTIONS.MANAGE_POSITIONS,
+        actionName: `${LEVVA_ACTIONS.MANAGE_POSITIONS}`,
         intentType: "DEPOSIT",
         intentId: intentContext.id,
         strategy: strategy.name,
@@ -745,7 +745,7 @@ async function executeDepositTransaction(
         thoughtProcess: errorContent?.thought,
       },
       data: {
-        actionName: LEVVA_ACTIONS.MANAGE_POSITIONS,
+        actionName: `${LEVVA_ACTIONS.MANAGE_POSITIONS}`,
         intentType: "DEPOSIT",
         intentId: intentContext.id,
         error: error instanceof Error ? error.message : "Unknown error",

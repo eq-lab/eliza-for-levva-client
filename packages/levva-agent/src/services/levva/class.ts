@@ -36,6 +36,7 @@ import { checkSecret } from "./secrets";
 import { TokenServiceComponent } from "./token";
 import { NewsServiceComponent } from "./news-component";
 import { createTimedCache, createPermanentCache } from "./cache-util";
+import { getPendleMarketTokens } from "./pendle";
 
 const REQUIRED_PLUGINS = ["levva"];
 
@@ -284,6 +285,7 @@ export class LevvaService extends Service implements ILevvaService {
 
   // -- End of Position Management --
 
+  // -- Pendle Strategies --
   getPendleMarkets = createTimedCache(
     this,
     3600000, // 1 hour in milliseconds
@@ -291,14 +293,29 @@ export class LevvaService extends Service implements ILevvaService {
       const result = await getActivePendleMarkets(chainId);
       const supportedUnderlyingTypes = ["Stable", "ETH", "BTC"];
 
-      return result.success
-        ? result.data.filter((market) =>
-            supportedUnderlyingTypes.includes(market.underlyingType)
-          )
-        : undefined;
+      if (!result.success) {
+        throw new Error("Failed to get Pendle markets");
+      }
+
+      return result.data.filter((market) =>
+        supportedUnderlyingTypes.includes(market.underlyingType)
+      );
     },
     (chainId: number) => `pendle-markets:${chainId}`
   );
+
+  private getPendleMarketTokensCacheKey = (
+    chainId: number,
+    address: `0x${string}`
+  ) => `pendle-market-tokens:${chainId}:${address}`;
+
+  getPendleMarketTokens = createPermanentCache(
+    this,
+    getPendleMarketTokens,
+    this.getPendleMarketTokensCacheKey
+  );
+
+  // -- End of Pendle Strategies --
 
   async createCalldata(
     calls: CalldataWithDescription[]

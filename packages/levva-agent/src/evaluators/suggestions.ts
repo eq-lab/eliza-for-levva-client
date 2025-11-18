@@ -182,10 +182,10 @@ export const suggestionsEvaluator: Evaluator = {
           // This handles cases where intent might be in a different domain (edge case)
           if (!activeIntent) {
             const allDomains = [
-              LEVVA_ACTIONS.MANAGE_POSITIONS,
-              LEVVA_ACTIONS.SWAP_TOKENS,
-              LEVVA_ACTIONS.ANALYZE_WALLET,
-              LEVVA_ACTIONS.SELECT_PENDLE_STRATEGY,
+              `${LEVVA_ACTIONS.MANAGE_POSITIONS}`,
+              `${LEVVA_ACTIONS.SWAP_TOKENS}`,
+              `${LEVVA_ACTIONS.ANALYZE_WALLET}`,
+              `${LEVVA_ACTIONS.SELECT_PENDLE_STRATEGY}`,
             ];
             const domainsToCheck = actionLookup
               ? allDomains.filter((d) => d !== actionLookup)

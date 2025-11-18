@@ -11,6 +11,7 @@ import { onWithdrawSuccess } from "src/actions/intents/withdraw";
 import { onSwapSuccess } from "src/actions/intents/swap";
 import { onDepositSuccess } from "src/actions/intents/deposit";
 import { onSendSuccess } from "src/actions/intents/send";
+import { onPendleStrategySuccess } from "../actions/intents";
 
 interface TransactionData {
   type: string;
@@ -177,8 +178,20 @@ async function handleTransactionConfirmation(
         break;
       }
       case "SELECT_PENDLE_STRATEGY": {
-        throw new Error("SELECT_PENDLE_STRATEGY not implemented");
-        // TODO: ADD LOGIC FOR SELECT_PENDLE_STRATEGY SUCCESS
+        const shouldComplete = await onPendleStrategySuccess(
+          runtime,
+          activeIntentContext,
+          receipt
+        );
+
+        if (shouldComplete) {
+          await handleIntentCompletion(
+            runtime,
+            message,
+            receipt,
+            activeIntentContext
+          );
+        }
         break;
       }
       case "DEPOSIT": {

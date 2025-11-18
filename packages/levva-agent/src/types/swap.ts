@@ -8,15 +8,9 @@ export interface SwapEstimation {
   symbol: string;
 }
 
-type PendleSwapParams = {
-  type: "pendle";
-  market: `0x${string}`;
-  slippage?: number;
-};
-
 type KyberswapSwapParams = {
   type: "kyber";
   slippage?: number;
 };
 
-export type SwapInfo = PendleSwapParams | KyberswapSwapParams;
+export type SwapInfo = KyberswapSwapParams;

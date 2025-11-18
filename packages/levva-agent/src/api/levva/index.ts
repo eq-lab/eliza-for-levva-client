@@ -3,6 +3,7 @@ import {
   pendleMarketResponseSchema,
   strategiesResponseSchema,
   tokenResponseSchema,
+  tokensResponseSchema,
   userPositionsResponseSchema,
   withdrawalRequestsResponseSchema,
 } from "./schema";
@@ -43,6 +44,13 @@ export const getToken = async (
   const response = await fetch(url);
   const data = await response.json();
   return tokenResponseSchema.safeParse(data);
+};
+
+export const getTokens = async (chainId: number) => {
+  const url = `${LEVVA_API_V1_BASEURL}/token/${chainId}`;
+  const response = await fetch(url);
+  const data = await response.json();
+  return tokensResponseSchema.safeParse(data);
 };
 
 export const getActivePendleMarkets = async (chainId: number) => {
