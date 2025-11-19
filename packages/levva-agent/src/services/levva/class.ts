@@ -37,6 +37,7 @@ import { TokenServiceComponent } from "./token";
 import { NewsServiceComponent } from "./news-component";
 import { createTimedCache, createPermanentCache } from "./cache-util";
 import { getPendleMarketTokens } from "./pendle";
+import { PendleMarket } from "../../api/levva/schema";
 
 const REQUIRED_PLUGINS = ["levva"];
 
@@ -303,6 +304,35 @@ export class LevvaService extends Service implements ILevvaService {
     },
     (chainId: number) => `pendle-markets:${chainId}`
   );
+
+  async filterPendleMarkets(
+    pendleMarkets: PendleMarket[],
+    tokenOut?: string,
+    maturityDays?: string,
+    tokenClass?: string
+  ): Promise<PendleMarket[]> {
+    const utcNowDate = Date.now();
+    const utcNowDateInMsec = Math.floor(
+      utcNowDate - Math.floor(utcNowDate % 86400000)
+    );
+
+    return pendleMarkets.filter((market) => {
+      const maturityDate = new Date(market.maturityDate);
+      const daysUntilMaturity = Math.ceil(
+        (maturityDate.getTime() - utcNowDateInMsec) / 86400000
+      );
+      return (
+        (!tokenOut ||
+          tokenOut.toLocaleLowerCase() ===
+            market.underlyingAssetName.toLocaleLowerCase()) &&
+        (!maturityDays ||
+          (maturityDays === "<=30" && daysUntilMaturity <= 30) ||
+          (maturityDays === "30-90" && daysUntilMaturity <= 90) ||
+          (maturityDays === ">90" && daysUntilMaturity > 90)) &&
+        (!tokenClass || tokenClass === market.underlyingType)
+      );
+    });
+  }
 
   private getPendleMarketTokensCacheKey = (
     chainId: number,

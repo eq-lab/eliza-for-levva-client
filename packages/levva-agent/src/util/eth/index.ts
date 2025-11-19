@@ -1,4 +1,5 @@
 export * from "./allowance";
 export * from "./client";
-export * from "./token";
+export * from "./math";
 export * from "./swap";
+export * from "./token";

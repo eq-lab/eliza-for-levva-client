@@ -114,6 +114,7 @@ export const action: Action = {
       if (
         providerData.type &&
         providerData.tokenInData &&
+        providerData.tokenOutData &&
         providerData.pendleMarketAddress &&
         providerData.amountIn
       ) {
@@ -238,14 +239,14 @@ export const action: Action = {
       {
         name: "{{name1}}",
         content: {
-          text: "Please swap {{amount}} {{token1}} to {{token2}}",
+          text: "Buy {{amount}} {{token}} PT with 30-90 days maturity",
         },
       },
       {
         name: "{{name2}}",
         content: {
-          text: "Please confirm swap for {{amount}} {{token1}} for {{token2}}",
-          action: "SWAP_TOKENS",
+          text: "I'll help you purchase {{amount}} {{token}} PT tokens with medium-term maturity. Please confirm the transaction details.",
+          action: `${LEVVA_ACTIONS.SELECT_PENDLE_STRATEGY}`,
         },
       },
     ],
@@ -253,14 +254,14 @@ export const action: Action = {
       {
         name: "{{name1}}",
         content: {
-          text: "Swap tokens",
+          text: "Sell my PT-{{token}} tokens",
         },
       },
       {
         name: "{{name2}}",
         content: {
-          text: "What tokens do you want to swap?",
-          action: "SWAP_TOKENS",
+          text: "Which PT-{{token}} position would you like to exit? I can see you have some PT tokens in your wallet.",
+          action: `${LEVVA_ACTIONS.SELECT_PENDLE_STRATEGY}`,
         },
       },
     ],
@@ -268,14 +269,29 @@ export const action: Action = {
       {
         name: "{{name1}}",
         content: {
-          text: "Token address is {{address}}",
+          text: "Deposit {{amount}} {{token}} to Pendle pool",
         },
       },
       {
         name: "{{name2}}",
         content: {
-          text: "Swapping {{amount}} {{token1}} to {{token2}}...\nPlease approve transactions in your wallet.",
-          actions: ["SWAP_TOKENS"],
+          text: "I'll help you provide liquidity to Pendle. Depositing {{amount}} {{token}}...\nPlease approve the transaction in your wallet.",
+          actions: [`${LEVVA_ACTIONS.SELECT_PENDLE_STRATEGY}`],
+        },
+      },
+    ],
+    [
+      {
+        name: "{{name1}}",
+        content: {
+          text: "Withdraw from Pendle",
+        },
+      },
+      {
+        name: "{{name2}}",
+        content: {
+          text: "Which Pendle position would you like to withdraw from? Please specify the token and amount.",
+          action: `${LEVVA_ACTIONS.SELECT_PENDLE_STRATEGY}`,
         },
       },
     ],
@@ -328,7 +344,4 @@ IntentManager.registerIntent({
     "Handle Pendle PT token swap, deposit, and withdraw requests with multi-step process support",
 });
 
-// Removed legacy suggestion system - all swap suggestions now handled by intent-aware system
-// Old suggestions (exchange-amount, exchange-pairs, swap-continuation) were redundant with
-// the progressive disclosure flow in generateSwapSuggestions via swap-intent.ts
 export const suggest: Suggestion[] = [];

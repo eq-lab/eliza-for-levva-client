@@ -165,14 +165,12 @@ export class TokenServiceComponent {
     900000, // 15 minutes in milliseconds
     async (chainId: number) => {
       const result = await getTokens(chainId);
-      return result.success
-        ? new Map(
-            result.data.map((token) => [
-              token.address.toLowerCase(),
-              token.priceUsd,
-            ])
-          )
-        : undefined;
+
+      if (!result.success) {
+        throw new Error("Failed to get tokens prices");
+      }
+
+      return result.data;
     },
     this.getExternalTokensDataCacheKey
   );

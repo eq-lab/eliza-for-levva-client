@@ -24,26 +24,28 @@ export const extractedPendleParamsSchema = z
       .nullable()
       .describe(
         "Asset class category: 'Stable' (stablecoins like USDC, USDe), 'BTC' (Bitcoin-backed like WBTC), or 'ETH' (Ethereum-backed like WETH, stETH). " +
-          "Extract from user's intent or infer from tokenOut, tokenClass in <supportedTokens>. " +
-          "Return null if cannot be determined."
+          "ONLY extract if user explicitly mentions asset class. " +
+          "Can be inferred from tokenOut if tokenOut is explicitly specified. " +
+          "Return null if tokenOut is not specified or cannot be determined."
       ),
     tokenOut: z
       .string()
       .nullable()
       .describe(
-        "PT token's underlying asset symbol (e.g., 'USDe', 'WBTC', 'WETH'). " +
-          "MUST match one of the tokens in <supportedTokens> list. " +
-          "User can prefix with 'PT' (e.g., 'PT USDC'), which should be stripped. " +
-          "Return null if not specified."
+        "Token selection depends on operation type:\n" +
+          "- For 'buy'/'deposit': PT token from <supportedTokens> (e.g., 'USDe', 'WBTC', 'WETH'). User can prefix with 'PT' (e.g., 'PT USDC'), which should be stripped.\n" +
+          "- For 'sell'/'withdraw': Non-PT token from <userPortfolio> to receive (e.g., 'USDC', 'ETH'). Use underlying asset if not specified.\n" +
+          "- If user only mentions token class (e.g., 'stable PT', 'BTC PT', 'USD yield', 'ETH yield', 'BTC yield') without specific token symbol → return null. " +
+          "CRITICAL: Return null if user does NOT explicitly mention a specific token name or symbol. Do NOT infer or suggest tokens."
       ),
     tokenIn: z
       .string()
       .nullable()
       .describe(
-        "Token to use for the transaction (e.g., 'USDC', 'ETH', 'WETH'). " +
-          "For buy/deposit: token user will spend. For sell/withdraw: should match tokenOut. " +
-          "MUST be a token from <userPortfolio> with sufficient balance. " +
-          "Return null if not specified."
+        "Token selection depends on operation type:\n" +
+          "- For 'buy'/'deposit': Regular token from <userPortfolio> to spend (e.g., 'USDC', 'ETH', 'WETH'). Must have sufficient balance.\n" +
+          "- For 'sell'/'withdraw': PT token from <userPortfolio> to sell/burn (e.g., 'PT-USDe-2025-12-31'). Look for tokens with 'PT-' prefix.\n" +
+          "Return null if not explicitly specified by user."
       ),
     maturityDays: z
       .enum(["<=30", "30-90", ">90"])
@@ -65,9 +67,9 @@ export const extractedPendleParamsSchema = z
       .nullable()
       .describe(
         'Amount of tokenIn to use, as numeric string (e.g., "100", "0.5"). ' +
-          "Use token's decimal precision from <userPortfolio>. " +
           "Convert percentages/keywords: 50% → (0.5 × balance), 'all'/'max' → full balance. " +
-          "NEVER include %, $, currency symbols, or token names in the value."
+          "NEVER include %, $, currency symbols, or token names in the value. " +
+          "CRITICAL: Return null if user does NOT explicitly mention a specific amount, number, percentage, or keyword like 'all'/'max'. Do NOT infer, calculate, or suggest amounts."
       ),
     type: z
       .enum(["deposit", "withdraw", "buy", "sell"])
@@ -114,14 +116,14 @@ export const selectPendleDataFromMessagesPrompt = (ctx: {
 Extract Pendle transaction parameters from recent messages${ctx.intentContext ? " using intent context for improved accuracy" : ""}.
 </task>
 <supportedTokens>
-Supported Pendle tokens in the following format 'PT token (class, maturity date)':
+Format 'PT TOKEN_SYMBOL (CLASS, MATURITY_DATE)':
 ${ctx.pendleTokens}
 </supportedTokens>
 ${
   ctx.userPortfolio
     ? `<userPortfolio>
-User's wallet holdings (tokens they can use for transactions with non-zero balances, approximate USD value, decimals):
-Format: TOKEN: balance (≈$USD_value, decimals: DECIMALS)
+User's wallet holdings (tokens they can use for transactions with non-zero balances and their decimals):
+Format: TOKEN_SYMBOL: BALANCE (≈$BALANCE_USD)
 ${ctx.userPortfolio}
 </userPortfolio>`
     : ""
@@ -162,12 +164,19 @@ GENERAL INSTRUCTIONS:
 }
 - Ignore messages for transactions that are either canceled or confirmed
 - Extract these parameters for the Pendle transaction:
-  * **tokenOut**: The underlying asset the PT token represents (from <supportedTokens>)
+  * **tokenOut**: The underlying asset the PT token represents (from <supportedTokens>) - MUST be explicitly specified
   * **tokenIn**: The token user will spend (from <userPortfolio>)
-  * **amountIn**: How much tokenIn to use
-  * **maturityDays**: Maturity timeframe category (must be explicitly specified)
+  * **amountIn**: How much tokenIn to use - MUST be explicitly specified
+  * **maturityDays**: Maturity timeframe category - MUST be explicitly specified
   * **type**: Operation type (buy/sell/deposit/withdraw)
-  * **tokenClass**: Asset category (Stable/BTC/ETH) - can be inferred from tokenOut
+  * **tokenClass**: Asset category (Stable/BTC/ETH) - can be extracted from user's mention OR inferred from tokenOut
+- **CRITICAL DISTINCTION**: tokenClass and tokenOut are INDEPENDENT parameters
+  * tokenClass = asset category filter (Stable/BTC/ETH) - can be mentioned by user OR inferred
+  * tokenOut = specific token symbol (USDC/WBTC/WETH) - MUST be explicitly mentioned by user
+  * "I want a stable PT" → tokenClass: **Stable** (mentioned), tokenOut: **null** (not specified)
+  * "I want PT USDC" → tokenClass: **Stable** (inferred from USDC), tokenOut: **USDC** (specified)
+- NEVER infer or suggest any parameters if not explicitly specified
+- NEVER use default values for parameters if not explicitly specified
 - If multiple Pendle requests exist, extract parameters for the MOST RECENT uncompleted one
 - Handle common aliases: "PT USDe" = tokenOut: "USDe", "buy principal tokens" = type: "buy"
 ${ctx.intentContext ? '- Leverage intent context to resolve ambiguous references (e.g., "that token" referring to previously mentioned tokens)' : ""}
@@ -194,6 +203,7 @@ AMOUNT PARSING RULES:
 - Trim trailing zeros (e.g., "15.460000" → "15.46")
 - If token not in portfolio or balance unavailable: Return null for amountIn, explain reason in thought field
 - NEVER include: %, $, currency symbols, or token symbols in the amountIn field
+- NEVER infer or suggest amountIn if not explicitly specified
 
 SLIPPAGE PARSING RULES:
 - Slippage is OPTIONAL - only extract if user explicitly mentions it
@@ -207,19 +217,70 @@ SLIPPAGE PARSING RULES:
   * "0.005100" → "0.005"
   * "0.123" → "0.123"
 
+TOKEN CLASS SELECTION GUIDANCE:
+**CRITICAL**: tokenClass is used for filtering, but does NOT automatically select a specific token
+
+- **Asset Classes**:
+  * **"Stable"**: Stablecoins (USDC, USDe, DAI, USDT)
+  * **"BTC"**: Bitcoin-backed assets (WBTC, tBTC)
+  * **"ETH"**: Ethereum-backed assets (WETH, stETH, wstETH, rETH)
+
+- **Extraction Rules**:
+  * Extract tokenClass if user mentions asset type/category: "stable", "stablecoin", "BTC", "bitcoin", "ETH", "ethereum"
+  * Common phrases: "stable PT", "BTC yield", "ETH yield", "USD yield" → extract tokenClass
+  * Can be inferred from tokenOut if tokenOut is explicitly specified
+  * tokenClass is INDEPENDENT from tokenOut - they are separate parameters
+
+- **CRITICAL**: Extracting tokenClass does NOT mean you should extract tokenOut
+  * "I want a stable PT" → tokenClass: "Stable", tokenOut: **null**
+  * "I want BTC yield" → tokenClass: "BTC", tokenOut: **null**
+  * "I want PT WBTC" → tokenClass: "BTC" (inferred), tokenOut: "WBTC"
+
 TOKEN SELECTION GUIDANCE:
-**For tokenIn (payment token):**
-- For buy/deposit operations:
-  * MUST be a token from <userPortfolio> with sufficient balance
-  * If not specified, suggest token with highest USD value
-  * If user specifies token not in portfolio, suggest token with highest USD value
-**For tokenOut (PT underlying asset):**
-- The token that represents what the PT token is based on (e.g., USDe for PT-USDe)
-- tokenOut MUST be one of the token values from the <supportedTokens> list
-- User MUST explicitly specify the tokenOut - do not infer or suggest if missing
-- User can optionally add PT prefix to the tokenOut to indicate the PT token (e.g., "PT USDC", "PT WBTC", "PT WETH")
-- Match the tokenOut symbol case-insensitively (e.g., "usdc" matches "USDC", "USDe" matches "usde")
-- If user specifies tokenOut not in <supportedTokens>, return null and explain in the thought field
+
+**For "buy" operations (purchasing PT tokens):**
+- **tokenOut** (PT token to buy):
+  * MUST be from <supportedTokens> list (available PT tokens for purchase)
+  * User MUST explicitly specify token name or symbol (e.g., "USDC", "USDe", "WETH")
+  * User can prefix with "PT" (e.g., "PT USDC" → "USDC")
+  * Match case-insensitively (e.g., "usdc" matches "USDC")
+  * **Example**: "I want to buy a PT" without token name → **return null for tokenOut**
+  * **Example**: "buy PT USDC" → extract "USDC"
+  * If user specifies token not in <supportedTokens>, return null and explain in thought field
+- **tokenIn** (token to spend):
+  * MUST be from <userPortfolio> (tokens user owns)
+  * Select automatically the one non-PT token with the highest USD value in <userPortfolio>
+  * Must have sufficient balance
+  * MUST be the whole TOKEN_SYMBOL, not a partial match
+
+**For "sell" operations (selling PT tokens):**
+- **tokenIn** (PT token to sell):
+  * MUST be a PT token from <userPortfolio> (PT tokens user owns)
+  * Look for tokens with "PT-" prefix or in PT format in portfolio
+  * User MUST explicitly specify which PT token to sell
+  * If user specifies PT token they don't own, return null and explain
+- **tokenOut** (token to receive):
+  * MUST be a non-PT token from <userPortfolio> or underlying asset
+  * Only extract if user explicitly specifies
+  * Common case: user sells PT-USDe to get USDC/USDe back
+  * If not specified, return null (backend will use underlying asset)
+
+**General Rules:**
+- Extract tokens ONLY when user explicitly mentions specific token names or symbols
+- NEVER infer or suggest tokens based on user's intent alone
+- Return null for any parameter not explicitly specified
+- Always verify tokens exist in the correct source (<supportedTokens> or <userPortfolio>)
+
+**Examples of what to extract:**
+- "I want to buy a PT" → tokenOut: **null**, tokenClass: **null**, tokenIn: **null**, amountIn: **null**
+- "buy PT" → tokenOut: **null**, tokenClass: **null**, tokenIn: **null**, amountIn: **null**
+- "I want a stable PT" → tokenOut: **null**, tokenClass: **Stable**
+- "I want a BTC PT" → tokenOut: **null**, tokenClass: **BTC**
+- "buy stable coins PT" → tokenOut: **null**, tokenClass: **Stable**
+- "buy PT USDC" → tokenOut: "USDC", tokenClass: "Stable" (inferred from USDC), tokenIn: **null**, amountIn: **null**
+- "buy 100 PT USDC" → tokenOut: "USDC", tokenClass: "Stable", tokenIn: **null**, amountIn: "100"
+- "buy 100 PT USDC with ETH" → tokenOut: "USDC", tokenClass: "Stable", tokenIn: "ETH", amountIn: "100"
+- "buy all my ETH PT USDC" → tokenOut: "USDC", tokenClass: "Stable", tokenIn: "ETH", amountIn: (full ETH balance)
 
 MATURITY DAYS SELECTION GUIDANCE:
 The maturityDays field uses categorical ranges to simplify market selection:
