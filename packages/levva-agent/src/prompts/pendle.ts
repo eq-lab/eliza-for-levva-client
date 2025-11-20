@@ -75,13 +75,12 @@ export const extractedPendleParamsSchema = z
       .enum(["deposit", "withdraw", "buy", "sell"])
       .nullable()
       .describe(
-        "Operation type:\n" +
-          "- 'buy': Purchase PT tokens (swap tokenIn → PT-tokenOut)\n" +
-          "- 'sell': Sell PT tokens back to underlying (PT-tokenOut → tokenIn)\n" +
-          "- 'deposit': Add liquidity to Pendle pool\n" +
-          "- 'withdraw': Remove liquidity from Pendle pool\n" +
-          "Detect from user's intent: 'deposit to Pendle' → 'deposit', 'buy PT' → 'buy', 'swap to PT' → 'buy', 'sell PT' → 'sell', 'withdraw from Pendle' → 'withdraw'. " +
-          "Return null if operation type cannot be determined from the message."
+        "Operation type - MUST be explicitly mentioned by user with clear action verbs:\n" +
+          "- 'buy': User says 'buy', 'purchase', 'long', 'invest in', 'get PT'\n" +
+          "- 'sell': User says 'sell', 'exit', 'close position', 'redeem PT'\n" +
+          "- 'deposit': User says 'deposit', 'add liquidity', 'provide liquidity', 'LP'\n" +
+          "- 'withdraw': User says 'withdraw', 'remove liquidity', 'exit pool', 'unstake'\n" +
+          "CRITICAL: Return null if user does NOT use clear action verbs. Vague phrases like 'I want a PT token', 'interested in PT', or 'explore Pendle strategies' → return null."
       ),
     slippage: z
       .string()
@@ -116,7 +115,7 @@ export const selectPendleDataFromMessagesPrompt = (ctx: {
 Extract Pendle transaction parameters from recent messages${ctx.intentContext ? " using intent context for improved accuracy" : ""}.
 </task>
 <supportedTokens>
-Format 'PT TOKEN_SYMBOL (CLASS, MATURITY_DATE)':
+Format 'PT TOKEN_SYMBOL (TOKEN_CLASS, MATURITY_DATE)':
 ${ctx.pendleTokens}
 </supportedTokens>
 ${
@@ -168,7 +167,7 @@ GENERAL INSTRUCTIONS:
   * **tokenIn**: The token user will spend (from <userPortfolio>)
   * **amountIn**: How much tokenIn to use - MUST be explicitly specified
   * **maturityDays**: Maturity timeframe category - MUST be explicitly specified
-  * **type**: Operation type (buy/sell/deposit/withdraw)
+  * **type**: Operation type (buy/sell/deposit/withdraw) - MUST use clear action verbs
   * **tokenClass**: Asset category (Stable/BTC/ETH) - can be extracted from user's mention OR inferred from tokenOut
 - **CRITICAL DISTINCTION**: tokenClass and tokenOut are INDEPENDENT parameters
   * tokenClass = asset category filter (Stable/BTC/ETH) - can be mentioned by user OR inferred
@@ -182,18 +181,29 @@ GENERAL INSTRUCTIONS:
 ${ctx.intentContext ? '- Leverage intent context to resolve ambiguous references (e.g., "that token" referring to previously mentioned tokens)' : ""}
 
 OPERATION TYPE GUIDANCE:
-- **buy**: User wants to purchase PT tokens
-  * Phrases: "buy PT", "purchase principal tokens", "invest in Pendle", "long PT"
-  * Flow: spend tokenIn → receive PT-tokenOut
-- **sell**: User wants to sell PT tokens back
-  * Phrases: "sell PT", "exit position", "redeem PT", "close Pendle position"
-  * Flow: spend PT-tokenOut → receive tokenIn
-- **deposit**: User wants to provide liquidity to Pendle pool
-  * Phrases: "deposit to Pendle", "add liquidity", "LP Pendle", "provide liquidity"
-  * Flow: deposit tokenIn → receive LP tokens
-- **withdraw**: User wants to remove liquidity from Pendle pool
-  * Phrases: "withdraw from Pendle", "remove liquidity", "exit pool", "unstake"
-  * Flow: burn Pendle LP tokens → receive tokenIn
+**CRITICAL**: User MUST use clear action verbs. Vague expressions return null.
+
+- **buy**: User explicitly says action verbs for purchasing
+  * Valid phrases: "buy PT", "purchase PT", "invest in PT", "long PT", "get PT", "acquire PT"
+  * Invalid phrases: "I want PT", "explore Pendle strategies", "looking at PT" → return **null**
+
+- **sell**: User explicitly says action verbs for selling
+  * Valid phrases: "sell PT", "exit position", "redeem PT", "close position", "liquidate PT"
+  * Invalid phrases: "what about my PT", "check PT value" → return **null**
+
+- **deposit**: User explicitly says action verbs for adding liquidity
+  * Valid phrases: "deposit to Pendle", "add liquidity", "LP Pendle", "provide liquidity", "stake in Pendle"
+  * Invalid phrases: "tell me about liquidity", "show pools" → return **null**
+
+- **withdraw**: User explicitly says action verbs for removing liquidity
+  * Valid phrases: "withdraw from Pendle", "remove liquidity", "exit pool", "unstake", "pull out"
+  * Invalid phrases: "how's my pool", "check my liquidity" → return **null**
+
+**Examples**:
+- "I want a PT" → type: **null** (no action verb)
+- "buy PT USDC" → type: "buy" (clear action verb)
+- "explore Pendle strategies" → type: **null** (no action verb)
+- "sell my PT" → type: "sell" (clear action verb)
 
 AMOUNT PARSING RULES:
 - Extract only numeric values: "100", "0.5", "1000"
@@ -221,9 +231,9 @@ TOKEN CLASS SELECTION GUIDANCE:
 **CRITICAL**: tokenClass is used for filtering, but does NOT automatically select a specific token
 
 - **Asset Classes**:
-  * **"Stable"**: Stablecoins (USDC, USDe, DAI, USDT)
-  * **"BTC"**: Bitcoin-backed assets (WBTC, tBTC)
-  * **"ETH"**: Ethereum-backed assets (WETH, stETH, wstETH, rETH)
+  * **"Stable"**: Stablecoins (e.g. USDC, USDe, DAI, USDT, etc.)
+  * **"BTC"**: Bitcoin-backed assets (e.g. WBTC, tBTC, etc.)
+  * **"ETH"**: Ethereum-backed assets (e.g. WETH, stETH, wstETH, rETH, etc.)
 
 - **Extraction Rules**:
   * Extract tokenClass if user mentions asset type/category: "stable", "stablecoin", "BTC", "bitcoin", "ETH", "ethereum"
@@ -272,15 +282,16 @@ TOKEN SELECTION GUIDANCE:
 - Always verify tokens exist in the correct source (<supportedTokens> or <userPortfolio>)
 
 **Examples of what to extract:**
-- "I want to buy a PT" → tokenOut: **null**, tokenClass: **null**, tokenIn: **null**, amountIn: **null**
-- "buy PT" → tokenOut: **null**, tokenClass: **null**, tokenIn: **null**, amountIn: **null**
-- "I want a stable PT" → tokenOut: **null**, tokenClass: **Stable**
-- "I want a BTC PT" → tokenOut: **null**, tokenClass: **BTC**
-- "buy stable coins PT" → tokenOut: **null**, tokenClass: **Stable**
-- "buy PT USDC" → tokenOut: "USDC", tokenClass: "Stable" (inferred from USDC), tokenIn: **null**, amountIn: **null**
-- "buy 100 PT USDC" → tokenOut: "USDC", tokenClass: "Stable", tokenIn: **null**, amountIn: "100"
-- "buy 100 PT USDC with ETH" → tokenOut: "USDC", tokenClass: "Stable", tokenIn: "ETH", amountIn: "100"
-- "buy all my ETH PT USDC" → tokenOut: "USDC", tokenClass: "Stable", tokenIn: "ETH", amountIn: (full ETH balance)
+- "I want a PT" → type: **null** (no action verb), tokenOut: **null**, tokenClass: **null**, amountIn: **null**
+- "interested in PT" → type: **null** (no action verb), tokenOut: **null**, tokenClass: **null**, amountIn: **null**
+- "I want a stable PT" → type: **null** (no action verb), tokenOut: **null**, tokenClass: **Stable**, amountIn: **null**
+- "I want a BTC PT" → type: **null** (no action verb), tokenOut: **null**, tokenClass: **BTC**, amountIn: **null**
+- "buy PT" → type: "buy" (action verb), tokenOut: **null**, tokenClass: **null**, amountIn: **null**
+- "buy stable PT" → type: "buy", tokenOut: **null**, tokenClass: **Stable**, amountIn: **null**
+- "buy PT USDC" → type: "buy", tokenOut: "USDC", tokenClass: "Stable" (inferred), amountIn: **null**
+- "buy 100 PT USDC" → type: "buy", tokenOut: "USDC", tokenClass: "Stable", amountIn: "100"
+- "sell my PT WBTC" → type: "sell", tokenIn: "PT-WBTC", tokenOut: **null**, tokenClass: "BTC" (inferred)
+- "deposit 50 USDC to Pendle" → type: "deposit", tokenIn: "USDC", amountIn: "50"
 
 MATURITY DAYS SELECTION GUIDANCE:
 The maturityDays field uses categorical ranges to simplify market selection:

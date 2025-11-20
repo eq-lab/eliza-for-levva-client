@@ -17,7 +17,7 @@ import {
 } from "./intents";
 
 const description =
-  "Handle Pendle PT token swap, deposit, and withdraw requests using intent-based system with multi-step process support.";
+  "Handle Pendle explore, buy, sell, deposit, and withdraw requests using intent-based system with multi-step process support.";
 
 export const action: Action = {
   name: LEVVA_ACTIONS.SELECT_PENDLE_STRATEGY,
@@ -295,6 +295,21 @@ export const action: Action = {
         },
       },
     ],
+    [
+      {
+        name: "{{name1}}",
+        content: {
+          text: "I want to explore Pendle fixed term, fixed yield till maturity options",
+        },
+      },
+      {
+        name: "{{name2}}",
+        content: {
+          text: "I'll help you explore Pendle fixed term, fixed yield till maturity options.",
+          action: `${LEVVA_ACTIONS.SELECT_PENDLE_STRATEGY}`,
+        },
+      },
+    ],
   ],
 };
 
@@ -303,6 +318,13 @@ IntentManager.registerIntent({
   type: INTENT_TYPE.SELECT_PENDLE_STRATEGY,
   domain: LEVVA_ACTIONS.SELECT_PENDLE_STRATEGY,
   keywords: [
+    // General Pendle keywords
+    "Pendle",
+    "PT token",
+    "principal token",
+    "Pendle fixed term, fixed yield till maturity",
+    "explore Pendle strategies",
+
     // Buy PT tokens
     "buy Pendle PT",
     "purchase Pendle PT",
@@ -341,7 +363,7 @@ IntentManager.registerIntent({
   handler: handlePendleStrategyIntent,
   generateSuggestions: generatePendleStrategySuggestions,
   description:
-    "Handle Pendle PT token swap, deposit, and withdraw requests with multi-step process support",
+    "Handle Pendle explore, buy, sell, deposit, and withdraw requests with multi-step process support",
 });
 
 export const suggest: Suggestion[] = [];

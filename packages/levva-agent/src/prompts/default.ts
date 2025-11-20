@@ -77,6 +77,7 @@ Generate natural, conversational messages that clearly express user intent:
 - "label": "Find Safe Strategies" → "text": "I want to explore safe investment strategies for steady yields"
 - "label": "Deposit ETH" → "text": "I'd like to deposit some of my ETH into a yield strategy"
 - "label": "Strategy Recommendations" → "text": "Recommend investment strategies based on my portfolio and risk tolerance"
+- "label": "Explore fixed term, fixed yield till maturity options" → "text": "I want to explore Pendle fixed term, fixed yield till maturity options"
 
 **Token Operations Examples:**
 - "label": "Swap Tokens" → "text": "I want to swap some tokens for better opportunities"

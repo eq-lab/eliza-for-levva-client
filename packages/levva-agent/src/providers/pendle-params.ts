@@ -320,19 +320,6 @@ export const pendleParamsProvider: Provider = {
 
     data.tokenOutData = tokenOutData;
 
-    if (!type) {
-      return {
-        ...EMPTY_RESULT,
-        data: { ...data, intentContext },
-        values: {
-          strategy: "Unknown 'type', ask user for it.",
-        },
-        text: "Failed to extract Pendle parameters: unknown type",
-      };
-    }
-
-    data.type = type;
-
     if (!tokenIn) {
       return {
         ...EMPTY_RESULT,
@@ -367,6 +354,19 @@ export const pendleParamsProvider: Provider = {
         : (tokenInData!.address! as `0x${string}`);
 
     data.tokenInData = tokenInData;
+
+    if (!type) {
+      return {
+        ...EMPTY_RESULT,
+        data: { ...data, intentContext },
+        values: {
+          strategy: "Unknown 'type', ask user for it.",
+        },
+        text: "Failed to extract Pendle parameters: unknown type",
+      };
+    }
+
+    data.type = type;
 
     if (!amountIn) {
       return {

@@ -10,7 +10,7 @@ These are the available valid actions:
 </actionNames>
 
 Current Available Actions:
-- **SELECT_PENDLE_STRATEGY**: Select Pendle strategy for buying/selling/depositing/withdrawing Pendle PT tokens
+- **SELECT_PENDLE_STRATEGY**: Select Pendle strategy for exploring/buying/selling/depositing/withdrawing Pendle strategies
 - **ANALYZE_WALLET**: Comprehensive wallet/portfolio analysis, asset breakdown, risk assessment, and token transfers
 - **SWAP_TOKENS**: Token swapping with intent-based multi-step flows via Kyber and Pendle
 - **SELECT_STRATEGY**: Investment strategy recommendations based on risk tolerance and portfolio analysis  

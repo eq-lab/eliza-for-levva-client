@@ -62,7 +62,6 @@ export function generatePendleStrategyIntentSuggestionsPrompt(
   const { tokenIn, tokenOut, amountIn, tokenClass, maturityDays, type } =
     returnData;
 
-  // Case 1: All parameters present - suggest confirmation/retry
   if (pendleFilteredMarkets.length === 1 && type && tokenIn && amountIn) {
     // Get wallet asset for balance-aware amount suggestions
     const walletAsset = walletAssets.find(
@@ -161,54 +160,6 @@ ${instructions}
 ${generateOutputFormat()}`;
   }
 
-  // Case 2: Strategy selection needed
-  if (!type) {
-    let intentContext = generateIntentContextSection({
-      intentType: `${INTENT_TYPE.SELECT_PENDLE_STRATEGY}`,
-      status: "Strategy selection needed (buy/sell/deposit/withdraw)",
-      userAddress,
-      chainId,
-      parameters: {
-        From: tokenIn,
-        To: tokenOut ?? pendleFilteredMarkets[0]!.underlyingAssetName,
-        Amount: amountIn,
-        TokenClass: tokenClass ?? pendleFilteredMarkets[0]!.underlyingType,
-        MaturityDays: maturityDays ?? pendleFilteredMarkets[0]!.maturityDate,
-      },
-    });
-
-    const instructions = generateCommonInstructions({
-      suggestionType: "next-step",
-      specificInstructions: `Generate 4 natural, conversational suggestions for Pendle strategy selection.
-
-LABEL FORMAT (be specific, include actual strategy):
-- "Buy PT token" - for buy strategy
-- "Sell PT token" - for sell strategy
-- "Deposit to Pendle" - for deposit strategy
-- "Withdraw from Pendle" - for withdraw strategy
-
-TEXT FORMAT (be specific, include actual strategy):
-- "Buy PT token" - for buy strategy
-- "Sell PT token" - for sell strategy
-- "Deposit to Pendle" - for deposit strategy
-- "Withdraw from Pendle" - for withdraw strategy
-
-Each suggestion should:
-- Be natural and conversational
-- Clearly indicate the strategy intent
-- Use EXACT strategy names without modifications`,
-    });
-
-    return `<task>Generate amount suggestions for Pendle strategy</task>
-${intentContext}
-<conversation>
-${conversation}
-</conversation>
-${instructions}
-${generateOutputFormat()}`;
-  }
-
-  // Case 3: PT token selection needed
   if (pendleFilteredMarkets.length > 1) {
     let suggestions:
       | {
@@ -218,30 +169,16 @@ ${generateOutputFormat()}`;
         }
       | undefined;
 
-    let intentContext = generateIntentContextSection({
-      intentType: `${INTENT_TYPE.SELECT_PENDLE_STRATEGY}`,
-      status: "PT token selection needed",
-      userAddress,
-      chainId,
-      parameters: {
-        From: tokenIn,
-        To: tokenOut ?? pendleFilteredMarkets[0]!.underlyingAssetName,
-        Amount: amountIn,
-        TokenClass: tokenClass ?? pendleFilteredMarkets[0]!.underlyingType,
-        MaturityDays: maturityDays ?? pendleFilteredMarkets[0]!.maturityDate,
-        Type: type,
-      },
-    });
+    let intentContext: string;
 
     if (!tokenClass) {
-      intentContext = intentContext = generateIntentContextSection({
+      intentContext = generateIntentContextSection({
         intentType: `${INTENT_TYPE.SELECT_PENDLE_STRATEGY}`,
         status: "Token class selection needed",
         userAddress,
         chainId,
         parameters: {
           From: tokenIn,
-          To: tokenOut ?? pendleFilteredMarkets[0]!.underlyingAssetName,
           Amount: amountIn,
           TokenClass: tokenClass ?? pendleFilteredMarkets[0]!.underlyingType,
           MaturityDays: maturityDays ?? pendleFilteredMarkets[0]!.maturityDate,
@@ -254,28 +191,27 @@ ${generateOutputFormat()}`;
         textDescription: "Token class: Stable, ETH, BTC",
         content: [
           {
-            label: "USD yield",
-            text: "Token class: Stable",
+            label: "Stable yield",
+            text: "Stable token class",
           },
           {
             label: "ETH yield",
-            text: "Token class: ETH",
+            text: "ETH token class",
           },
           {
             label: "BTC yield",
-            text: "Token class: BTC",
+            text: "BTC token class",
           },
         ],
       };
     } else if (!maturityDays) {
-      intentContext = intentContext = generateIntentContextSection({
+      intentContext = generateIntentContextSection({
         intentType: `${INTENT_TYPE.SELECT_PENDLE_STRATEGY}`,
         status: "Maturity days selection needed",
         userAddress,
         chainId,
         parameters: {
           From: tokenIn,
-          To: tokenOut ?? pendleFilteredMarkets[0]!.underlyingAssetName,
           Amount: amountIn,
           TokenClass: tokenClass ?? pendleFilteredMarkets[0]!.underlyingType,
           MaturityDays: maturityDays ?? pendleFilteredMarkets[0]!.maturityDate,
@@ -302,12 +238,26 @@ ${generateOutputFormat()}`;
         ],
       };
     } else {
+      intentContext = generateIntentContextSection({
+        intentType: `${INTENT_TYPE.SELECT_PENDLE_STRATEGY}`,
+        status: "PT token selection needed",
+        userAddress,
+        chainId,
+        parameters: {
+          From: tokenIn,
+          Amount: amountIn,
+          TokenClass: tokenClass ?? pendleFilteredMarkets[0]!.underlyingType,
+          MaturityDays: maturityDays ?? pendleFilteredMarkets[0]!.maturityDate,
+          Type: type,
+        },
+      });
+
       suggestions = {
-        labelDescription: "PT token selection",
-        textDescription: "I want to buy PT token",
-        content: pendleFilteredMarkets.slice(0, 3).map((market) => ({
-          label: `PT ${market.underlyingAssetName} (maturity: ${market.maturityDate}, class: ${market.underlyingType}, APY: ${formatDecimalToPercentage(market.impliedApy)})`,
-          text: `I want to buy PT ${market.underlyingAssetName} (maturity: ${market.maturityDate}, class: ${market.underlyingType})`,
+        labelDescription: "MUST include token name, maturity date, and APY",
+        textDescription: "Use EXACT token name and maturity date",
+        content: pendleFilteredMarkets.slice(0, 5).map((market) => ({
+          label: `PT ${market.underlyingAssetName} (maturity: ${market.maturityDate}, APY: ${formatDecimalToPercentage(market.impliedApy)})`,
+          text: `I want to buy PT ${market.underlyingAssetName} (maturity: ${market.maturityDate})`,
         })),
       };
     }
@@ -324,7 +274,54 @@ ${suggestions!.content.map((s) => `- "${s.text}"`).join("\n")}
 
 Each suggestion should:
 - Be natural and conversational
-- Lead to confirmation step`,
+- Use EXACT labels and texts without modifications
+`,
+    });
+
+    return `<task>Generate amount suggestions for Pendle strategy</task>
+${intentContext}
+<conversation>
+${conversation}
+</conversation>
+${instructions}
+${generateOutputFormat()}`;
+  }
+
+  if (!type) {
+    const intentContext = generateIntentContextSection({
+      intentType: `${INTENT_TYPE.SELECT_PENDLE_STRATEGY}`,
+      status: "Operation type selection needed (buy/sell/deposit/withdraw)",
+      userAddress,
+      chainId,
+      parameters: {
+        From: tokenIn,
+        Amount: amountIn,
+        TokenClass: tokenClass ?? pendleFilteredMarkets[0]!.underlyingType,
+        MaturityDays: maturityDays ?? pendleFilteredMarkets[0]!.maturityDate,
+      },
+    });
+
+    const instructions = generateCommonInstructions({
+      suggestionType: "next-step",
+      specificInstructions: `Generate natural, conversational suggestions for operation type selection.
+
+LABEL FORMAT:
+- "Buy PT token" - for buy operation
+- "Sell PT token" - for sell operation
+- "Deposit to Pendle" - for deposit operation
+- "Withdraw from Pendle" - for withdraw operation
+
+TEXT FORMAT:
+- "Buy PT token" - for buy operation
+- "Sell PT token" - for sell operation
+- "Deposit to Pendle" - for deposit operation
+- "Withdraw from Pendle" - for withdraw operation
+
+Each suggestion should:
+- Be natural and conversational
+- Use EXACT labels and texts without modifications
+- Lead to amount selection and next steps
+`,
     });
 
     return `<task>Generate amount suggestions for Pendle strategy</task>
@@ -406,6 +403,7 @@ Each suggestion should:
 - Be natural and conversational
 - Use ONLY the token symbol "${tokenIn}" (no extra characters or variations)
 - Provide specific amounts based on balance when available${amounts.isNativeToken ? "\n- Reserve 5% for gas if native token" : ""}
+- Use EXACT labels and texts without modifications
 - Lead to confirmation step`,
     });
 
@@ -456,7 +454,8 @@ Each suggestion should:
 - Be natural and conversational
 - **MUST include "buy PT" in the text**
 - Reference actual available PT tokens
-- Lead to PT token selection and next steps`,
+- Lead to PT token selection and next steps
+- Use EXACT labels and texts without modifications`,
   });
 
   return `<task>Generate PT token selection suggestions for Pendle strategy</task>
