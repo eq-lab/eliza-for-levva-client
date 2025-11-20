@@ -43,9 +43,9 @@ export const extractedPendleParamsSchema = z
       .nullable()
       .describe(
         "Token selection depends on operation type:\n" +
-          "- For 'buy'/'deposit': Regular token from <userPortfolio> to spend (e.g., 'USDC', 'ETH', 'WETH'). Must have sufficient balance.\n" +
-          "- For 'sell'/'withdraw': PT token from <userPortfolio> to sell/burn (e.g., 'PT-USDe-2025-12-31'). Look for tokens with 'PT-' prefix.\n" +
-          "Return null if not explicitly specified by user."
+          "- For 'buy'/'deposit': When user does NOT explicitly specify, automatically select the non-PT token from <userPortfolio> with the highest 'usdValue' (compare as numbers: 35.75 > 3.00). Exclude tokens starting with 'PT-'.\n" +
+          "- For 'sell'/'withdraw': PT token from <userPortfolio> to sell/burn. User MUST explicitly specify. Look for 'PT-' prefix.\n" +
+          "CRITICAL: For buy/deposit operations, auto-select tokenIn when not specified. For sell/withdraw operations, return null if not specified."
       ),
     maturityDays: z
       .enum(["<=30", "30-90", ">90"])
@@ -56,7 +56,7 @@ export const extractedPendleParamsSchema = z
           "Convert numbers/expressions: '15 days' → '<=30', '60 days' → '30-90', '6 months' → '>90'. " +
           "For ranges, pick nearest: '1-2 months' → '30-90'. " +
           "For absolute dates, calculate days from now and categorize. " +
-          "Must be explicitly specified. Return null if not specified."
+          "MUST be explicitly specified. Return null if not specified."
       ),
     amountIn: z
       .string()
@@ -86,12 +86,12 @@ export const extractedPendleParamsSchema = z
       .string()
       .regex(
         /^0(\.[0-9]{1,3})?$/,
-        "Slippage must be between 0 and 1 with up to 3 decimal places"
+        "Slippage MUST be between 0 and 1 with up to 3 decimal places"
       )
       .nullable()
       .describe(
         "Slippage tolerance as decimal string between 0 and 1 (e.g., '0.01' for 1%, '0.005' for 0.5%). " +
-          "Must be trimmed to maximum 3 decimal places: '0.1' (10%), '0.05' (5%), '0.001' (0.1%). " +
+          "MUST be trimmed to maximum 3 decimal places: '0.1' (10%), '0.05' (5%), '0.001' (0.1%). " +
           "Return null if not specified. Defaults to 0.005 (0.5%) if null."
       ),
   })
@@ -115,14 +115,16 @@ export const selectPendleDataFromMessagesPrompt = (ctx: {
 Extract Pendle transaction parameters from recent messages${ctx.intentContext ? " using intent context for improved accuracy" : ""}.
 </task>
 <supportedTokens>
-Format 'PT TOKEN_SYMBOL (TOKEN_CLASS, MATURITY_DATE)':
+Format: [{"ptToken":"string","class":"string","maturity":"date"}]:
+
 ${ctx.pendleTokens}
 </supportedTokens>
 ${
   ctx.userPortfolio
     ? `<userPortfolio>
-User's wallet holdings (tokens they can use for transactions with non-zero balances and their decimals):
-Format: TOKEN_SYMBOL: BALANCE (≈$BALANCE_USD)
+User's wallet holdings (tokens they can use for transactions with non-zero balances):
+Format: [{"token":"string","balance":"number","usdValue":"number"}]
+
 ${ctx.userPortfolio}
 </userPortfolio>`
     : ""
@@ -164,7 +166,7 @@ GENERAL INSTRUCTIONS:
 - Ignore messages for transactions that are either canceled or confirmed
 - Extract these parameters for the Pendle transaction:
   * **tokenOut**: The underlying asset the PT token represents (from <supportedTokens>) - MUST be explicitly specified
-  * **tokenIn**: The token user will spend (from <userPortfolio>)
+  * **tokenIn**: The token user will spend (from <userPortfolio>) - AUTO-SELECT for buy/deposit if not specified
   * **amountIn**: How much tokenIn to use - MUST be explicitly specified
   * **maturityDays**: Maturity timeframe category - MUST be explicitly specified
   * **type**: Operation type (buy/sell/deposit/withdraw) - MUST use clear action verbs
@@ -174,8 +176,8 @@ GENERAL INSTRUCTIONS:
   * tokenOut = specific token symbol (USDC/WBTC/WETH) - MUST be explicitly mentioned by user
   * "I want a stable PT" → tokenClass: **Stable** (mentioned), tokenOut: **null** (not specified)
   * "I want PT USDC" → tokenClass: **Stable** (inferred from USDC), tokenOut: **USDC** (specified)
-- NEVER infer or suggest any parameters if not explicitly specified
-- NEVER use default values for parameters if not explicitly specified
+- NEVER infer or suggest tokenOut, amountIn, maturityDays if not explicitly specified
+- EXCEPTION: tokenIn is AUTO-SELECTED for buy/deposit operations when not specified
 - If multiple Pendle requests exist, extract parameters for the MOST RECENT uncompleted one
 - Handle common aliases: "PT USDe" = tokenOut: "USDe", "buy principal tokens" = type: "buy"
 ${ctx.intentContext ? '- Leverage intent context to resolve ambiguous references (e.g., "that token" referring to previously mentioned tokens)' : ""}
@@ -217,7 +219,7 @@ AMOUNT PARSING RULES:
 
 SLIPPAGE PARSING RULES:
 - Slippage is OPTIONAL - only extract if user explicitly mentions it
-- Must be a decimal string between 0 and 1 with maximum 3 decimal places
+- MUST be a decimal string between 0 and 1 with maximum 3 decimal places
 - **Convert percentages to decimals**:
   * "1%" or "1 percent" → "0.01"
   * "0.5%" → "0.005"
@@ -259,9 +261,13 @@ TOKEN SELECTION GUIDANCE:
   * If user specifies token not in <supportedTokens>, return null and explain in thought field
 - **tokenIn** (token to spend):
   * MUST be from <userPortfolio> (tokens user owns)
-  * Select automatically the one non-PT token with the highest USD value in <userPortfolio>
-  * Must have sufficient balance
-  * MUST be the whole TOKEN_SYMBOL, not a partial match
+  * **AUTO-SELECTION RULE**: When user does NOT specify tokenIn, automatically select the non-PT token with the highest "usdValue"
+    - Compare usdValue as numbers: 35.75 > 3.00
+    - Exclude any tokens starting with "PT-"
+    - Example: Portfolio has [USDC: $3.00, ETH: $35.75, PT-USDe: $0.00] → select "ETH"
+  * When user explicitly specifies tokenIn, use their specified token
+  * When amountIn is specified, ensure the selected token has sufficient balance
+  * MUST be the whole token name or symbol, not a partial match
 
 **For "sell" operations (selling PT tokens):**
 - **tokenIn** (PT token to sell):
@@ -282,16 +288,20 @@ TOKEN SELECTION GUIDANCE:
 - Always verify tokens exist in the correct source (<supportedTokens> or <userPortfolio>)
 
 **Examples of what to extract:**
-- "I want a PT" → type: **null** (no action verb), tokenOut: **null**, tokenClass: **null**, amountIn: **null**
-- "interested in PT" → type: **null** (no action verb), tokenOut: **null**, tokenClass: **null**, amountIn: **null**
-- "I want a stable PT" → type: **null** (no action verb), tokenOut: **null**, tokenClass: **Stable**, amountIn: **null**
-- "I want a BTC PT" → type: **null** (no action verb), tokenOut: **null**, tokenClass: **BTC**, amountIn: **null**
-- "buy PT" → type: "buy" (action verb), tokenOut: **null**, tokenClass: **null**, amountIn: **null**
-- "buy stable PT" → type: "buy", tokenOut: **null**, tokenClass: **Stable**, amountIn: **null**
-- "buy PT USDC" → type: "buy", tokenOut: "USDC", tokenClass: "Stable" (inferred), amountIn: **null**
-- "buy 100 PT USDC" → type: "buy", tokenOut: "USDC", tokenClass: "Stable", amountIn: "100"
+
+Given portfolio: [{"token":"USDC","balance":"3","usdValue":"3.00"}, {"token":"ETH","balance":"0.011","usdValue":"35.75"}, {"token":"PT-USDe-11DEC2025","balance":"0.316","usdValue":"0.00"}]
+
+- "I want a PT" → type: **null** (no action verb), tokenOut: **null**, tokenClass: **null**, tokenIn: **null**, amountIn: **null**
+- "interested in PT" → type: **null** (no action verb), tokenOut: **null**, tokenClass: **null**, tokenIn: **null**, amountIn: **null**
+- "I want a stable PT" → type: **null** (no action verb), tokenOut: **null**, tokenClass: **Stable**, tokenIn: **null**, amountIn: **null**
+- "buy PT" → type: "buy", tokenOut: **null**, tokenClass: **null**, tokenIn: **"ETH"** (auto-select highest usdValue), amountIn: **null**
+- "buy stable PT" → type: "buy", tokenOut: **null**, tokenClass: **Stable**, tokenIn: **"ETH"** (auto-select), amountIn: **null**
+- "buy yousd PT" → type: "buy", tokenOut: **null**, tokenClass: **null**, tokenIn: **"ETH"** (auto-select, not USDC!), amountIn: **null**
+- "buy PT USDC" → type: "buy", tokenOut: "USDC", tokenClass: "Stable" (inferred), tokenIn: **"ETH"** (auto-select), amountIn: **null**
+- "buy 100 PT USDC" → type: "buy", tokenOut: "USDC", tokenClass: "Stable", tokenIn: **"ETH"** (auto-select), amountIn: "100"
+- "buy 100 PT USDC with USDC" → type: "buy", tokenOut: "USDC", tokenClass: "Stable", tokenIn: **"USDC"** (explicit), amountIn: "100"
 - "sell my PT WBTC" → type: "sell", tokenIn: "PT-WBTC", tokenOut: **null**, tokenClass: "BTC" (inferred)
-- "deposit 50 USDC to Pendle" → type: "deposit", tokenIn: "USDC", amountIn: "50"
+- "deposit 50 USDC to Pendle" → type: "deposit", tokenIn: "USDC" (explicit), amountIn: "50"
 
 MATURITY DAYS SELECTION GUIDANCE:
 The maturityDays field uses categorical ranges to simplify market selection:
@@ -352,5 +362,5 @@ ${formatZodKeys(extractedPendleParamsSchema)}
 <output>
 ${formatZodOutput(extractedPendleParamsSchema)}
 
-CRITICAL: Your response must contain ONLY the JSON object, no explanations or additional text.
+CRITICAL: Your response MUST contain ONLY the JSON object, no explanations or additional text.
 </output>`;

@@ -162,23 +162,23 @@ export const pendleParamsProvider: Provider = {
           const balanceUsd = price
             ? (price * Number(balance)).toFixed(2)
             : "0.00";
-          return `${symbol}: ${balance} (≈$${balanceUsd})`;
+          return `{"token":"${symbol}","balance":"${balance}","usdValue":"${balanceUsd}"}`;
         })
-        .join("\n");
+        .join(",");
 
       const pendleAssets = pendleMarkets
         .map(
           (market) =>
-            `PT ${market.underlyingAssetName} (${market.underlyingType}, ${market.maturityDate})`
+            `{"ptToken":"${market.underlyingAssetName}","class":"${market.underlyingType}","maturity":"${market.maturityDate}"}`
         )
-        .join("\n");
+        .join(",");
 
       if (portfolioEntries) {
-        userPortfolio = portfolioEntries;
+        userPortfolio = `[${portfolioEntries}]`;
       }
 
       if (pendleAssets.length > 0) {
-        pendleTokens = pendleAssets;
+        pendleTokens = `[${pendleAssets}]`;
       }
     } catch (error) {
       runtime.logger.warn(
@@ -320,6 +320,19 @@ export const pendleParamsProvider: Provider = {
 
     data.tokenOutData = tokenOutData;
 
+    if (!type) {
+      return {
+        ...EMPTY_RESULT,
+        data: { ...data, intentContext },
+        values: {
+          strategy: "Unknown 'type', ask user for it.",
+        },
+        text: "Failed to extract Pendle parameters: unknown type",
+      };
+    }
+
+    data.type = type;
+
     if (!tokenIn) {
       return {
         ...EMPTY_RESULT,
@@ -354,19 +367,6 @@ export const pendleParamsProvider: Provider = {
         : (tokenInData!.address! as `0x${string}`);
 
     data.tokenInData = tokenInData;
-
-    if (!type) {
-      return {
-        ...EMPTY_RESULT,
-        data: { ...data, intentContext },
-        values: {
-          strategy: "Unknown 'type', ask user for it.",
-        },
-        text: "Failed to extract Pendle parameters: unknown type",
-      };
-    }
-
-    data.type = type;
 
     if (!amountIn) {
       return {

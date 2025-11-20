@@ -35,6 +35,7 @@ export const action: Action = {
     "deposit to Pendle pool",
     "add liquidity to Pendle pool",
     "provide liquidity to Pendle pool",
+    "explore Pendle strategies",
   ],
 
   validate: async () => {

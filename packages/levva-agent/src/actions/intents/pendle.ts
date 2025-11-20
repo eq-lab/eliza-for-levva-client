@@ -313,6 +313,8 @@ async function executePendleStrategyTransaction(
         throw new Error("Failed to get Pendle swap details. Try again later.");
       }
 
+      const route = convert.routes[0].tx;
+
       if (convert.requiredApprovals.length > 0) {
         for (const approval of convert.requiredApprovals) {
           calldata.push({
@@ -320,18 +322,13 @@ async function executePendleStrategyTransaction(
             data: encodeFunctionData({
               abi: erc20Abi,
               functionName: "approve",
-              args: [
-                pendleMarketAddress! as `0x${string}`,
-                BigInt(approval.amount),
-              ],
+              args: [route.to as `0x${string}`, BigInt(approval.amount)],
             }),
             title: `Approve ${formatUnits(BigInt(approval.amount), tokenInData!.decimals!)} ${tokenInData!.symbol!}`,
             description: `Approve spending ${formatUnits(BigInt(approval.amount), tokenInData!.decimals!)} ${tokenInData!.symbol!} to ${tokenOutData!.symbol!}`,
           });
         }
       }
-
-      const route = convert.routes[0].tx;
 
       calldata.push({
         to: route.to as `0x${string}`,

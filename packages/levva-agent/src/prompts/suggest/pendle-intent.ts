@@ -253,11 +253,11 @@ ${generateOutputFormat()}`;
       });
 
       suggestions = {
-        labelDescription: "MUST include token name, maturity date, and APY",
-        textDescription: "Use EXACT token name and maturity date",
+        labelDescription: "Use EXACT label format",
+        textDescription: "Use EXACT text format",
         content: pendleFilteredMarkets.slice(0, 5).map((market) => ({
-          label: `PT ${market.underlyingAssetName} (maturity: ${market.maturityDate}, APY: ${formatDecimalToPercentage(market.impliedApy)})`,
-          text: `I want to buy PT ${market.underlyingAssetName} (maturity: ${market.maturityDate})`,
+          label: `PT-${market.underlyingAssetName}-${market.maturityDate.split("T")[0]} (APY: ${formatDecimalToPercentage(market.impliedApy)})`,
+          text: `I want to select ${market.underlyingAssetName} (maturity: ${market.maturityDate.split("T")[0]})`,
         })),
       };
     }
@@ -430,7 +430,7 @@ ${generateOutputFormat()}`;
   const ptTokensList = allPendleMarkets
     .map(
       (m) =>
-        `- ${m.underlyingAssetName} (maturity: ${m.maturityDate}, class: ${m.underlyingType}, APY: ${formatDecimalToPercentage(m.impliedApy)})`
+        `- ${m.underlyingAssetName} (maturity: ${m.maturityDate.split("T")[0]}, class: ${m.underlyingType}, APY: ${formatDecimalToPercentage(m.impliedApy)})`
     )
     .join("\n");
 
