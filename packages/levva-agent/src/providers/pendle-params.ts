@@ -164,7 +164,7 @@ export const pendleParamsProvider: Provider = {
             : "0.00";
           return `("${symbol}","${balance}","${balanceUsd}")`;
         })
-        .join("\n");
+        .join(",");
 
       const pendleAssets = pendleMarkets
         .map(

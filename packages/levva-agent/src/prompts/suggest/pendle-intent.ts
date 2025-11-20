@@ -390,6 +390,7 @@ TEXT FORMAT (use "${tokenIn}" exactly as shown and ACTUAL amounts):
 ${
   amounts.hasBalance
     ? `- "I want to buy ${fullAmount} ${tokenIn}" - full ${amounts.isNativeToken ? "(95%)" : ""} balance
+- "Use ${amount25} ${tokenIn}" - 25% of balance
 - "Use ${amount75} ${tokenIn}" - 75% of balance
 - "Use ${amount50} ${tokenIn}" - 50% of balance
 - "I want to use ${amount25} ${tokenIn}" - 25% of balance`

@@ -35,17 +35,16 @@ export const extractedPendleParamsSchema = z
         "Token selection depends on operation type:\n" +
           "- For 'buy'/'deposit': PT token from <supportedTokens> (e.g., 'USDe', 'WBTC', 'WETH'). User can prefix with 'PT' (e.g., 'PT USDC'), which should be stripped.\n" +
           "- For 'sell'/'withdraw': Non-PT token from <userPortfolio> to receive (e.g., 'USDC', 'ETH'). Use underlying asset if not specified.\n" +
-          "- If user only mentions token class (e.g., 'stable PT', 'BTC PT', 'USD yield', 'ETH yield', 'BTC yield') without specific token symbol → return null. " +
-          "CRITICAL: Return null if user does NOT explicitly mention a specific token name or symbol. Do NOT infer or suggest tokens."
+          "CRITICAL: Asset class alone ('stable PT', 'BTC yield') is NOT sufficient. User MUST explicitly mention specific token name or symbol. Return null if no specific token mentioned."
       ),
     tokenIn: z
       .string()
       .nullable()
       .describe(
-        "Token selection depends on operation type:\n" +
-          "- For 'buy'/'deposit': When user does NOT explicitly specify, automatically select the non-PT token from <userPortfolio> with the highest 'usdValue' (compare as numbers: 35.75 > 3.00). Exclude tokens starting with 'PT-'.\n" +
+        "Token to use for the transaction:\n" +
+          "- For 'buy'/'deposit': Non-PT token from <userPortfolio> that user will spend. When NOT explicitly specified, AUTO-SELECT the token with HIGHEST usdValue (compare numerically: 12.90 > 1.99). MUST exclude tokens starting with 'PT-'.\n" +
           "- For 'sell'/'withdraw': PT token from <userPortfolio> to sell/burn. User MUST explicitly specify. Look for 'PT-' prefix.\n" +
-          "CRITICAL: For buy/deposit operations, auto-select tokenIn when not specified. For sell/withdraw operations, return null if not specified."
+          "CRITICAL: For buy/deposit, auto-select by highest usdValue when not specified. For sell/withdraw, return null if not specified."
       ),
     maturityDays: z
       .enum(["<=30", "30-90", ">90"])
@@ -115,15 +114,14 @@ export const selectPendleDataFromMessagesPrompt = (ctx: {
 Extract Pendle transaction parameters from recent messages${ctx.intentContext ? " using intent context for improved accuracy" : ""}.
 </task>
 <supportedTokens>
-Format: ("ptToken","class","maturity")
+Format: comma separated list of ("ptToken","class","maturity")
 
 ${ctx.pendleTokens}
 </supportedTokens>
 ${
   ctx.userPortfolio
     ? `<userPortfolio>
-User's wallet holdings (tokens they can use for transactions with non-zero balances):
-Format: ("token","balance","usdValue")
+Format: comma separated list of ("token","balance","usdValue")
 
 ${ctx.userPortfolio}
 </userPortfolio>`
@@ -174,8 +172,10 @@ GENERAL INSTRUCTIONS:
 - **CRITICAL DISTINCTION**: tokenClass and tokenOut are INDEPENDENT parameters
   * tokenClass = asset category filter (Stable/BTC/ETH) - can be mentioned by user OR inferred
   * tokenOut = specific token symbol (USDC/WBTC/WETH) - MUST be explicitly mentioned by user
-  * "I want a stable PT" → tokenClass: **Stable** (mentioned), tokenOut: **null** (not specified)
-  * "I want PT USDC" → tokenClass: **Stable** (inferred from USDC), tokenOut: **USDC** (specified)
+  * **tokenClass alone is NOT sufficient**: Specifying only asset class without specific token name always results in tokenOut: null
+  * Examples:
+    - "I want a stable PT" → tokenClass: **Stable**, tokenOut: **null** (class only, no specific token)
+    - "I want PT USDC" → tokenClass: **Stable** (inferred), tokenOut: **USDC** (specific token named)
 - NEVER infer or suggest tokenOut, amountIn, maturityDays if not explicitly specified
 - EXCEPTION: tokenIn is AUTO-SELECTED for buy/deposit operations when not specified
 - If multiple Pendle requests exist, extract parameters for the MOST RECENT uncompleted one
@@ -217,6 +217,13 @@ AMOUNT PARSING RULES:
 - NEVER include: %, $, currency symbols, or token symbols in the amountIn field
 - NEVER infer or suggest amountIn if not explicitly specified
 
+**CRITICAL NOTE on usdValue comparisons**:
+- The "usdValue" field is a STRING but represents a DECIMAL NUMBER
+- When comparing usdValues, convert to numbers FIRST: "12.90" (number: 12.90) > "1.99" (number: 1.99)
+- Example: ("USDe","1.995","1.99") has usdValue "1.99" = 1.99 as a number
+- Example: ("ETH","0.0044","12.90") has usdValue "12.90" = 12.90 as a number
+- 12.90 > 1.99, so ETH should be selected
+
 SLIPPAGE PARSING RULES:
 - Slippage is OPTIONAL - only extract if user explicitly mentions it
 - MUST be a decimal string between 0 and 1 with maximum 3 decimal places
@@ -230,7 +237,7 @@ SLIPPAGE PARSING RULES:
   * "0.123" → "0.123"
 
 TOKEN CLASS SELECTION GUIDANCE:
-**CRITICAL**: tokenClass is used for filtering, but does NOT automatically select a specific token
+**CRITICAL**: tokenClass alone is NOT sufficient to select a token. Specific token name is always required for tokenOut.
 
 - **Asset Classes**:
   * **"Stable"**: Stablecoins (e.g. USDC, USDe, DAI, USDT, etc.)
@@ -238,123 +245,93 @@ TOKEN CLASS SELECTION GUIDANCE:
   * **"ETH"**: Ethereum-backed assets (e.g. WETH, stETH, wstETH, rETH, etc.)
 
 - **Extraction Rules**:
-  * Extract tokenClass if user mentions asset type/category: "stable", "stablecoin", "BTC", "bitcoin", "ETH", "ethereum"
+  * Extract tokenClass when user mentions asset type/category: "stable", "stablecoin", "BTC", "bitcoin", "ETH", "ethereum"
   * Common phrases: "stable PT", "BTC yield", "ETH yield", "USD yield" → extract tokenClass
-  * Can be inferred from tokenOut if tokenOut is explicitly specified
+  * Can be inferred from tokenOut when tokenOut is explicitly specified
   * tokenClass is INDEPENDENT from tokenOut - they are separate parameters
 
-- **CRITICAL**: Extracting tokenClass does NOT mean you should extract tokenOut
-  * "I want a stable PT" → tokenClass: "Stable", tokenOut: **null**
-  * "I want BTC yield" → tokenClass: "BTC", tokenOut: **null**
-  * "I want PT WBTC" → tokenClass: "BTC" (inferred), tokenOut: "WBTC"
+- **CRITICAL**: Asset class only (no specific token) → tokenOut must be null
+  * "I want a stable PT" → tokenClass: "Stable", tokenOut: **null** (only class specified)
+  * "I want BTC yield" → tokenClass: "BTC", tokenOut: **null** (only class specified)
+  * "I want PT WBTC" → tokenClass: "BTC" (inferred), tokenOut: "WBTC" (specific token named)
 
 TOKEN SELECTION GUIDANCE:
 
-**For "buy" operations (purchasing PT tokens):**
-- **tokenOut** (PT token to buy):
+**tokenOut** (PT token for the transaction):
+- **For "buy"/"deposit" operations**:
   * MUST match a "ptToken" value from <supportedTokens> list
   * User MUST explicitly specify token name or symbol (e.g., "USDC", "USDe", "WETH")
   * User can prefix with "PT" (e.g., "PT USDC" → "USDC")
   * Match case-insensitively (e.g., "usdc" matches "USDC")
-  * **Example**: "I want to buy a PT" without token name → **return null for tokenOut**
-  * **Example**: "buy PT USDC" → extract "USDC"
-  * If user specifies token not in <supportedTokens> "ptToken" field, return null and explain in thought field
-- **tokenIn** (token to spend):
-  * MUST match a "token" value from <userPortfolio>
-  * **AUTO-SELECTION RULE**: When user does NOT specify tokenIn, automatically select the non-PT token with the highest "usdValue"
-    - Compare "usdValue" field as numbers: 35.75 > 3.00
-    - Exclude any tokens starting with "PT-"
-    - Example: Portfolio has [("USDC", "3", "3.00"), ("ETH", "0.011", "35.75"), ("PT-USDe", "0.316", "0.00")] → select "ETH"
-  * When user explicitly specifies tokenIn, use their specified token
-  * When amountIn is specified, ensure "balance" field shows sufficient balance
-  * MUST be the whole token name or symbol, not a partial match
+  * If token not in <supportedTokens> "ptToken" field, return null and explain in thought field
 
-**For "sell" operations (selling PT tokens):**
-- **tokenIn** (PT token to sell):
-  * MUST match a "token" value from <userPortfolio> with "PT-" prefix
-  * Look for tokens starting with "PT-" in "token" field
-  * User MUST explicitly specify which PT token to sell
-  * If user specifies PT token they don't own, return null and explain
-- **tokenOut** (token to receive):
-  * MUST be a non-PT "token" value from <userPortfolio> or underlying asset
+- **For "sell"/"withdraw" operations**:
+  * Non-PT token from <userPortfolio> to receive (e.g., "USDC", "ETH")
   * Only extract if user explicitly specifies
-  * Common case: user sells PT-USDe to get USDC/USDe back
+  * Common case: user sells PT-USDe to receive USDC/USDe
   * If not specified, return null (backend will use underlying asset)
+
+**tokenIn** (token user will use/spend):
+- **For "buy"/"deposit" operations**:
+  * MUST match a "token" value from <userPortfolio> (non-PT tokens only)
+  * **AUTO-SELECTION RULE**: When user does NOT specify tokenIn, automatically select the token with the HIGHEST usdValue
+    - Compare usdValue NUMERICALLY as decimal numbers: 12.90 > 1.99 > 0.00
+    - MUST exclude ALL tokens starting with "PT-"
+    - Example: Portfolio [("USDe","1.995","1.99"), ("ETH","0.0044","12.90")] → select "ETH" (12.90 is highest)
+    - Example: Portfolio [("USDC","3","3.00"), ("ETH","0.011","35.75"), ("PT-USDe","0.316","0.00")] → select "ETH" (35.75 is highest)
+  * When user explicitly specifies tokenIn (e.g., "with USDC", "using ETH"), use their specified token
+  * Verify sufficient "balance" when amountIn is specified
+
+- **For "sell"/"withdraw" operations**:
+  * PT token from <userPortfolio> to sell/burn
+  * MUST match a "token" value from <userPortfolio> with "PT-" prefix
+  * User MUST explicitly specify which PT token to sell
+  * If not specified, return null
 
 **General Rules:**
 - Extract tokens ONLY when user explicitly mentions specific token names or symbols
-- NEVER infer or suggest tokens based on user's intent alone
-- Return null for any parameter not explicitly specified
+- Asset class alone ('stable', 'BTC', 'ETH') is NOT sufficient for tokenOut - specific token name required
+- NEVER infer or suggest tokens based on user's intent or class alone
+- Return null for any parameter not explicitly specified (EXCEPT tokenIn for buy/deposit - use auto-selection)
 - Verify tokenOut exists in <supportedTokens> "ptToken" field for buy/deposit
 - Verify tokenIn exists in <userPortfolio> "token" field for all operations
 
-**Examples of what to extract:**
+**Extraction Examples:**
 
 Given <userPortfolio>: [("USDC","3","3.00"), ("ETH","0.011","35.75"), ("PT-USDe-11DEC2025","0.316","0.00")]
-("token","balance","usdValue")
 
-- "I want a PT" → type: **null** (no action verb), tokenOut: **null**, tokenClass: **null**, tokenIn: **null**, amountIn: **null**
-- "interested in PT" → type: **null** (no action verb), tokenOut: **null**, tokenClass: **null**, tokenIn: **null**, amountIn: **null**
-- "I want a stable PT" → type: **null** (no action verb), tokenOut: **null**, tokenClass: **Stable**, tokenIn: **null**, amountIn: **null**
-- "buy PT" → type: "buy", tokenOut: **null**, tokenClass: **null**, tokenIn: **"ETH"** (auto-select highest usdValue), amountIn: **null**
-- "buy stable PT" → type: "buy", tokenOut: **null**, tokenClass: **Stable**, tokenIn: **"ETH"** (auto-select), amountIn: **null**
-- "buy yousd PT" → type: "buy", tokenOut: **null**, tokenClass: **null**, tokenIn: **"ETH"** (auto-select, not USDC!), amountIn: **null**
-- "buy PT USDC" → type: "buy", tokenOut: "USDC", tokenClass: "Stable" (inferred), tokenIn: **"ETH"** (auto-select), amountIn: **null**
-- "buy 100 PT USDC" → type: "buy", tokenOut: "USDC", tokenClass: "Stable", tokenIn: **"ETH"** (auto-select), amountIn: "100"
-- "buy 100 PT USDC with USDC" → type: "buy", tokenOut: "USDC", tokenClass: "Stable", tokenIn: **"USDC"** (explicit), amountIn: "100"
-- "sell my PT WBTC" → type: "sell", tokenIn: "PT-WBTC", tokenOut: **null**, tokenClass: "BTC" (inferred)
-- "deposit 50 USDC to Pendle" → type: "deposit", tokenIn: "USDC" (explicit), amountIn: "50"
+- **Informational queries (all null)**:
+  * "I want a PT" → type: null, tokenOut: null, tokenClass: null, tokenIn: null, amountIn: null
+  * "interested in PT" → type: null, tokenOut: null, tokenClass: null, tokenIn: null, amountIn: null
+
+- **Asset class only (tokenOut: null)**:
+  * "I want a stable PT" → type: null, tokenOut: null, tokenClass: "Stable", tokenIn: null, amountIn: null
+  * "buy stable PT" → type: "buy", tokenOut: null, tokenClass: "Stable", tokenIn: "ETH" (auto-select 35.75 > 3.00), amountIn: null
+
+- **Buy with auto-selected tokenIn** (tokenIn not specified → select highest usdValue):
+  * "buy PT" → type: "buy", tokenOut: null, tokenClass: null, tokenIn: "ETH" (auto-select: 35.75 is highest), amountIn: null
+  * "buy PT USDC" → type: "buy", tokenOut: "USDC", tokenClass: "Stable", tokenIn: "ETH" (auto-select: 35.75 > 3.00), amountIn: null
+  * "buy 100 PT USDC" → type: "buy", tokenOut: "USDC", tokenClass: "Stable", tokenIn: "ETH" (auto-select: 35.75 is highest), amountIn: "100"
+  * "buy mRe7BTC pt" → type: "buy", tokenOut: "mRe7BTC", tokenClass: "BTC", tokenIn: "ETH" (auto-select: 35.75 > 3.00), amountIn: null
+
+- **Buy with explicit tokenIn** (tokenIn specified by user):
+  * "buy 100 PT USDC with USDC" → type: "buy", tokenOut: "USDC", tokenClass: "Stable", tokenIn: "USDC" (explicit), amountIn: "100"
+  * "buy PT USDC using ETH" → type: "buy", tokenOut: "USDC", tokenClass: "Stable", tokenIn: "ETH" (explicit), amountIn: null
+
+- **Sell operations**:
+  * "sell my PT-WBTC" → type: "sell", tokenIn: "PT-WBTC", tokenOut: null, tokenClass: "BTC"
+  * "sell PT-USDe for USDC" → type: "sell", tokenIn: "PT-USDe", tokenOut: "USDC", tokenClass: "Stable"
 
 MATURITY DAYS SELECTION GUIDANCE:
-The maturityDays field uses categorical ranges to simplify market selection:
-- **"<=30"**: Short-term (up to 30 days / ~1 month)
-- **"30-90"**: Medium-term (31-90 days / 1-3 months)
-- **">90"**: Long-term (91+ days / 3+ months)
+Categories: "<=30" (short-term, 1-30d), "30-90" (medium-term, 31-90d), ">90" (long-term, 91+d)
 
-**Mapping Rules - Convert user input to the nearest category:**
-
-1. **Explicit Days**:
-  * 1-30 days → "<=30"
-  * 31-90 days → "30-90"
-  * 91+ days → ">90"
-  * Examples: "15 days" → "<=30", "60 days" → "30-90", "120 days" → ">90"
-
-2. **Temporal Expressions** (convert to days first, then categorize):
-  * "1 week" = 7 days → "<=30"
-  * "2 weeks" = 14 days → "<=30"
-  * "1 month" = 30 days → "<=30"
-  * "2 months" = 60 days → "30-90"
-  * "3 months" = 90 days → "30-90"
-  * "6 months" = 180 days → ">90"
-  * "1 year" = 365 days → ">90"
-
-3. **Date Ranges** (pick the midpoint, then categorize):
-  * "1-2 weeks" → midpoint: 10 days → "<=30"
-  * "1-2 months" → midpoint: 45 days → "30-90"
-  * "3-6 months" → midpoint: 135 days → ">90"
-
-4. **Absolute Dates** (calculate days from now, then categorize):
-  * "March 15, 2025" → calculate days_until = (target_date - current_UTC_date)
-  * If days_until is 1-30 → "<=30"
-  * If days_until is 31-90 → "30-90"
-  * If days_until is 91+ → ">90"
-  * If days_until ≤ 0 (past date) → return null
-
-5. **Relative Terms**:
-  * "short-term" / "soon" / "quick" → "<=30"
-  * "medium-term" / "moderate" → "30-90"
-  * "long-term" / "far" / "extended" → ">90"
-
-6. **Boundary Cases** (when exactly on boundary, prefer the longer category):
-  * Exactly 30 days → "<=30"
-  * Exactly 90 days → "30-90"
-
-**Examples:**
-  * "I want 2 week maturity" → 14 days → **"<=30"**
-  * "Buy PT maturing in 45 days" → 45 days → **"30-90"**
-  * "Long-term investment" → **">90"**
-  * "Maturity around May 2025" → calculate days → categorize accordingly
-  * "3-4 months" → midpoint: 105 days → **">90"**
+**Mapping:**
+1. Explicit days: 1-30 → "<=30", 31-90 → "30-90", 91+ → ">90"
+2. Temporal: "1 week"=7d → "<=30", "2 months"=60d → "30-90", "6 months"=180d → ">90"
+3. Ranges: Use midpoint. "1-2 months" → 45d → "30-90"
+4. Absolute dates: Calculate days from now, then categorize. Past dates → null
+5. Terms: "short"/"soon" → "<=30", "medium" → "30-90", "long" → ">90"
+6. Boundaries: 30d → "<=30", 90d → "30-90"
 </instructions>
 
 <keys>
