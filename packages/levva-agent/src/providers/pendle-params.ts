@@ -162,23 +162,23 @@ export const pendleParamsProvider: Provider = {
           const balanceUsd = price
             ? (price * Number(balance)).toFixed(2)
             : "0.00";
-          return `{"token":"${symbol}","balance":"${balance}","usdValue":"${balanceUsd}"}`;
+          return `("${symbol}","${balance}","${balanceUsd}")`;
         })
-        .join(",");
+        .join("\n");
 
       const pendleAssets = pendleMarkets
         .map(
           (market) =>
-            `{"ptToken":"${market.underlyingAssetName}","class":"${market.underlyingType}","maturity":"${market.maturityDate}"}`
+            `("${market.underlyingAssetName}","${market.underlyingType}","${market.maturityDate}")`
         )
         .join(",");
 
       if (portfolioEntries) {
-        userPortfolio = `[${portfolioEntries}]`;
+        userPortfolio = portfolioEntries;
       }
 
       if (pendleAssets.length > 0) {
-        pendleTokens = `[${pendleAssets}]`;
+        pendleTokens = pendleAssets;
       }
     } catch (error) {
       runtime.logger.warn(

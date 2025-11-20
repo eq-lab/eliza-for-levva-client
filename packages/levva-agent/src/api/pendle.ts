@@ -46,8 +46,9 @@ export async function getPendleConvert({
   const result = PendleConvertResponseSchema.safeParse(data);
 
   if (!result.success) {
-    console.error("data received", data, "error", result.error);
-    return;
+    throw new Error(
+      `Failed to get Pendle transaction details. Error: ${data.message}}`
+    );
   }
 
   return result.data;

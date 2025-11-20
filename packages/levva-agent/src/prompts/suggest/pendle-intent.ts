@@ -63,7 +63,6 @@ export function generatePendleStrategyIntentSuggestionsPrompt(
     returnData;
 
   if (pendleFilteredMarkets.length === 1 && type && tokenIn && amountIn) {
-    // Get wallet asset for balance-aware amount suggestions
     const walletAsset = walletAssets.find(
       (a) => a.symbol.toLowerCase() === tokenIn.toLowerCase()
     );
@@ -306,16 +305,16 @@ ${generateOutputFormat()}`;
       specificInstructions: `Generate natural, conversational suggestions for operation type selection.
 
 LABEL FORMAT:
-- "Buy PT token" - for buy operation
-- "Sell PT token" - for sell operation
-- "Deposit to Pendle" - for deposit operation
-- "Withdraw from Pendle" - for withdraw operation
+- "Buy zero coupon bond" - for buy operation
+- "Sell zero coupon bond" - for sell operation
+- "Deposit liquidity" - for deposit operation
+- "Withdraw liquidity" - for withdraw operation
 
 TEXT FORMAT:
-- "Buy PT token" - for buy operation
-- "Sell PT token" - for sell operation
-- "Deposit to Pendle" - for deposit operation
-- "Withdraw from Pendle" - for withdraw operation
+- "Buy zero coupon bond" - for buy operation
+- "Sell zero coupon bond" - for sell operation
+- "Deposit liquidity" - for deposit operation
+- "Withdraw liquidity" - for withdraw operation
 
 Each suggestion should:
 - Be natural and conversational
@@ -380,6 +379,7 @@ LABEL FORMAT (use specific amounts, NOT generic labels):
 ${
   amounts.hasBalance
     ? `- "Full balance" - for ${amounts.isNativeToken ? "95%" : "all"} ${tokenIn}
+- "25% of balance" - for 25% of ${tokenIn}
 - "75% of balance" - for 75% of ${tokenIn}
 - "50% of balance" - for 50% of ${tokenIn}
 - "Partial amount" - for a smaller specific amount`

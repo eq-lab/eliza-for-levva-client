@@ -115,7 +115,7 @@ export const selectPendleDataFromMessagesPrompt = (ctx: {
 Extract Pendle transaction parameters from recent messages${ctx.intentContext ? " using intent context for improved accuracy" : ""}.
 </task>
 <supportedTokens>
-Format: [{"ptToken":"string","class":"string","maturity":"date"}]:
+Format: ("ptToken","class","maturity")
 
 ${ctx.pendleTokens}
 </supportedTokens>
@@ -123,7 +123,7 @@ ${
   ctx.userPortfolio
     ? `<userPortfolio>
 User's wallet holdings (tokens they can use for transactions with non-zero balances):
-Format: [{"token":"string","balance":"number","usdValue":"number"}]
+Format: ("token","balance","usdValue")
 
 ${ctx.userPortfolio}
 </userPortfolio>`
@@ -165,12 +165,12 @@ GENERAL INSTRUCTIONS:
 }
 - Ignore messages for transactions that are either canceled or confirmed
 - Extract these parameters for the Pendle transaction:
-  * **tokenOut**: The underlying asset the PT token represents (from <supportedTokens>) - MUST be explicitly specified
-  * **tokenIn**: The token user will spend (from <userPortfolio>) - AUTO-SELECT for buy/deposit if not specified
+  * **tokenOut**: PT token's underlying asset from <supportedTokens> "ptToken" field - MUST be explicitly specified
+  * **tokenIn**: Token to spend from <userPortfolio> "token" field - AUTO-SELECT for buy/deposit if not specified
   * **amountIn**: How much tokenIn to use - MUST be explicitly specified
   * **maturityDays**: Maturity timeframe category - MUST be explicitly specified
   * **type**: Operation type (buy/sell/deposit/withdraw) - MUST use clear action verbs
-  * **tokenClass**: Asset category (Stable/BTC/ETH) - can be extracted from user's mention OR inferred from tokenOut
+  * **tokenClass**: Asset category from <supportedTokens> "class" field OR inferred from tokenOut
 - **CRITICAL DISTINCTION**: tokenClass and tokenOut are INDEPENDENT parameters
   * tokenClass = asset category filter (Stable/BTC/ETH) - can be mentioned by user OR inferred
   * tokenOut = specific token symbol (USDC/WBTC/WETH) - MUST be explicitly mentioned by user
@@ -209,9 +209,9 @@ OPERATION TYPE GUIDANCE:
 
 AMOUNT PARSING RULES:
 - Extract only numeric values: "100", "0.5", "1000"
-- Use <userPortfolio> to see available balances
-- Percentage conversion: If user says "50%" → look up token in <userPortfolio>, compute 0.5 × balance
-- Keyword conversion: If user says "all"/"max" → look up token in <userPortfolio>, use full balance
+- Use <userPortfolio> "balance" field to see available balances
+- Percentage conversion: If user says "50%" → look up token in <userPortfolio>, compute 0.5 × "balance" value
+- Keyword conversion: If user says "all"/"max" → look up token in <userPortfolio>, use full "balance" value
 - Trim trailing zeros (e.g., "15.460000" → "15.46")
 - If token not in portfolio or balance unavailable: Return null for amountIn, explain reason in thought field
 - NEVER include: %, $, currency symbols, or token symbols in the amountIn field
@@ -252,31 +252,31 @@ TOKEN SELECTION GUIDANCE:
 
 **For "buy" operations (purchasing PT tokens):**
 - **tokenOut** (PT token to buy):
-  * MUST be from <supportedTokens> list (available PT tokens for purchase)
+  * MUST match a "ptToken" value from <supportedTokens> list
   * User MUST explicitly specify token name or symbol (e.g., "USDC", "USDe", "WETH")
   * User can prefix with "PT" (e.g., "PT USDC" → "USDC")
   * Match case-insensitively (e.g., "usdc" matches "USDC")
   * **Example**: "I want to buy a PT" without token name → **return null for tokenOut**
   * **Example**: "buy PT USDC" → extract "USDC"
-  * If user specifies token not in <supportedTokens>, return null and explain in thought field
+  * If user specifies token not in <supportedTokens> "ptToken" field, return null and explain in thought field
 - **tokenIn** (token to spend):
-  * MUST be from <userPortfolio> (tokens user owns)
+  * MUST match a "token" value from <userPortfolio>
   * **AUTO-SELECTION RULE**: When user does NOT specify tokenIn, automatically select the non-PT token with the highest "usdValue"
-    - Compare usdValue as numbers: 35.75 > 3.00
+    - Compare "usdValue" field as numbers: 35.75 > 3.00
     - Exclude any tokens starting with "PT-"
-    - Example: Portfolio has [USDC: $3.00, ETH: $35.75, PT-USDe: $0.00] → select "ETH"
+    - Example: Portfolio has [("USDC", "3", "3.00"), ("ETH", "0.011", "35.75"), ("PT-USDe", "0.316", "0.00")] → select "ETH"
   * When user explicitly specifies tokenIn, use their specified token
-  * When amountIn is specified, ensure the selected token has sufficient balance
+  * When amountIn is specified, ensure "balance" field shows sufficient balance
   * MUST be the whole token name or symbol, not a partial match
 
 **For "sell" operations (selling PT tokens):**
 - **tokenIn** (PT token to sell):
-  * MUST be a PT token from <userPortfolio> (PT tokens user owns)
-  * Look for tokens with "PT-" prefix or in PT format in portfolio
+  * MUST match a "token" value from <userPortfolio> with "PT-" prefix
+  * Look for tokens starting with "PT-" in "token" field
   * User MUST explicitly specify which PT token to sell
   * If user specifies PT token they don't own, return null and explain
 - **tokenOut** (token to receive):
-  * MUST be a non-PT token from <userPortfolio> or underlying asset
+  * MUST be a non-PT "token" value from <userPortfolio> or underlying asset
   * Only extract if user explicitly specifies
   * Common case: user sells PT-USDe to get USDC/USDe back
   * If not specified, return null (backend will use underlying asset)
@@ -285,11 +285,13 @@ TOKEN SELECTION GUIDANCE:
 - Extract tokens ONLY when user explicitly mentions specific token names or symbols
 - NEVER infer or suggest tokens based on user's intent alone
 - Return null for any parameter not explicitly specified
-- Always verify tokens exist in the correct source (<supportedTokens> or <userPortfolio>)
+- Verify tokenOut exists in <supportedTokens> "ptToken" field for buy/deposit
+- Verify tokenIn exists in <userPortfolio> "token" field for all operations
 
 **Examples of what to extract:**
 
-Given portfolio: [{"token":"USDC","balance":"3","usdValue":"3.00"}, {"token":"ETH","balance":"0.011","usdValue":"35.75"}, {"token":"PT-USDe-11DEC2025","balance":"0.316","usdValue":"0.00"}]
+Given <userPortfolio>: [("USDC","3","3.00"), ("ETH","0.011","35.75"), ("PT-USDe-11DEC2025","0.316","0.00")]
+("token","balance","usdValue")
 
 - "I want a PT" → type: **null** (no action verb), tokenOut: **null**, tokenClass: **null**, tokenIn: **null**, amountIn: **null**
 - "interested in PT" → type: **null** (no action verb), tokenOut: **null**, tokenClass: **null**, tokenIn: **null**, amountIn: **null**
