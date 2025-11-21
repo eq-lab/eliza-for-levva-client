@@ -29,3 +29,8 @@ export {
   generateSendSuggestions,
   onSendSuccess,
 } from "./send";
+export {
+  handlePendleStrategyIntent,
+  generatePendleStrategySuggestions,
+  onPendleStrategySuccess,
+} from "./pendle";

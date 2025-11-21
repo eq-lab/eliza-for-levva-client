@@ -20,6 +20,7 @@ export const strategyParamsProvider: Provider = {
   name: STRATEGY_PARAMS_PROVIDER_NAME,
   description:
     "Provides basic strategy and portfolio information for strategy recommendations. Parameter extraction is handled by the deposit intent system.",
+  dynamic: true,
   async get(runtime, message, state) {
     const simpleReply = checkSimpleReply(
       runtime,

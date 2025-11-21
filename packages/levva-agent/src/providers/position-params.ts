@@ -43,7 +43,7 @@ export const POSITION_PARAMS_PROVIDER_NAME = "position-params";
 export const positionParamsProvider: Provider = {
   name: POSITION_PARAMS_PROVIDER_NAME,
   description: "Provides user position data and withdrawal request information",
-  position: -50,
+  dynamic: true,
   async get(runtime, message, state) {
     logger.info(
       `[${POSITION_PARAMS_PROVIDER_NAME}] Provider started for: "${message.content.text}"`

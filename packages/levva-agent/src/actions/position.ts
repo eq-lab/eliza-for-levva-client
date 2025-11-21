@@ -318,7 +318,7 @@ ${availableStrategies
         thoughtProcess: responseContent?.thought,
       },
       data: {
-        actionName: LEVVA_ACTIONS.MANAGE_POSITIONS,
+        actionName: `${LEVVA_ACTIONS.MANAGE_POSITIONS}`,
         response: responseContent,
         thought: responseContent?.thought,
         initialReply: content.text,
@@ -362,7 +362,7 @@ ${availableStrategies
         thoughtProcess: responseContent?.thought,
       },
       data: {
-        actionName: LEVVA_ACTIONS.MANAGE_POSITIONS,
+        actionName: `${LEVVA_ACTIONS.MANAGE_POSITIONS}`,
         error: errorMessage,
         thought,
       },

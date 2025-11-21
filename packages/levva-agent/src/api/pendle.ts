@@ -1,0 +1,55 @@
+import { z } from "zod";
+
+const PendleConvertResponseSchema = z.object({
+  requiredApprovals: z.array(
+    z.object({
+      token: z.string(),
+      amount: z.string(),
+    })
+  ),
+  routes: z.array(
+    z.object({
+      tx: z.object({
+        data: z.string(),
+        to: z.string(),
+        from: z.string(),
+        value: z.string().optional(),
+      }),
+    })
+  ),
+});
+
+interface PendleConvertParams {
+  chainId: `${number}`;
+  receiver: `0x${string}`;
+  slippage: `${number}`;
+  enableAggregator: "true" | "false";
+  tokensIn: `0x${string}`;
+  tokensOut: `0x${string}`;
+  amountsIn: `${bigint}`;
+}
+
+export async function getPendleConvert({
+  chainId,
+  enableAggregator = "true",
+  slippage = "0.005",
+  ...params
+}: PendleConvertParams) {
+  const path = `/core/v2/sdk/${chainId}/convert`;
+  const query = new URLSearchParams({ ...params, enableAggregator, slippage });
+
+  const response = await fetch(
+    `https://api-v2.pendle.finance${path}?${query.toString()}`
+  );
+
+  const data = await response.json();
+  const result = PendleConvertResponseSchema.safeParse(data);
+
+  if (!result.success) {
+    throw new Error(
+      `Failed to get Pendle transaction details. Error: ${data.message}}`
+    );
+  }
+
+  return result.data;
+}

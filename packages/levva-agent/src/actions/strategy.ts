@@ -142,7 +142,7 @@ export const action: Action = {
           thoughtProcess: responseContent?.thought,
         },
         data: {
-          actionName: LEVVA_ACTIONS.SELECT_STRATEGY,
+          actionName: `${LEVVA_ACTIONS.SELECT_STRATEGY}`,
           recommendation: true,
           strategiesCount: params.strategies.length,
           guidanceProvided: true,
@@ -181,7 +181,7 @@ export const action: Action = {
           thoughtProcess: responseContent?.thought,
         },
         data: {
-          actionName: LEVVA_ACTIONS.SELECT_STRATEGY,
+          actionName: `${LEVVA_ACTIONS.SELECT_STRATEGY}`,
           error: errorMessage,
           thought: responseContent?.thought,
         },

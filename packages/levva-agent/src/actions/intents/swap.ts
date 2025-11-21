@@ -223,7 +223,7 @@ async function handleMissingSwapParameters(
       thoughtProcess: responseContent?.thought,
     },
     data: {
-      actionName: LEVVA_ACTIONS.SWAP_TOKENS,
+      actionName: `${LEVVA_ACTIONS.SWAP_TOKENS}`,
       intentId: intentContext.id,
       intentType: intentContext.type,
       response: responseContent,
@@ -348,7 +348,7 @@ async function executeSwapTransaction(
       thoughtProcess: responseContent?.thought,
     },
     data: {
-      actionName: LEVVA_ACTIONS.SWAP_TOKENS,
+      actionName: `${LEVVA_ACTIONS.SWAP_TOKENS}`,
       intentId: intentContext.id,
       intentType: intentContext.type,
       response: responseContent,
@@ -416,7 +416,7 @@ async function handleSwapError(
       thoughtProcess: responseContent?.thought,
     },
     data: {
-      actionName: LEVVA_ACTIONS.SWAP_TOKENS,
+      actionName: `${LEVVA_ACTIONS.SWAP_TOKENS}`,
       intentId: intentContext.id,
       intentType: intentContext.type,
       error: errorMessage,

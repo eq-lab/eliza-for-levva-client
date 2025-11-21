@@ -25,11 +25,9 @@ export const action: Action = {
     "SWAP_ASSETS",
     "EXCHANGE_ASSETS",
     "swap tokens",
-    "exchange tokens",
-    "swap",
-    "exchange",
-    "exchange assets",
     "swap assets",
+    "exchange tokens",
+    "exchange assets",
   ],
 
   validate: async () => {
@@ -178,7 +176,7 @@ export const action: Action = {
           thoughtProcess: responseContent?.thought,
         },
         data: {
-          actionName: LEVVA_ACTIONS.SWAP_TOKENS,
+          actionName: `${LEVVA_ACTIONS.SWAP_TOKENS}`,
           response: responseContent,
           thought,
           messageGenerated: true,
@@ -223,7 +221,7 @@ export const action: Action = {
           thoughtProcess: responseContent?.thought,
         },
         data: {
-          actionName: LEVVA_ACTIONS.SWAP_TOKENS,
+          actionName: `${LEVVA_ACTIONS.SWAP_TOKENS}`,
           error: errorMessage,
           thought: responseContent?.thought,
         },

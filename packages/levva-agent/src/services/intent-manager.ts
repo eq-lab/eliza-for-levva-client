@@ -569,9 +569,10 @@ export class IntentManager extends Service {
       // Look for intent IDs in agent response data
       // TODO we can create a set on intent registration not to hardcode domains
       const validDomains = [
-        "MANAGE_POSITIONS",
-        "SWAP_TOKENS",
-        "SELECT_STRATEGY",
+        `${LEVVA_ACTIONS.MANAGE_POSITIONS}`,
+        `${LEVVA_ACTIONS.SWAP_TOKENS}`,
+        `${LEVVA_ACTIONS.SELECT_STRATEGY}`,
+        `${LEVVA_ACTIONS.SELECT_PENDLE_STRATEGY}`,
       ];
 
       for (const memory of agentResponses) {

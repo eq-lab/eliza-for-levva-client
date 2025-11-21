@@ -10,7 +10,7 @@ import poolAbi from "./abi/pool.abi";
 import { bundlerEnter } from "./tx";
 import { getPendleParams as getPendleParamsImpl } from "./pendle";
 import { ETH_NULL_ADDR } from "../../constants/eth";
-import { getPendleSwap } from "src/api/swap/pendle";
+import { getPendleConvert } from "src/api/pendle";
 import { getStrategies as getStrategiesApi } from "../../api/levva";
 
 /**
@@ -508,15 +508,14 @@ export class StrategyComponent {
         throw new Error("weth error");
       }
 
-      const swap = await getPendleSwap({
+      const swap = await getPendleConvert({
         chainId: chainId.toString() as `${number}`,
-        market,
         receiver,
         slippage: "0.05" as `${number}`,
         enableAggregator: "true",
-        tokenIn: tokenIn.address,
-        tokenOut: pool.baseToken,
-        amountIn: amountIn.toString() as `${number}`,
+        tokensIn: tokenIn.address,
+        tokensOut: pool.baseToken,
+        amountsIn: `${amountIn}`,
       });
 
       if (!swap) {

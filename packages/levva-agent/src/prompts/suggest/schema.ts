@@ -25,7 +25,7 @@ export const defaultSuggestionSchema = z.object({
         label: z
           .string()
           .describe(
-            "Short, specific label for the button/chip UI element (2-5 words). Must clearly indicate what the suggestion does. Examples: 'Withdraw 100 USDC' (NOT 'Edit amount'), '50% of balance' (NOT 'Partial'), 'Safe yield strategy' (NOT 'Different strategy'), 'Cancel withdrawal'"
+            "Short, specific label for the button/chip UI element (3-6 words). Must clearly indicate what the suggestion does. Examples: 'Withdraw 100 USDC' (NOT 'Edit amount'), '50% of balance' (NOT 'Partial'), 'Safe yield strategy' (NOT 'Different strategy'), 'Cancel withdrawal'"
           ),
         text: z
           .string()

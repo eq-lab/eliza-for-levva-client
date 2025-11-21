@@ -17,6 +17,27 @@ const tokenSchema = z.object({
   bonuses: z.array(bonusSchema).optional(),
 });
 
+const pendleMarketSchema = z.object({
+  pendleMarketAddress: z.string(),
+  underlyingAssetName: z.string(),
+  underlyingType: z.enum(["Stable", "BTC", "ETH", "Other"]),
+  maturityDate: z.string(),
+  impliedApy: z.number(),
+  liquidity: z.number(),
+  capacity: z.number(),
+  capacityUsd: z.number(),
+  poolAddress: z.string(),
+  totalQuoteLent: z.number(),
+  totalQuoteBorrowed: z.number(),
+  utilizationRate: z.number(),
+  currentInterestRate: z.number(),
+  leverage: z.number(),
+  lenderInterest: z.number(),
+  spread: z.number(),
+  publicChainId: z.number(),
+  updatedAt: z.string(),
+});
+
 export const strategiesResponseSchema = z.array(
   z.object({
     id: z.number(),
@@ -79,6 +100,10 @@ export const withdrawalRequestsResponseSchema = z.array(
 
 // Token response schema
 export const tokenResponseSchema = tokenSchema;
+export const tokensResponseSchema = z.array(tokenSchema);
+
+// Pendle market response schema
+export const pendleMarketResponseSchema = z.array(pendleMarketSchema);
 
 export type Token = z.infer<typeof tokenSchema>;
 export type TokenResponse = z.infer<typeof tokenResponseSchema>;
@@ -88,3 +113,4 @@ export type WithdrawalRequest = z.infer<typeof withdrawalRequestSchema>;
 export type WithdrawalRequestsResponse = z.infer<
   typeof withdrawalRequestsResponseSchema
 >;
+export type PendleMarket = z.infer<typeof pendleMarketSchema>;

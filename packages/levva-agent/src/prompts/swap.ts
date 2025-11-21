@@ -58,7 +58,9 @@ export const extractedSwapParamsSchema = z
           "NEVER include %, currency symbols, or token symbols."
       ),
   })
-  .describe("Extracted swap parameters from user messages");
+  .describe(
+    "Extracted swap parameters from user messages (Kyber swap and wrapping/unwrapping operations)"
+  );
 
 /** Extracted swap parameters type inferred from Zod schema */
 export type ExtractedSwapParams = z.infer<typeof extractedSwapParamsSchema>;

@@ -6,11 +6,12 @@ import {
 } from "@elizaos/core";
 import { isHex, TransactionReceipt } from "viem";
 import { IntentManager, IntentContext } from "../services/intent-manager";
-import { LEVVA_SERVICE } from "../constants/enum";
+import { LEVVA_ACTIONS, LEVVA_SERVICE } from "../constants/enum";
 import { onWithdrawSuccess } from "src/actions/intents/withdraw";
 import { onSwapSuccess } from "src/actions/intents/swap";
 import { onDepositSuccess } from "src/actions/intents/deposit";
 import { onSendSuccess } from "src/actions/intents/send";
+import { onPendleStrategySuccess } from "../actions/intents";
 
 interface TransactionData {
   type: string;
@@ -176,6 +177,23 @@ async function handleTransactionConfirmation(
         }
         break;
       }
+      case "SELECT_PENDLE_STRATEGY": {
+        const shouldComplete = await onPendleStrategySuccess(
+          runtime,
+          activeIntentContext,
+          receipt
+        );
+
+        if (shouldComplete) {
+          await handleIntentCompletion(
+            runtime,
+            message,
+            receipt,
+            activeIntentContext
+          );
+        }
+        break;
+      }
       case "DEPOSIT": {
         await onDepositSuccess(runtime, activeIntentContext);
 
@@ -236,7 +254,11 @@ async function handleIntentCompletion(
     }
 
     // Complete the specific active intent if it's transaction-related
-    const transactionRelatedDomains = ["MANAGE_POSITIONS", "SWAP_TOKENS"];
+    const transactionRelatedDomains = [
+      LEVVA_ACTIONS.MANAGE_POSITIONS,
+      LEVVA_ACTIONS.SWAP_TOKENS,
+      LEVVA_ACTIONS.SELECT_PENDLE_STRATEGY,
+    ];
 
     if (
       transactionRelatedDomains.includes(activeIntentContext.domain) &&

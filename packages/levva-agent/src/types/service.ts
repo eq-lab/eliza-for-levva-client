@@ -1,7 +1,6 @@
 import { Service } from "@elizaos/core";
 import { IBrowserService as IBrowserServiceV1 } from "@elizaos/core/v1";
 import { CalldataWithDescription } from "./tx";
-import { PendleActiveMarkets } from "src/api/market/pendle";
 
 export interface ILevvaService extends Service {
   // news aggregator

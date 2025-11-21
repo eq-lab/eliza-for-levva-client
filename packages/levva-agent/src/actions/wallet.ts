@@ -319,7 +319,7 @@ ${news
           thoughtProcess: responseContent?.thought,
         },
         data: {
-          actionName: LEVVA_ACTIONS.ANALYZE_WALLET,
+          actionName: `${LEVVA_ACTIONS.ANALYZE_WALLET}`,
           response: responseContent,
           thought: responseContent?.thought,
           initialReply: content.text,
@@ -359,7 +359,7 @@ ${news
           thoughtProcess: responseContent?.thought,
         },
         data: {
-          actionName: LEVVA_ACTIONS.ANALYZE_WALLET,
+          actionName: `${LEVVA_ACTIONS.ANALYZE_WALLET}`,
           error: errorMessage,
           thought,
         },

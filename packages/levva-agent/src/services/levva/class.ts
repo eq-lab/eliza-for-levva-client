@@ -9,8 +9,6 @@ import {
   UUID,
 } from "@elizaos/core";
 import { LEVVA_SERVICE } from "../../constants/enum";
-import { getActiveMarkets, PendleActiveMarkets } from "../../api/market/pendle";
-import { CacheEntry } from "../../types/core";
 import { ILevvaService } from "../../types/service";
 import { CalldataWithDescription } from "../../types/tx";
 import { balancesTable } from "../../schema/balances";
@@ -24,20 +22,22 @@ import {
   getVaultConstants,
 } from "./pool";
 import { StrategyComponent } from "./strategy";
-import {
-  PendleInterface,
-  getPendleParams as getPendleParamsImpl,
-} from "./pendle";
 import { WalletServiceComponent } from "./wallet";
 import vaultAbi from "./abi/vault.abi";
 import withdrawalNftAbi from "./abi/vault.withdrawal-nft.abi";
 import { getChannelByName, getMessages } from "./messages";
-import { getUserPositions, getWithdrawalRequests } from "../../api/levva";
+import {
+  getActivePendleMarkets,
+  getUserPositions,
+  getWithdrawalRequests,
+} from "../../api/levva";
 import { createPositionSummary } from "./positions";
 import { checkSecret } from "./secrets";
 import { TokenServiceComponent } from "./token";
 import { NewsServiceComponent } from "./news-component";
 import { createTimedCache, createPermanentCache } from "./cache-util";
+import { getPendleMarketTokens } from "./pendle";
+import { PendleMarket } from "../../api/levva/schema";
 
 const REQUIRED_PLUGINS = ["levva"];
 
@@ -46,10 +46,7 @@ function checkPlugins(runtime: IAgentRuntime) {
   return REQUIRED_PLUGINS.every((plugin) => set.has(plugin));
 }
 
-export class LevvaService
-  extends Service
-  implements ILevvaService, PendleInterface
-{
+export class LevvaService extends Service implements ILevvaService {
   public readonly runtime: IAgentRuntime;
 
   // Service composition components - NEW functionality only
@@ -288,47 +285,69 @@ export class LevvaService
   }
 
   // -- End of Position Management --
-  private getPendleMarketsCacheKey = (
-    chainId: number,
-    {
-      baseToken,
-      quoteToken,
-    }: { baseToken: `0x${string}`; quoteToken: `0x${string}` }
-  ) => `pendle-markets:${chainId}:${baseToken}:${quoteToken}`;
 
-  getPendleParams = createPermanentCache(
+  // -- Pendle Strategies --
+  getPendleMarkets = createTimedCache(
     this,
-    getPendleParamsImpl,
-    this.getPendleMarketsCacheKey
+    3600000, // 1 hour in milliseconds
+    async (chainId: number) => {
+      const result = await getActivePendleMarkets(chainId);
+      const supportedUnderlyingTypes = ["Stable", "ETH", "BTC"];
+
+      if (!result.success) {
+        throw new Error("Failed to get Pendle markets");
+      }
+
+      return result.data.filter((market) =>
+        supportedUnderlyingTypes.includes(market.underlyingType)
+      );
+    },
+    (chainId: number) => `pendle-markets:${chainId}`
   );
 
-  async getPendleMarkets(params: { chainId: number }) {
-    const ttl = 3600000;
-    const cacheKey = `pendle-markets:${params.chainId}`;
+  async filterPendleMarkets(
+    pendleMarkets: PendleMarket[],
+    tokenOut?: string,
+    maturityDays?: string,
+    tokenClass?: string
+  ): Promise<PendleMarket[]> {
+    const utcNowDate = Date.now();
+    const utcNowDateInMsec = Math.floor(
+      utcNowDate - Math.floor(utcNowDate % 86400000)
+    );
 
-    const cached =
-      await this.runtime.getCache<CacheEntry<PendleActiveMarkets>>(cacheKey);
-
-    if (cached?.timestamp && Date.now() - cached.timestamp < ttl) {
-      return cached.value;
-    }
-
-    const markets = await getActiveMarkets(params.chainId);
-
-    if (!markets.success) {
-      this.runtime.logger.error("Failed to get pendle markets", markets.error);
-      throw new Error("Failed to get pendle markets");
-    }
-
-    const value = markets.data.markets;
-
-    await this.runtime.setCache(cacheKey, {
-      timestamp: Date.now(),
-      value,
+    return pendleMarkets.filter((market) => {
+      const maturityDate = new Date(market.maturityDate);
+      const daysUntilMaturity = Math.ceil(
+        (maturityDate.getTime() - utcNowDateInMsec) / 86400000
+      );
+      return (
+        (!tokenOut ||
+          tokenOut.toLocaleLowerCase() ===
+            market.underlyingAssetName.toLocaleLowerCase()) &&
+        (!maturityDays ||
+          (maturityDays === "<=30" && daysUntilMaturity <= 30) ||
+          (maturityDays === "30-90" &&
+            daysUntilMaturity > 30 &&
+            daysUntilMaturity <= 90) ||
+          (maturityDays === ">90" && daysUntilMaturity > 90)) &&
+        (!tokenClass || tokenClass === market.underlyingType)
+      );
     });
-
-    return value;
   }
+
+  private getPendleMarketTokensCacheKey = (
+    chainId: number,
+    address: `0x${string}`
+  ) => `pendle-market-tokens:${chainId}:${address}`;
+
+  getPendleMarketTokens = createPermanentCache(
+    this,
+    getPendleMarketTokens,
+    this.getPendleMarketTokensCacheKey
+  );
+
+  // -- End of Pendle Strategies --
 
   async createCalldata(
     calls: CalldataWithDescription[]

@@ -30,6 +30,10 @@ const FALLBACK_SUGGESTIONS: Suggestions[] = [
     label: "Strategy Recommendations",
     text: "Recommend investment strategies based on my portfolio and risk tolerance",
   },
+  {
+    label: "Explore fixed term, fixed yield till maturity options",
+    text: "I want to explore Pendle fixed term, fixed yield till maturity options",
+  },
 ];
 
 async function handler(req: Request, res: Response, runtime: IAgentRuntime) {
