@@ -92,7 +92,7 @@ export function generatePendleStrategyIntentSuggestionsPrompt(
     });
 
     const amountContext = amounts.hasBalance
-      ? `\nFor amount modifications, user has ${amounts.fullAmount} ${tokenIn} available. Suggest specific amounts: ${amounts.amount50} ${tokenIn}, ${amounts.amount75} ${tokenIn}.`
+      ? `\nFor amount modifications, user has ${amounts.fullAmount} ${tokenIn} available. Suggest specific amounts: ${amounts.amount25} ${tokenIn}, ${amounts.amount50} ${tokenIn}, ${amounts.amount75} ${tokenIn}.`
       : "";
 
     // Build label examples
@@ -102,7 +102,7 @@ export function generatePendleStrategyIntentSuggestionsPrompt(
     ];
     if (amounts.hasBalance) {
       labelExamples.push(
-        `- "Buy ${amounts.amount50} ${tokenIn}" - for 50% amount`
+        `- "Use ${amounts.amount50} ${tokenIn}" - for 50% amount`
       );
     } else {
       labelExamples.push(`- "Different amount" - for amount change`);
@@ -113,15 +113,14 @@ export function generatePendleStrategyIntentSuggestionsPrompt(
     const textExamples = [
       `- "Yes, please proceed with the Pendle strategy" - confirmation`,
       `- "Let me retry this Pendle strategy" - retry after failure`,
-      `- "Buy ${amountIn} ${tokenIn} to ${tokenOut ?? pendleFilteredMarkets[0]!.underlyingAssetName}" - explicit confirmation`,
     ];
     if (amounts.hasBalance) {
       textExamples.push(
-        `- "Actually, buy ${amounts.amount50} ${tokenIn} instead" - modify with specific amount`
+        `- "Actually, buy/deposit ${amounts.amount50} ${tokenIn} instead" - modify with specific amount`
       );
     } else {
       textExamples.push(
-        `- "Actually, let me buy a different amount" - modify amount`
+        `- "Actually, let me use a different amount" - modify amount`
       );
     }
     textExamples.push(`- "Cancel and buy something else" - restart`);
@@ -147,10 +146,55 @@ Each suggestion should:
 - Be natural and conversational
 - Clearly indicate confirmation or modification intent
 - Use SPECIFIC amounts in both label and text for modifications
+- Completely ignore the "✨ Filtered Pendle Markets" section, it is for display purposes only
 - Reference the actual parameters when appropriate`,
     });
 
     return `<task>Generate confirmation suggestions for Pendle strategy - all parameters provided</task>
+${intentContext}
+<conversation>
+${conversation}
+</conversation>
+${instructions}
+${generateOutputFormat()}`;
+  }
+
+  if (!type) {
+    const intentContext = generateIntentContextSection({
+      intentType: `${INTENT_TYPE.SELECT_PENDLE_STRATEGY}`,
+      status: "Operation type selection needed (buy/sell/deposit/withdraw)",
+      userAddress,
+      chainId,
+      parameters: {
+        From: tokenIn,
+        Amount: amountIn,
+        TokenClass: tokenClass ?? pendleFilteredMarkets[0]!.underlyingType,
+        MaturityDays: maturityDays ?? pendleFilteredMarkets[0]!.maturityDate,
+      },
+    });
+
+    const instructions = generateCommonInstructions({
+      suggestionType: "next-step",
+      specificInstructions: `Generate natural, conversational suggestions for operation type selection.
+
+LABEL FORMAT:
+- "Buy zero coupon bond" - for buy operation
+- "Deposit liquidity" - for deposit operation
+
+TEXT FORMAT:
+- "Buy zero coupon bond" - for buy operation
+- "Deposit liquidity" - for deposit operation
+
+Each suggestion MUST:
+- Be natural and conversational
+- Use EXACT labels and texts without modifications
+- MUST use information only from LABEL FORMAT AND TEXT FORMAT
+- Completely ignore the "✨ Filtered Pendle Markets" section, it is for display purposes only
+- Lead to amount selection and next steps
+`,
+    });
+
+    return `<task>Generate amount suggestions for Pendle strategy</task>
 ${intentContext}
 <conversation>
 ${conversation}
@@ -271,59 +315,16 @@ ${suggestions!.content.map((s) => `- "${s.label}"`).join("\n")}
 TEXT FORMAT (${suggestions!.textDescription}):
 ${suggestions!.content.map((s) => `- "${s.text}"`).join("\n")}
 
-Each suggestion should:
+Each suggestion MUST:
 - Be natural and conversational
 - Use EXACT labels and texts without modifications
-`,
-    });
-
-    return `<task>Generate amount suggestions for Pendle strategy</task>
-${intentContext}
-<conversation>
-${conversation}
-</conversation>
-${instructions}
-${generateOutputFormat()}`;
-  }
-
-  if (!type) {
-    const intentContext = generateIntentContextSection({
-      intentType: `${INTENT_TYPE.SELECT_PENDLE_STRATEGY}`,
-      status: "Operation type selection needed (buy/sell/deposit/withdraw)",
-      userAddress,
-      chainId,
-      parameters: {
-        From: tokenIn,
-        Amount: amountIn,
-        TokenClass: tokenClass ?? pendleFilteredMarkets[0]!.underlyingType,
-        MaturityDays: maturityDays ?? pendleFilteredMarkets[0]!.maturityDate,
-      },
-    });
-
-    const instructions = generateCommonInstructions({
-      suggestionType: "next-step",
-      specificInstructions: `Generate natural, conversational suggestions for operation type selection.
-
-LABEL FORMAT:
-- "Buy zero coupon bond" - for buy operation
-- "Sell zero coupon bond" - for sell operation
-- "Deposit liquidity" - for deposit operation
-- "Withdraw liquidity" - for withdraw operation
-
-TEXT FORMAT:
-- "Buy zero coupon bond" - for buy operation
-- "Sell zero coupon bond" - for sell operation
-- "Deposit liquidity" - for deposit operation
-- "Withdraw liquidity" - for withdraw operation
-
-Each suggestion should:
-- Be natural and conversational
-- Use EXACT labels and texts without modifications
+- MUST use information only from LABEL FORMAT AND TEXT FORMAT
+- Completely ignore the "✨ Filtered Pendle Markets" section, it is for display purposes only
 - Lead to amount selection and next steps
 `,
     });
 
-    return `<task>Generate amount suggestions for Pendle strategy</task>
+    return `<task>Generate selection suggestions for Pendle strategy</task>
 ${intentContext}
 <conversation>
 ${conversation}
@@ -333,7 +334,6 @@ ${generateOutputFormat()}`;
   }
 
   if (pendleFilteredMarkets.length === 1 && !amountIn) {
-    // Find the asset in wallet to suggest percentage-based amounts
     const walletAsset = walletAssets.find(
       (a) => a.symbol?.toLowerCase() === tokenIn!.toLowerCase()
     );
@@ -352,7 +352,6 @@ ${generateOutputFormat()}`;
       },
     });
 
-    // Calculate actual token amounts based on balance using universal helper
     const amounts = calculateAmountsFromBalance(
       walletAsset?.balance ?? 0n,
       walletAsset?.decimals ?? 18,
@@ -360,8 +359,6 @@ ${generateOutputFormat()}`;
     );
 
     const { fullAmount, amount75, amount50, amount25 } = amounts;
-
-    // Generate amount context for prompt
     const amountContext = generateAmountContext(tokenIn!, amounts);
 
     const gasNote = amounts.isNativeToken
@@ -379,10 +376,9 @@ LABEL FORMAT (use specific amounts, NOT generic labels):
 ${
   amounts.hasBalance
     ? `- "Full balance" - for ${amounts.isNativeToken ? "95%" : "all"} ${tokenIn}
-- "25% of balance" - for 25% of ${tokenIn}
-- "75% of balance" - for 75% of ${tokenIn}
-- "50% of balance" - for 50% of ${tokenIn}
-- "Partial amount" - for a smaller specific amount`
+- "75% of ${tokenIn}" - for 75% of ${tokenIn}
+- "50% of ${tokenIn}" - for 50% of ${tokenIn}
+- "25% of ${tokenIn}" - for 25% of ${tokenIn}`
     : `- Use descriptive labels with actual amounts when possible`
 }
 
@@ -390,21 +386,22 @@ TEXT FORMAT (use "${tokenIn}" exactly as shown and ACTUAL amounts):
 ${
   amounts.hasBalance
     ? `- "I want to buy ${fullAmount} ${tokenIn}" - full ${amounts.isNativeToken ? "(95%)" : ""} balance
-- "Use ${amount25} ${tokenIn}" - 25% of balance
 - "Use ${amount75} ${tokenIn}" - 75% of balance
 - "Use ${amount50} ${tokenIn}" - 50% of balance
-- "I want to use ${amount25} ${tokenIn}" - 25% of balance`
+- "Use ${amount25} ${tokenIn}" - 25% of balance`
     : `- "I want to buy 100 ${tokenIn}" - specific amount
 - "Use 50 ${tokenIn}" - specific amount
 - "Use all my ${tokenIn}" - maximum amount`
 }
 - "What amount should I use?" - ask for guidance
 
-Each suggestion should:
+Each suggestion MUST:
 - Be natural and conversational
 - Use ONLY the token symbol "${tokenIn}" (no extra characters or variations)
 - Provide specific amounts based on balance when available${amounts.isNativeToken ? "\n- Reserve 5% for gas if native token" : ""}
 - Use EXACT labels and texts without modifications
+- MUST use information only from LABEL FORMAT AND TEXT FORMAT
+- Completely ignore the "✨ Filtered Pendle Markets" section, it is for display purposes only
 - Lead to confirmation step`,
     });
 
@@ -456,6 +453,7 @@ Each suggestion should:
 - **MUST include "buy PT" in the text**
 - Reference actual available PT tokens
 - Lead to PT token selection and next steps
+- Completely ignore the "✨ Filtered Pendle Markets" section, it is for display purposes only
 - Use EXACT labels and texts without modifications`,
   });
 

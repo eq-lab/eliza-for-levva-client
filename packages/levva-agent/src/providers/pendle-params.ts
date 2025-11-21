@@ -15,6 +15,7 @@ import { IntentManager, IntentContext } from "../services/intent-manager";
 import { zodJsonSchema } from "../prompts/util";
 import { PendleMarket } from "../api/levva/schema";
 import { TokenDataWithInfo } from "../types/token";
+import { formatDecimalToPercentage } from "../util";
 
 export interface PendleParamsProviderData {
   tokenInData?: TokenDataWithInfo;
@@ -237,6 +238,27 @@ export const pendleParamsProvider: Provider = {
     const { tokenIn, tokenOut, tokenClass, maturityDays, amountIn, type } =
       params;
 
+    if (!type) {
+      return {
+        ...EMPTY_RESULT,
+        data: { ...data, intentContext },
+        values: {
+          strategy: "Please provide the operation type for the Pendle market.",
+        },
+        text: "Failed to extract Pendle parameters: unknown type",
+      };
+    }
+
+    data.type = type;
+
+    if (type === "sell") {
+      // TODO: implement sell type
+      throw new Error("Sell type is not supported yet");
+    } else if (type === "withdraw") {
+      // TODO: implement withdraw type
+      throw new Error("Withdraw type is not supported yet");
+    }
+
     const pendleFilteredMarkets = await levvaService.filterPendleMarkets(
       pendleMarkets,
       tokenOut ?? undefined,
@@ -256,12 +278,28 @@ export const pendleParamsProvider: Provider = {
     }
 
     if (pendleFilteredMarkets.length > 1) {
+      const selectPendleMarketText = (
+        text: string
+      ) => `## ✨ Filtered Pendle Markets:\n
+
+      ${pendleFilteredMarkets
+        .sort((a, b) => b.liquidity - a.liquidity)
+        .map(
+          (market) =>
+            `\n- ${market.underlyingType} yield **PT ${market.underlyingAssetName}-${market.maturityDate.split("T")[0]}**, APY: ${formatDecimalToPercentage(market.impliedApy)}, PT liquidity: $${market.liquidity.toFixed(2)}`
+        )
+        .slice(0, 5)}
+
+\n${text}`;
+
       if (!tokenClass) {
         return {
           ...EMPTY_RESULT,
           data: { ...data, intentContext },
           values: {
-            strategy: "Unknown 'token class', ask user for it.",
+            strategy: selectPendleMarketText(
+              "Please provide the token class for the Pendle market."
+            ),
           },
           text: "Failed to extract Pendle parameters: unknown PT token class",
         };
@@ -272,7 +310,9 @@ export const pendleParamsProvider: Provider = {
           ...EMPTY_RESULT,
           data: { ...data, intentContext },
           values: {
-            strategy: "Unknown 'maturity days', ask user for it.",
+            strategy: selectPendleMarketText(
+              "Please provide the maturity days for the Pendle market."
+            ),
           },
           text: "Failed to extract Pendle parameters: unknown PT token maturity days",
         };
@@ -282,7 +322,9 @@ export const pendleParamsProvider: Provider = {
         ...EMPTY_RESULT,
         data: { ...data, intentContext },
         values: {
-          strategy: "Unknown 'token out', ask user for it.",
+          strategy: selectPendleMarketText(
+            "Select the Pendle market you want to use for the transaction."
+          ),
         },
         text: "Failed to extract Pendle parameters: unknown token out",
       };
@@ -302,10 +344,10 @@ export const pendleParamsProvider: Provider = {
 
     const writeUnknownTokenText = (token: string) => `## ❓ Unknown Token
 
-    **Token**: ${token}
-    **Issue**: Token not found in our database
+**Token**: ${token}
+**Issue**: Token not found in our database
 
-    Please provide a valid token symbol (like USDC, ETH, WETH) for the token you want to use for the transaction.`;
+Please provide a valid token symbol (like USDC, ETH, WETH) for the token you want to use for the transaction.`;
 
     if (!tokenOutData) {
       return {
@@ -320,25 +362,13 @@ export const pendleParamsProvider: Provider = {
 
     data.tokenOutData = tokenOutData;
 
-    if (!type) {
-      return {
-        ...EMPTY_RESULT,
-        data: { ...data, intentContext },
-        values: {
-          strategy: "Unknown 'type', ask user for it.",
-        },
-        text: "Failed to extract Pendle parameters: unknown type",
-      };
-    }
-
-    data.type = type;
-
     if (!tokenIn) {
       return {
         ...EMPTY_RESULT,
         data: { ...data, intentContext },
         values: {
-          strategy: "Unknown 'from' token, ask user for it.",
+          strategy:
+            "Please provide the token you want to use for the transaction.",
         },
         text: "Failed to extract Pendle parameters: unknown token in",
       };
@@ -373,7 +403,8 @@ export const pendleParamsProvider: Provider = {
         ...EMPTY_RESULT,
         data: { ...data, intentContext },
         values: {
-          strategy: "Unknown amount",
+          strategy:
+            "Please provide the amount you want to use for the transaction.",
         },
         text: "Failed to extract Pendle parameters: unknown amount",
       };
@@ -396,12 +427,12 @@ export const pendleParamsProvider: Provider = {
       const tokenDecimals = tokenInData.decimals ?? 18;
       const insufficientBalanceText = `## ❌ Insufficient Balance
 
-    **Token**: ${tokenInData.symbol} (${tokenInData.name})
-    **Requested Amount**: ${amountIn} ${tokenInData.symbol}
-    **Current Balance**: ${currentBalance} ${tokenInData.symbol}
-    **Shortfall**: ${(parseFloat(amountIn!) - parseFloat(currentBalance)).toFixed(tokenDecimals)} ${tokenInData.symbol}
+**Token**: ${tokenInData.symbol} (${tokenInData.name})
+**Requested Amount**: ${amountIn} ${tokenInData.symbol}
+**Current Balance**: ${currentBalance} ${tokenInData.symbol}
+**Shortfall**: ${(parseFloat(amountIn!) - parseFloat(currentBalance)).toFixed(tokenDecimals)} ${tokenInData.symbol}
 
-    You need more ${tokenInData.symbol} to complete this operation.`;
+You need more ${tokenInData.symbol} to complete this operation.`;
 
       return {
         ...EMPTY_RESULT,
@@ -439,16 +470,17 @@ export const pendleParamsProvider: Provider = {
 **${balanceInfo}**
 **Platform**: Pendle
 
-User wants to buy ${data.amountIn} ${tokenInData.symbol} to ${tokenOutData.symbol} on Pendle.`;
-    } else if (type === "sell") {
-      // TODO: implement sell type
-      throw new Error("Sell type is not supported yet");
+User wants to deposit ${data.amountIn} ${tokenInData.symbol} to ${tokenOutData.symbol} on Pendle.`;
     } else if (type === "deposit") {
-      // TODO: implement deposit type
-      throw new Error("Deposit type is not supported yet");
-    } else if (type === "withdraw") {
-      // TODO: implement withdraw type
-      throw new Error("Withdraw type is not supported yet");
+      text = `## Add liquidity to Pendle pool 🔄
+
+**From**: ${formatTokenInfo(tokenInData)}
+**To**: LP ${formatTokenInfo(tokenOutData)}
+**Amount**: ${data.amountIn} ${tokenInData.symbol}
+**${balanceInfo}**
+**Platform**: Pendle
+
+User wants to add liquidity ${data.amountIn} ${tokenInData.symbol} to LP ${tokenOutData.symbol} on Pendle.`;
     }
 
     // Update intent context with extracted parameters if available

@@ -346,10 +346,54 @@ async function executePendleStrategyTransaction(
       text = `${description}\n\nPlease approve transactions in your wallet.`;
       break;
     }
-    // TODO: implement cases below
-    case "sell":
-    case "deposit":
-    case "withdraw":
+    case "deposit": {
+      const convert = await getPendleConvert({
+        receiver: levvaProviderState.user!.address as `0x${string}`,
+        chainId: `${levvaProviderState.chainId}`,
+        tokensIn: tokenInData!.address! as `0x${string}`,
+        tokensOut: pendleMarketAddress! as `0x${string}`,
+        amountsIn: `${amountUnits}`,
+        slippage: slippage as `${number}`,
+        enableAggregator: "true",
+      });
+
+      if (!convert || !convert.routes || convert.routes.length === 0) {
+        throw new Error("Failed to get Pendle swap details. Try again later.");
+      }
+
+      const route = convert.routes[0].tx;
+
+      if (convert.requiredApprovals.length > 0) {
+        for (const approval of convert.requiredApprovals) {
+          calldata.push({
+            to: approval.token as `0x${string}`,
+            data: encodeFunctionData({
+              abi: erc20Abi,
+              functionName: "approve",
+              args: [route.to as `0x${string}`, BigInt(approval.amount)],
+            }),
+            title: `Approve ${formatUnits(BigInt(approval.amount), tokenInData!.decimals!)} ${tokenInData!.symbol!}`,
+            description: `Approve spending ${formatUnits(BigInt(approval.amount), tokenInData!.decimals!)} ${tokenInData!.symbol!} to ${tokenOutData!.symbol!}`,
+          });
+        }
+      }
+
+      calldata.push({
+        to: route.to as `0x${string}`,
+        data: route.data as `0x${string}`,
+        value: route.value,
+        title: `Provide liquidity ${amountIn} ${tokenInData!.symbol} to ${tokenOutData!.symbol!} Pendle pool`,
+        description: `Provide liquidity ${amountIn!} ${tokenInData!.symbol} to ${tokenOutData!.symbol!} Pendle pool`,
+      });
+
+      const description =
+        calldata.length > 1
+          ? `### Transaction steps\n${calldata.map((c, i) => `${i + 1}. ${c.description}`).join("\n")}`
+          : calldata[0].description;
+      thought = `Prepared Pendle strategy transaction for intent ${intentContext.id}: ${type} to ${tokenOutData!.symbol!} Pendle pool for ${amountIn} ${tokenInData!.symbol!}`;
+      text = `${description}\n\nPlease approve transactions in your wallet.`;
+      break;
+    }
     default:
       throw new Error(`Unknown Pendle strategy type: ${type}`);
   }

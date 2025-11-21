@@ -150,12 +150,14 @@ ${
   ctx.intentContext
     ? `
 PRIORITY INSTRUCTIONS for Intent-Based Extraction:
-1. This is part of an ongoing Pendle operation - prioritize information from <intentContext>
-2. Use returnData from previous interactions to fill missing parameters
-3. Consider the full conversation history within this intent for context
-4. If parameters were partially specified earlier in this intent, complete them now
-5. RETRY HANDLING: If user says "retry"/"try again" and returnData has complete parameters, reuse those exact values
-6. CONTINUATION: If user says "yes"/"ok"/"proceed" and returnData has complete parameters, use those parameters
+1. **HIGHEST PRIORITY**: If user explicitly specifies a parameter in their CURRENT message, ALWAYS use that value (overrides ALL previous context)
+2. Use returnData from previous interactions ONLY to fill parameters NOT mentioned in current message
+3. **PARAMETER UPDATES**: If user says "use X instead", "with X", "change to X", the NEW value ALWAYS replaces returnData value
+4. **MATURITY PREFERENCE**: If user stated a maturity range (e.g., "30-90 days") and then selected a token, USE THE STATED RANGE, not calculated days from token's maturity date
+5. This is part of an ongoing Pendle operation - use <intentContext> for missing parameters only
+6. Consider the full conversation history within this intent for context
+7. RETRY HANDLING: If user says "retry"/"try again" and returnData has complete parameters, reuse those exact values
+8. CONTINUATION: If user says "yes"/"ok"/"proceed" with NO new specifications, use returnData parameters as-is
 
 GENERAL INSTRUCTIONS:
 `
@@ -180,6 +182,9 @@ GENERAL INSTRUCTIONS:
 - EXCEPTION: tokenIn is AUTO-SELECTED for buy/deposit operations when not specified
 - If multiple Pendle requests exist, extract parameters for the MOST RECENT uncompleted one
 - Handle common aliases: "PT USDe" = tokenOut: "USDe", "buy principal tokens" = type: "buy"
+- **CRITICAL**: Extract parameters ONLY from USER messages, NOT from agent/Levvski responses
+- **CRITICAL**: Completely IGNORE the "✨ Filtered Pendle Markets" section - these are display options, NOT user selections
+- **CRITICAL**: Completely IGNORE agent suggestions like "you can consider these options: PT yoUSD or PT USDX" - user must explicitly say which token they want
 ${ctx.intentContext ? '- Leverage intent context to resolve ambiguous references (e.g., "that token" referring to previously mentioned tokens)' : ""}
 
 OPERATION TYPE GUIDANCE:
@@ -260,10 +265,12 @@ TOKEN SELECTION GUIDANCE:
 **tokenOut** (PT token for the transaction):
 - **For "buy"/"deposit" operations**:
   * MUST match a "ptToken" value from <supportedTokens> list
-  * User MUST explicitly specify token name or symbol (e.g., "USDC", "USDe", "WETH")
+  * **USER** MUST explicitly say the token name in THEIR OWN messages (e.g., "USDC", "USDe", "WETH")
   * User can prefix with "PT" (e.g., "PT USDC" → "USDC")
   * Match case-insensitively (e.g., "usdc" matches "USDC")
   * If token not in <supportedTokens> "ptToken" field, return null and explain in thought field
+  * **CRITICAL**: Do NOT extract tokenOut from agent/Levvski responses, "✨ Filtered Pendle Markets", or agent suggestions
+  * **CRITICAL**: Phrases like "you can consider PT yoUSD or PT USDX" are agent suggestions, NOT user selections - return null
 
 - **For "sell"/"withdraw" operations**:
   * Non-PT token from <userPortfolio> to receive (e.g., "USDC", "ETH")
@@ -279,7 +286,8 @@ TOKEN SELECTION GUIDANCE:
     - MUST exclude ALL tokens starting with "PT-"
     - Example: Portfolio [("USDe","1.995","1.99"), ("ETH","0.0044","12.90")] → select "ETH" (12.90 is highest)
     - Example: Portfolio [("USDC","3","3.00"), ("ETH","0.011","35.75"), ("PT-USDe","0.316","0.00")] → select "ETH" (35.75 is highest)
-  * When user explicitly specifies tokenIn (e.g., "with USDC", "using ETH"), use their specified token
+  * When user explicitly specifies tokenIn (e.g., "with USDC", "using ETH", "use 0.2 USDC"), ALWAYS use their specified token
+  * **CRITICAL**: Explicit tokenIn in current message overrides ANY previous returnData value (e.g., "use USDC instead" overrides previous "ETH")
   * Verify sufficient "balance" when amountIn is specified
 
 - **For "sell"/"withdraw" operations**:
@@ -298,6 +306,8 @@ TOKEN SELECTION GUIDANCE:
 
 **Extraction Examples:**
 
+**IMPORTANT**: Extract ONLY from USER messages. Ignore agent/Levvski responses, "✨ Filtered Pendle Markets", and agent suggestions.
+
 Given <userPortfolio>: [("USDC","3","3.00"), ("ETH","0.011","35.75"), ("PT-USDe-11DEC2025","0.316","0.00")]
 
 - **Informational queries (all null)**:
@@ -307,6 +317,7 @@ Given <userPortfolio>: [("USDC","3","3.00"), ("ETH","0.011","35.75"), ("PT-USDe-
 - **Asset class only (tokenOut: null)**:
   * "I want a stable PT" → type: null, tokenOut: null, tokenClass: "Stable", tokenIn: null, amountIn: null
   * "buy stable PT" → type: "buy", tokenOut: null, tokenClass: "Stable", tokenIn: "ETH" (auto-select 35.75 > 3.00), amountIn: null
+  * User: "deposit into Stable yield strategy", Agent: "you can consider PT yoUSD or PT USDX" → tokenOut: null (agent suggestion, not user selection!)
 
 - **Buy with auto-selected tokenIn** (tokenIn not specified → select highest usdValue):
   * "buy PT" → type: "buy", tokenOut: null, tokenClass: null, tokenIn: "ETH" (auto-select: 35.75 is highest), amountIn: null
@@ -317,10 +328,21 @@ Given <userPortfolio>: [("USDC","3","3.00"), ("ETH","0.011","35.75"), ("PT-USDe-
 - **Buy with explicit tokenIn** (tokenIn specified by user):
   * "buy 100 PT USDC with USDC" → type: "buy", tokenOut: "USDC", tokenClass: "Stable", tokenIn: "USDC" (explicit), amountIn: "100"
   * "buy PT USDC using ETH" → type: "buy", tokenOut: "USDC", tokenClass: "Stable", tokenIn: "ETH" (explicit), amountIn: null
+  * "use 0.2 USDC from my wallet" (when returnData has tokenIn: "ETH") → tokenIn: "USDC" (explicit override), amountIn: "0.2"
 
 - **Sell operations**:
   * "sell my PT-WBTC" → type: "sell", tokenIn: "PT-WBTC", tokenOut: null, tokenClass: "BTC"
   * "sell PT-USDe for USDC" → type: "sell", tokenIn: "PT-USDe", tokenOut: "USDC", tokenClass: "Stable"
+
+- **Ignoring agent responses and filtered markets**:
+  * User: "deposit Stable", Agent shows "✨ Filtered Pendle Markets: PT yoUSD, PT USDX" → tokenOut: null (ignore filtered markets!)
+  * User: "maturity >90 days", Agent: "consider PT yoUSD or PT USDX", User: "Use 5 ETH" → tokenOut: null (ignore agent suggestions!)
+  * User: "I choose PT yoUSD" → tokenOut: "yoUSD" (user explicitly selected!)
+
+- **Maturity preference preservation**:
+  * User: "ETH yield for 30-90 days", then "select wcgUSD (maturity: 2025-12-18)" → maturityDays: "30-90" (use stated preference, not calculated date)
+  * User: "invest long term", then "PT USDC maturing 2026-03-26" → maturityDays: ">90" (both indicate same category)
+  * User: "short term yield", then "I choose PT with maturity 2025-12-18" → maturityDays: "<=30" (use stated preference if within same intent)
 
 MATURITY DAYS SELECTION GUIDANCE:
 Categories: "<=30" (short-term, 1-30d), "30-90" (medium-term, 31-90d), ">90" (long-term, 91+d)
@@ -330,6 +352,8 @@ Categories: "<=30" (short-term, 1-30d), "30-90" (medium-term, 31-90d), ">90" (lo
 2. Temporal: "1 week"=7d → "<=30", "2 months"=60d → "30-90", "6 months"=180d → ">90"
 3. Ranges: Use midpoint. "1-2 months" → 45d → "30-90"
 4. Absolute dates: Calculate days from now, then categorize. Past dates → null
+   - **EXCEPTION**: If user PREVIOUSLY stated a maturity range (e.g., "30-90 days"), USE THAT STATED RANGE even if they later select a token with different maturity
+   - Example: User says "30-90 days" then selects "wcgUSD (maturity: 2025-12-18)" → use "30-90" (stated preference), NOT calculated ">90"
 5. Terms: "short"/"soon" → "<=30", "medium" → "30-90", "long" → ">90"
 6. Boundaries: 30d → "<=30", 90d → "30-90"
 </instructions>
