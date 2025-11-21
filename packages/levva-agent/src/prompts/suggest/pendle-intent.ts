@@ -146,7 +146,7 @@ Each suggestion should:
 - Be natural and conversational
 - Clearly indicate confirmation or modification intent
 - Use SPECIFIC amounts in both label and text for modifications
-- Completely ignore the "✨ Filtered Pendle Markets" section, it is for display purposes only
+- Completely ignore the agent/Levvski responses and the "✨ Filtered Pendle Markets" section, it is for display purposes only
 - Reference the actual parameters when appropriate`,
     });
 
@@ -182,14 +182,14 @@ LABEL FORMAT:
 - "Deposit liquidity" - for deposit operation
 
 TEXT FORMAT:
-- "Buy zero coupon bond" - for buy operation
-- "Deposit liquidity" - for deposit operation
+- "Buy Pendle PT token" - for buy operation
+- "Deposit liquidity to Pendle pool" - for deposit operation
 
 Each suggestion MUST:
 - Be natural and conversational
 - Use EXACT labels and texts without modifications
 - MUST use information only from LABEL FORMAT AND TEXT FORMAT
-- Completely ignore the "✨ Filtered Pendle Markets" section, it is for display purposes only
+- Completely ignore the agent/Levvski responses and the "✨ Filtered Pendle Markets" section, it is for display purposes only
 - Lead to amount selection and next steps
 `,
     });
@@ -319,7 +319,7 @@ Each suggestion MUST:
 - Be natural and conversational
 - Use EXACT labels and texts without modifications
 - MUST use information only from LABEL FORMAT AND TEXT FORMAT
-- Completely ignore the "✨ Filtered Pendle Markets" section, it is for display purposes only
+- Completely ignore the agent/Levvski responses and the "✨ Filtered Pendle Markets" section, it is for display purposes only
 - Lead to amount selection and next steps
 `,
     });
@@ -401,7 +401,7 @@ Each suggestion MUST:
 - Provide specific amounts based on balance when available${amounts.isNativeToken ? "\n- Reserve 5% for gas if native token" : ""}
 - Use EXACT labels and texts without modifications
 - MUST use information only from LABEL FORMAT AND TEXT FORMAT
-- Completely ignore the "✨ Filtered Pendle Markets" section, it is for display purposes only
+- Completely ignore the agent/Levvski responses and the "✨ Filtered Pendle Markets" section, it is for display purposes only
 - Lead to confirmation step`,
     });
 
@@ -453,7 +453,7 @@ Each suggestion should:
 - **MUST include "buy PT" in the text**
 - Reference actual available PT tokens
 - Lead to PT token selection and next steps
-- Completely ignore the "✨ Filtered Pendle Markets" section, it is for display purposes only
+- Completely ignore the agent/Levvski responses and the "✨ Filtered Pendle Markets" section, it is for display purposes only
 - Use EXACT labels and texts without modifications`,
   });
 

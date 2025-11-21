@@ -404,7 +404,9 @@ Please provide a valid token symbol (like USDC, ETH, WETH) for the token you wan
         data: { ...data, intentContext },
         values: {
           strategy:
-            "Please provide the amount you want to use for the transaction.",
+            `${tokenInData.symbol} from your wallet has been selected as the token to use for the transaction.` +
+            `\nYou can change the token by explicitly mentioning the token you want to use.` +
+            `\nPlease provide the amount of ${tokenInData.symbol} you want to use.`,
         },
         text: "Failed to extract Pendle parameters: unknown amount",
       };
