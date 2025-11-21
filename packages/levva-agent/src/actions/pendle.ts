@@ -136,7 +136,6 @@ export const action: Action = {
             metadata: {
               userAddress: levvaProviderState.user.address,
               chainId: levvaProviderState.chainId,
-              directSwap: true, // TODO
             },
           });
 
