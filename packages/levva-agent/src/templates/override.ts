@@ -57,6 +57,8 @@ IMPORTANT PROVIDER SELECTION RULES:
 - **Legacy Providers** (if available): "ATTACHMENTS", "ENTITIES", "RELATIONSHIPS", "FACTS", "WORLD" - only use if explicitly needed
 
 First, think about what you want to do next and plan your actions. Then, write the next message and include the actions you plan to take.
+IMPORTANT:
+- For PENDLE operations: DO NOT make any suggestions, analysis, judgements, or make decisions for user.
 </instructions>
 
 <keys>

@@ -352,10 +352,9 @@ Categories: "<=30" (short-term, 1-30d), "30-90" (medium-term, 31-90d), ">90" (lo
 2. Temporal: "1 week"=7d → "<=30", "2 months"=60d → "30-90", "6 months"=180d → ">90"
 3. Ranges: Use midpoint. "1-2 months" → 45d → "30-90"
 4. Absolute dates: Calculate days from now, then categorize. Past dates → null
-   - **EXCEPTION**: If user PREVIOUSLY stated a maturity range (e.g., "30-90 days"), USE THAT STATED RANGE even if they later select a token with different maturity
-   - Example: User says "30-90 days" then selects "wcgUSD (maturity: 2025-12-18)" → use "30-90" (stated preference), NOT calculated ">90"
 5. Terms: "short"/"soon" → "<=30", "medium" → "30-90", "long" → ">90"
-6. Boundaries: 30d → "<=30", 90d → "30-90"
+6. Boundaries: 30 days → "<=30", 90 days → "30-90", 180 days → ">90"
+7. Phrases: "Up to 30 days" → "<=30", "30 to 90 days" → "30-90", "More than 90 days" → ">90", "Next year" → ">90"
 </instructions>
 
 <keys>

@@ -15,7 +15,6 @@ import { IntentManager, IntentContext } from "../services/intent-manager";
 import { zodJsonSchema } from "../prompts/util";
 import { PendleMarket } from "../api/levva/schema";
 import { TokenDataWithInfo } from "../types/token";
-import { formatDecimalToPercentage } from "../util";
 
 export interface PendleParamsProviderData {
   tokenInData?: TokenDataWithInfo;
@@ -25,6 +24,7 @@ export interface PendleParamsProviderData {
   slippage?: string;
   type?: "buy" | "sell" | "deposit" | "withdraw";
   intentContext?: IntentContext;
+  pendleFilteredMarkets?: PendleMarket[];
 }
 
 export const PENDLE_PARAMS_PROVIDER_NAME = "PENDLE_PARAMS";
@@ -266,6 +266,12 @@ export const pendleParamsProvider: Provider = {
       tokenClass ?? undefined
     );
 
+    if (pendleFilteredMarkets.length > 0) {
+      data.pendleFilteredMarkets = pendleFilteredMarkets;
+    } else {
+      data.pendleFilteredMarkets = [];
+    }
+
     if (pendleFilteredMarkets.length === 0) {
       return {
         ...EMPTY_RESULT,
@@ -278,28 +284,12 @@ export const pendleParamsProvider: Provider = {
     }
 
     if (pendleFilteredMarkets.length > 1) {
-      const selectPendleMarketText = (
-        text: string
-      ) => `## ✨ Filtered Pendle Markets:\n
-
-      ${pendleFilteredMarkets
-        .sort((a, b) => b.liquidity - a.liquidity)
-        .map(
-          (market) =>
-            `\n- ${market.underlyingType} yield **PT ${market.underlyingAssetName}-${market.maturityDate.split("T")[0]}**, APY: ${formatDecimalToPercentage(market.impliedApy)}, PT liquidity: $${market.liquidity.toFixed(2)}`
-        )
-        .slice(0, 5)}
-
-\n${text}`;
-
       if (!tokenClass) {
         return {
           ...EMPTY_RESULT,
           data: { ...data, intentContext },
           values: {
-            strategy: selectPendleMarketText(
-              "Please provide the token class for the Pendle market."
-            ),
+            strategy: "Please provide the token class for the Pendle market.",
           },
           text: "Failed to extract Pendle parameters: unknown PT token class",
         };
@@ -310,9 +300,7 @@ export const pendleParamsProvider: Provider = {
           ...EMPTY_RESULT,
           data: { ...data, intentContext },
           values: {
-            strategy: selectPendleMarketText(
-              "Please provide the maturity days for the Pendle market."
-            ),
+            strategy: "Please provide the maturity days for the Pendle market.",
           },
           text: "Failed to extract Pendle parameters: unknown PT token maturity days",
         };
@@ -322,9 +310,8 @@ export const pendleParamsProvider: Provider = {
         ...EMPTY_RESULT,
         data: { ...data, intentContext },
         values: {
-          strategy: selectPendleMarketText(
-            "Select the Pendle market you want to use for the transaction."
-          ),
+          strategy:
+            "Select the Pendle market you want to use for the transaction.",
         },
         text: "Failed to extract Pendle parameters: unknown token out",
       };

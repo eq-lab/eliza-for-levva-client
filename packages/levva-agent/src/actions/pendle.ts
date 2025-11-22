@@ -15,6 +15,7 @@ import {
   generatePendleStrategySuggestions,
   handlePendleStrategyIntent,
 } from "./intents";
+import { formatDecimalToPercentage } from "../util";
 
 const description =
   "Handle Pendle explore, buy, sell, deposit, and withdraw requests using intent-based system with multi-step process support.";
@@ -74,6 +75,26 @@ export const action: Action = {
         throw new Error(
           `Failed to get provider(${PENDLE_PARAMS_PROVIDER_NAME}) results`
         );
+      }
+
+      if (
+        providerData.pendleFilteredMarkets &&
+        providerData.pendleFilteredMarkets?.length > 0
+      ) {
+        const filteredPendleMarketsText = providerData.pendleFilteredMarkets
+          .sort((a, b) => b.liquidity - a.liquidity)
+          .map(
+            (market) =>
+              `\n- ${market.underlyingType} yield **PT ${market.underlyingAssetName}-${market.maturityDate.split("T")[0]}**, APY: ${formatDecimalToPercentage(market.impliedApy)}, PT liquidity: $${market.liquidity.toFixed(2)}`
+          )
+          .slice(0, 5);
+
+        await callback!({
+          text: `
+## ✨ Filtered Pendle Markets:
+\n${filteredPendleMarketsText}`,
+          source: message.content.source,
+        });
       }
 
       // 3. Get previous actions context

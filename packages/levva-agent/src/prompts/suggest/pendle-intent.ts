@@ -167,9 +167,11 @@ ${generateOutputFormat()}`;
       chainId,
       parameters: {
         From: tokenIn,
+        To: tokenOut,
         Amount: amountIn,
-        TokenClass: tokenClass ?? pendleFilteredMarkets[0]!.underlyingType,
-        MaturityDays: maturityDays ?? pendleFilteredMarkets[0]!.maturityDate,
+        TokenClass: tokenClass,
+        MaturityDays: maturityDays,
+        Type: type,
       },
     });
 
@@ -222,30 +224,25 @@ ${generateOutputFormat()}`;
         chainId,
         parameters: {
           From: tokenIn,
+          To: tokenOut,
           Amount: amountIn,
-          TokenClass: tokenClass ?? pendleFilteredMarkets[0]!.underlyingType,
-          MaturityDays: maturityDays ?? pendleFilteredMarkets[0]!.maturityDate,
+          TokenClass: tokenClass,
+          MaturityDays: maturityDays,
           Type: type,
         },
       });
 
+      const tokenClassOptions = [
+        ...new Set(pendleFilteredMarkets.map((m) => m.underlyingType)),
+      ];
+
       suggestions = {
         labelDescription: "Token class selection",
         textDescription: "Token class: Stable, ETH, BTC",
-        content: [
-          {
-            label: "Stable yield",
-            text: "Stable token class",
-          },
-          {
-            label: "ETH yield",
-            text: "ETH token class",
-          },
-          {
-            label: "BTC yield",
-            text: "BTC token class",
-          },
-        ],
+        content: tokenClassOptions.map((type) => ({
+          label: `${type} yield`,
+          text: `${type} token class`,
+        })),
       };
     } else if (!maturityDays) {
       intentContext = generateIntentContextSection({
@@ -255,31 +252,50 @@ ${generateOutputFormat()}`;
         chainId,
         parameters: {
           From: tokenIn,
+          To: tokenOut,
           Amount: amountIn,
-          TokenClass: tokenClass ?? pendleFilteredMarkets[0]!.underlyingType,
-          MaturityDays: maturityDays ?? pendleFilteredMarkets[0]!.maturityDate,
+          TokenClass: tokenClass,
+          MaturityDays: maturityDays,
           Type: type,
         },
       });
 
+      const utcNowDate = Date.now();
+      const utcNowDateInMsec = Math.floor(
+        utcNowDate - Math.floor(utcNowDate % 86400000)
+      );
+
+      const maturityDaysOptions = [
+        ...new Set(
+          pendleFilteredMarkets.map((m) => {
+            const maturityDate = new Date(m.maturityDate);
+            const daysUntilMaturity = Math.ceil(
+              (maturityDate.getTime() - utcNowDateInMsec) / 86400000
+            );
+
+            if (daysUntilMaturity <= 30) return "<=30 days";
+            if (daysUntilMaturity > 30 && daysUntilMaturity <= 90)
+              return "30-90 days";
+            return ">90 days";
+          })
+        ),
+      ];
+
       suggestions = {
         labelDescription: "Maturity days selection",
         textDescription: "Maturity days: <=30, 30-90, >90",
-        content: [
-          {
-            label: "<=30 days",
-            text: "Up to 30 days",
-          },
-          {
-            label: "30-90 days",
-            text: "30 to 90 days",
-          },
-          {
-            label: ">90 days",
-            text: "More than 90 days",
-          },
-        ],
+        content: maturityDaysOptions.map((m) => {
+          if (m === "<=30 days")
+            return { label: "<=30 days", text: "Up to 30 days" };
+          if (m === "30-90 days")
+            return { label: "30-90 days", text: "30 to 90 days" };
+          return { label: ">90 days", text: "More than 90 days" };
+        }),
       };
+
+      // text: "30 to 90 days",
+      // text: "Up to 30 days",
+      // text: "More than 90 days",
     } else {
       intentContext = generateIntentContextSection({
         intentType: `${INTENT_TYPE.SELECT_PENDLE_STRATEGY}`,
@@ -288,9 +304,10 @@ ${generateOutputFormat()}`;
         chainId,
         parameters: {
           From: tokenIn,
+          To: tokenOut,
           Amount: amountIn,
-          TokenClass: tokenClass ?? pendleFilteredMarkets[0]!.underlyingType,
-          MaturityDays: maturityDays ?? pendleFilteredMarkets[0]!.maturityDate,
+          TokenClass: tokenClass,
+          MaturityDays: maturityDays,
           Type: type,
         },
       });
@@ -345,9 +362,10 @@ ${generateOutputFormat()}`;
       chainId,
       parameters: {
         From: tokenIn,
-        To: tokenOut ?? pendleFilteredMarkets[0]!.underlyingAssetName,
-        TokenClass: tokenClass ?? pendleFilteredMarkets[0]!.underlyingType,
-        MaturityDays: maturityDays ?? pendleFilteredMarkets[0]!.maturityDate,
+        To: tokenOut,
+        Amount: amountIn,
+        TokenClass: tokenClass,
+        MaturityDays: maturityDays,
         Type: type,
       },
     });
