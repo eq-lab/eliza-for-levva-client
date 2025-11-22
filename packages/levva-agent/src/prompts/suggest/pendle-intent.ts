@@ -379,7 +379,7 @@ ${
 - "75% of ${tokenIn}" - for 75% of ${tokenIn}
 - "50% of ${tokenIn}" - for 50% of ${tokenIn}
 - "25% of ${tokenIn}" - for 25% of ${tokenIn}`
-    : `- Use descriptive labels with actual amounts when possible`
+    : `- You have no balance available`
 }
 
 TEXT FORMAT (use "${tokenIn}" exactly as shown and ACTUAL amounts):
@@ -389,9 +389,7 @@ ${
 - "Use ${amount75} ${tokenIn}" - 75% of balance
 - "Use ${amount50} ${tokenIn}" - 50% of balance
 - "Use ${amount25} ${tokenIn}" - 25% of balance`
-    : `- "I want to buy 100 ${tokenIn}" - specific amount
-- "Use 50 ${tokenIn}" - specific amount
-- "Use all my ${tokenIn}" - maximum amount`
+    : `- You have no balance available`
 }
 - "What amount should I use?" - ask for guidance
 

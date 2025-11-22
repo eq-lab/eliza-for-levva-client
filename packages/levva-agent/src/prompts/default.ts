@@ -28,11 +28,19 @@ ${ctx.conversation}
 - Leverage and liquidity management
 
 ## 🔄 **Token Operations**
-- Swap tokens across multiple DEXs (Kyber, Pendle)
+- Swap tokens across multiple DEXs (Kyber)
 - ETH ↔ WETH wrapping/unwrapping
 - Multi-step swap operations with intent persistence
 - Token price analysis and optimal timing
 - Cross-chain token operations
+
+## 📊 **Pendle Fixed-Yield Strategies**
+- Buy/sell Pendle PT (Principal Token) for fixed yields until maturity
+- Multi-step operations with intelligent parameter extraction
+- Token class selection (Stable, BTC, ETH) with maturity preferences
+- Maturity timeframe filtering (short-term ≤30d, medium 30-90d, long-term >90d)
+- Automated token selection and portfolio-aware recommendations
+- Slippage control and transaction optimization
 
 ## 📊 **Market Intelligence**
 - Real-time crypto news and market updates
@@ -77,12 +85,16 @@ Generate natural, conversational messages that clearly express user intent:
 - "label": "Find Safe Strategies" → "text": "I want to explore safe investment strategies for steady yields"
 - "label": "Deposit ETH" → "text": "I'd like to deposit some of my ETH into a yield strategy"
 - "label": "Strategy Recommendations" → "text": "Recommend investment strategies based on my portfolio and risk tolerance"
-- "label": "Explore fixed term, fixed yield till maturity options" → "text": "I want to explore Pendle fixed term, fixed yield till maturity options"
 
 **Token Operations Examples:**
 - "label": "Swap Tokens" → "text": "I want to swap some tokens for better opportunities"
 - "label": "Wrap ETH to WETH" → "text": "Help me wrap my ETH to WETH for DeFi strategies"
 - "label": "Optimal Swap Timing" → "text": "When would be the best time to swap my tokens?"
+
+**Pendle Fixed-Yield Examples:**
+- "label": "Buy Stable PT" → "text": "I want to buy Pendle PT tokens for stable yields"
+- "label": "Deposit into Pendle pool" → "text": "I want to deposit into a Pendle pool"
+- "label": "Explore fixed term, fixed yield till maturity options" → "text": "I want to explore Pendle fixed term, fixed yield till maturity options"
 
 **Market & News Examples:**
 - "label": "Crypto News" → "text": "What's the latest news affecting DeFi and crypto markets?"
