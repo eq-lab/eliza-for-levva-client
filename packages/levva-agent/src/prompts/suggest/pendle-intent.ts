@@ -152,9 +152,6 @@ Each suggestion should:
 
     return `<task>Generate confirmation suggestions for Pendle strategy - all parameters provided</task>
 ${intentContext}
-<conversation>
-${conversation}
-</conversation>
 ${instructions}
 ${generateOutputFormat()}`;
   }
@@ -198,9 +195,6 @@ Each suggestion MUST:
 
     return `<task>Generate amount suggestions for Pendle strategy</task>
 ${intentContext}
-<conversation>
-${conversation}
-</conversation>
 ${instructions}
 ${generateOutputFormat()}`;
   }
@@ -317,7 +311,7 @@ ${generateOutputFormat()}`;
         textDescription: "Use EXACT text format",
         content: pendleFilteredMarkets.slice(0, 5).map((market) => ({
           label: `PT-${market.underlyingAssetName}-${market.maturityDate.split("T")[0]} (APY: ${formatDecimalToPercentage(market.impliedApy)})`,
-          text: `I want to select ${market.underlyingAssetName} (maturity: ${market.maturityDate.split("T")[0]})`,
+          text: `I want to select ${market.underlyingAssetName}`,
         })),
       };
     }
@@ -343,9 +337,6 @@ Each suggestion MUST:
 
     return `<task>Generate selection suggestions for Pendle strategy</task>
 ${intentContext}
-<conversation>
-${conversation}
-</conversation>
 ${instructions}
 ${generateOutputFormat()}`;
   }
@@ -426,9 +417,6 @@ ${intentContext}
 <userWallet>
 ${amountContext || "User has no supported tokens in wallet"}
 </userWallet>
-<conversation>
-${conversation}
-</conversation>
 ${instructions}
 ${generateOutputFormat()}`;
   }
@@ -478,9 +466,6 @@ ${intentContext}
 <supportedTokens>
 ${ptTokensList || "No PT tokens available"}
 </supportedTokens>
-<conversation>
-${conversation}
-</conversation>
 ${instructions}
 ${generateOutputFormat()}`;
 }

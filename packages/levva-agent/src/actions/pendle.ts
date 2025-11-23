@@ -94,6 +94,7 @@ export const action: Action = {
 ## ✨ Filtered Pendle Markets:
 \n${filteredPendleMarketsText}`,
           source: message.content.source,
+          actions: [`${LEVVA_ACTIONS.SELECT_PENDLE_STRATEGY}`],
         });
       }
 
