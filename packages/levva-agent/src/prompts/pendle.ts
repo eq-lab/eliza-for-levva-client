@@ -102,7 +102,7 @@ export const extractedPendleParamsSchema = z
 export type ExtractedPendleParams = z.infer<typeof extractedPendleParamsSchema>;
 
 export const selectPendleDataFromMessagesPrompt = (ctx: {
-  recentMessages: string;
+  currentMessage?: string;
   userPortfolio?: string;
   pendleTokens?: string;
   intentContext?: {
@@ -111,7 +111,7 @@ export const selectPendleDataFromMessagesPrompt = (ctx: {
     memories?: string;
   };
 }) => `<task>
-Extract Pendle transaction parameters from recent messages${ctx.intentContext ? " using intent context for improved accuracy" : ""}.
+Extract Pendle transaction parameters from <currentMessage>${ctx.intentContext ? " using intent context for improved accuracy" : ""}.
 </task>
 <supportedTokens>
 Format: comma separated list of ("ptToken","class","maturity")
@@ -127,9 +127,9 @@ ${ctx.userPortfolio}
 </userPortfolio>`
     : ""
 }
-<recentMessages>
-${ctx.recentMessages}
-</recentMessages>
+<currentMessage>
+${ctx.currentMessage}
+</currentMessage>
 ${
   ctx.intentContext
     ? `<intentContext>
@@ -150,14 +150,13 @@ ${
   ctx.intentContext
     ? `
 PRIORITY INSTRUCTIONS for Intent-Based Extraction:
-1. **HIGHEST PRIORITY**: If user explicitly specifies a parameter in their CURRENT message, ALWAYS use that value (overrides ALL previous context)
-2. Use returnData from previous interactions ONLY to fill parameters NOT mentioned in current message
-3. **PARAMETER UPDATES**: If user says "use X instead", "with X", "change to X", the NEW value ALWAYS replaces returnData value
-4. **MATURITY PREFERENCE**: If user stated a maturity range (e.g., "30-90 days") and then selected a token, USE THE STATED RANGE, not calculated days from token's maturity date
-5. This is part of an ongoing Pendle operation - use <intentContext> for missing parameters only
-6. Consider the full conversation history within this intent for context
-7. RETRY HANDLING: If user says "retry"/"try again" and returnData has complete parameters, reuse those exact values
-8. CONTINUATION: If user says "yes"/"ok"/"proceed" with NO new specifications, use returnData parameters as-is
+1. **HIGHEST PRIORITY**: If user explicitly specifies a parameter in their <currentMessage>, ALWAYS use that value (overrides ALL previous context)
+2. Use returnData from previous interactions ONLY to fill parameters NOT mentioned in <currentMessage>
+3. **PARAMETER UPDATES**: If user says "use X instead", "with X", "change to X" in their <currentMessage>, the NEW value ALWAYS replaces returnData value
+4. This is part of an ongoing Pendle operation - use <intentContext> for missing parameters only
+5. Consider the full conversation history ("Intent Conversation History") within this intent for context
+6. RETRY HANDLING: If user says "retry"/"try again" and returnData has complete parameters, reuse those exact values
+7. CONTINUATION: If user says "yes"/"ok"/"proceed" with NO new specifications, use returnData parameters as-is
 
 GENERAL INSTRUCTIONS:
 `
@@ -183,8 +182,6 @@ GENERAL INSTRUCTIONS:
 - If multiple Pendle requests exist, extract parameters for the MOST RECENT uncompleted one
 - Handle common aliases: "PT USDe" = tokenOut: "USDe", "buy principal tokens" = type: "buy"
 - **CRITICAL**: Extract parameters ONLY from USER messages, NOT from agent/Levvski responses
-- **CRITICAL**: Completely IGNORE the "✨ Filtered Pendle Markets" section - these are display options, NOT user selections
-- **CRITICAL**: Completely IGNORE agent suggestions like "you can consider these options: PT yoUSD or PT USDX" - user must explicitly say which token they want
 ${ctx.intentContext ? '- Leverage intent context to resolve ambiguous references (e.g., "that token" referring to previously mentioned tokens)' : ""}
 
 OPERATION TYPE GUIDANCE:
@@ -287,7 +284,7 @@ TOKEN SELECTION GUIDANCE:
     - Example: Portfolio [("USDe","1.995","1.99"), ("ETH","0.0044","12.90")] → select "ETH" (12.90 is highest)
     - Example: Portfolio [("USDC","3","3.00"), ("ETH","0.011","35.75"), ("PT-USDe","0.316","0.00")] → select "ETH" (35.75 is highest)
   * When user explicitly specifies tokenIn (e.g., "with USDC", "using ETH", "use 0.2 USDC"), ALWAYS use their specified token
-  * **CRITICAL**: Explicit tokenIn in current message overrides ANY previous returnData value (e.g., "use USDC instead" overrides previous "ETH")
+  * **CRITICAL**: Explicit tokenIn in <currentMessage> overrides ANY previous returnData value (e.g., "use USDC instead" overrides previous "ETH")
   * Verify sufficient "balance" when amountIn is specified
 
 - **For "sell"/"withdraw" operations**:

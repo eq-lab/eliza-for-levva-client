@@ -191,7 +191,7 @@ export const pendleParamsProvider: Provider = {
     // Use intent context if available for better parameter extraction
     const promptContext = intentContext
       ? {
-          recentMessages: state.values.recentMessages,
+          currentMessage: message.content.text,
           userPortfolio,
           pendleTokens,
           intentContext: {
@@ -203,7 +203,7 @@ export const pendleParamsProvider: Provider = {
           },
         }
       : {
-          recentMessages: state.values.recentMessages,
+          currentMessage: message.content.text,
           userPortfolio,
           pendleTokens,
         };
