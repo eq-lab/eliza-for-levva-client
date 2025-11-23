@@ -19,6 +19,11 @@ const PendleConvertResponseSchema = z.object({
   ),
 });
 
+const PendleMarketSupportedTokensResponseSchema = z.object({
+  tokensIn: z.array(z.string()),
+  tokensOut: z.array(z.string()),
+});
+
 interface PendleConvertParams {
   chainId: `${number}`;
   receiver: `0x${string}`;
@@ -48,6 +53,26 @@ export async function getPendleConvert({
   if (!result.success) {
     throw new Error(
       `Failed to get Pendle transaction details. Error: ${data.message}}`
+    );
+  }
+
+  return result.data;
+}
+
+export async function getPendleMarketSupportedTokens(
+  chainId: number,
+  market: `0x${string}`
+) {
+  const path = `/core/v1/sdk/${chainId}/markets/${market}/tokens`;
+
+  const response = await fetch(`https://api-v2.pendle.finance${path}`);
+
+  const data = await response.json();
+  const result = PendleMarketSupportedTokensResponseSchema.safeParse(data);
+
+  if (!result.success) {
+    throw new Error(
+      `Failed to get Pendle token details. Error: ${data.message}}`
     );
   }
 

@@ -266,7 +266,6 @@ TOKEN SELECTION GUIDANCE:
   * User can prefix with "PT" (e.g., "PT USDC" → "USDC")
   * Match case-insensitively (e.g., "usdc" matches "USDC")
   * If token not in <supportedTokens> "ptToken" field, return null and explain in thought field
-  * **CRITICAL**: Do NOT extract tokenOut from agent/Levvski responses, "✨ Filtered Pendle Markets", or agent suggestions
   * **CRITICAL**: Phrases like "you can consider PT yoUSD or PT USDX" are agent suggestions, NOT user selections - return null
 
 - **For "sell"/"withdraw" operations**:
@@ -303,8 +302,6 @@ TOKEN SELECTION GUIDANCE:
 
 **Extraction Examples:**
 
-**IMPORTANT**: Extract ONLY from USER messages. Ignore agent/Levvski responses, "✨ Filtered Pendle Markets", and agent suggestions.
-
 Given <userPortfolio>: [("USDC","3","3.00"), ("ETH","0.011","35.75"), ("PT-USDe-11DEC2025","0.316","0.00")]
 
 - **Informational queries (all null)**:
@@ -332,7 +329,6 @@ Given <userPortfolio>: [("USDC","3","3.00"), ("ETH","0.011","35.75"), ("PT-USDe-
   * "sell PT-USDe for USDC" → type: "sell", tokenIn: "PT-USDe", tokenOut: "USDC", tokenClass: "Stable"
 
 - **Ignoring agent responses and filtered markets**:
-  * User: "deposit Stable", Agent shows "✨ Filtered Pendle Markets: PT yoUSD, PT USDX" → tokenOut: null (ignore filtered markets!)
   * User: "maturity >90 days", Agent: "consider PT yoUSD or PT USDX", User: "Use 5 ETH" → tokenOut: null (ignore agent suggestions!)
   * User: "I choose PT yoUSD" → tokenOut: "yoUSD" (user explicitly selected!)
 
