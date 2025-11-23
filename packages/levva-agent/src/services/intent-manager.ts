@@ -62,6 +62,7 @@ export interface IntentRegistration {
     conversation: string;
     userAddress: `0x${string}`;
     chainId: number;
+    state?: State;
   }) => Promise<string>;
 }
 
@@ -129,6 +130,7 @@ export class IntentManager extends Service {
     conversation: string;
     userAddress: `0x${string}`;
     chainId: number;
+    state?: State;
   }): Promise<string | undefined> {
     const { intentContext } = params;
     const registration = IntentManager.getRegisteredIntent(

@@ -38,6 +38,7 @@ import { NewsServiceComponent } from "./news-component";
 import { createTimedCache, createPermanentCache } from "./cache-util";
 import { getPendleMarketTokens } from "./pendle";
 import { PendleMarket } from "../../api/levva/schema";
+import { getPendleMarketSupportedTokens } from "../../api/pendle";
 
 const REQUIRED_PLUGINS = ["levva"];
 
@@ -345,6 +346,18 @@ export class LevvaService extends Service implements ILevvaService {
     this,
     getPendleMarketTokens,
     this.getPendleMarketTokensCacheKey
+  );
+
+  private getPendleMarketSupportedTokensCacheKey = (
+    chainId: number,
+    marketAddress: `0x${string}`
+  ) => `pendle-market-supported-tokens:${chainId}:${marketAddress}`;
+
+  getPendleMarketSupportedTokens = createTimedCache(
+    this,
+    86400000,
+    getPendleMarketSupportedTokens,
+    this.getPendleMarketSupportedTokensCacheKey
   );
 
   // -- End of Pendle Strategies --

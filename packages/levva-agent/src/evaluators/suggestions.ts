@@ -4,6 +4,7 @@ import {
   type IAgentRuntime,
   type Memory,
   ModelType,
+  State,
   UUID,
   logger,
 } from "@elizaos/core";
@@ -65,7 +66,7 @@ export const suggestionsEvaluator: Evaluator = {
     return true;
   },
 
-  handler: async (runtime: IAgentRuntime, message: Memory) => {
+  handler: async (runtime: IAgentRuntime, message: Memory, state?: State) => {
     let loadingKey: string | undefined;
 
     try {
@@ -238,7 +239,8 @@ export const suggestionsEvaluator: Evaluator = {
             activeIntent,
             conversation,
             userAddress as `0x${string}`, // Pass userAddress from outer scope
-            chainId // Pass chainId from outer scope
+            chainId, // Pass chainId from outer scope
+            state
           );
 
           if (result) {
@@ -338,7 +340,8 @@ async function generateIntentAwareSuggestions(
   activeIntent: any,
   conversation: string,
   userAddress: `0x${string}`,
-  chainId: number
+  chainId: number,
+  state?: State
 ): Promise<{ suggestions: Suggestions[] } | undefined> {
   try {
     // Get user data for portfolio-based suggestions
@@ -367,6 +370,7 @@ async function generateIntentAwareSuggestions(
           conversation,
           userAddress,
           chainId,
+          state,
         });
 
         if (prompt) {

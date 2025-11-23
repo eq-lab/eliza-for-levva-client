@@ -31,8 +31,10 @@ export async function generatePendleStrategySuggestions(params: {
   conversation: string;
   userAddress: `0x${string}`;
   chainId: number;
+  state?: State;
 }): Promise<string> {
-  const { runtime, intentContext, conversation, userAddress, chainId } = params;
+  const { runtime, intentContext, conversation, userAddress, chainId, state } =
+    params;
   const levvaService = runtime.getService<LevvaService>(
     LEVVA_SERVICE.LEVVA_COMMON
   );
@@ -40,6 +42,11 @@ export async function generatePendleStrategySuggestions(params: {
   if (!levvaService) {
     throw new Error("LevvaService not found");
   }
+
+  const providerData = selectProviderState<PendleParamsProviderData>(
+    PENDLE_PARAMS_PROVIDER_NAME,
+    state
+  );
 
   const tokenPrices = await levvaService.token.getTokensPrices(chainId);
   const tokenPricesMap = new Map(
@@ -78,13 +85,6 @@ export async function generatePendleStrategySuggestions(params: {
 
   const allPendleMarkets = await levvaService.getPendleMarkets(chainId);
 
-  const pendleFilteredMarkets = await levvaService.filterPendleMarkets(
-    allPendleMarkets,
-    intentContext.returnData?.tokenOut ?? undefined,
-    intentContext.returnData?.maturityDays ?? undefined,
-    intentContext.returnData?.tokenClass ?? undefined
-  );
-
   // Generate prompt using consolidated prompt function
   return generatePendleStrategyIntentSuggestionsPrompt({
     intentContext,
@@ -93,8 +93,10 @@ export async function generatePendleStrategySuggestions(params: {
     chainId,
     returnData: intentContext.returnData || {},
     walletAssets,
-    pendleFilteredMarkets,
+    pendleFilteredMarkets: providerData?.pendleFilteredMarkets ?? [],
     allPendleMarkets,
+    walletSupportedPendleMarketTokenSymbols:
+      providerData?.walletSupportedPendleMarketTokenSymbols,
   });
 }
 
@@ -160,7 +162,8 @@ export const handlePendleStrategyIntent: IntentHandler = async (
       !params.tokenInData ||
       !params.tokenOutData ||
       !params.amountIn ||
-      !params.pendleMarketAddress
+      !params.pendleMarketAddress ||
+      params.walletSupportedPendleMarketTokenSymbols
     ) {
       // Missing parameters - ask user for more information
       return await handleMissingPendleStrategyParameters(

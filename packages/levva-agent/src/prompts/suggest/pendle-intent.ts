@@ -42,6 +42,7 @@ export interface PendleStrategyIntentSuggestionParams {
     decimals: number;
     balanceUsd: string;
   }>;
+  walletSupportedPendleMarketTokenSymbols?: string[];
   pendleFilteredMarkets: PendleMarket[];
   allPendleMarkets: PendleMarket[];
 }
@@ -54,13 +55,80 @@ export function generatePendleStrategyIntentSuggestionsPrompt(
     walletAssets,
     pendleFilteredMarkets,
     allPendleMarkets,
-    conversation,
     userAddress,
     chainId,
+    walletSupportedPendleMarketTokenSymbols,
   } = params;
 
   const { tokenIn, tokenOut, amountIn, tokenClass, maturityDays, type } =
     returnData;
+
+  if (walletSupportedPendleMarketTokenSymbols) {
+    const intentContext = generateIntentContextSection({
+      intentType: `${INTENT_TYPE.SELECT_PENDLE_STRATEGY}`,
+      status:
+        walletSupportedPendleMarketTokenSymbols.length === 0
+          ? "Market selection needed"
+          : "Token in selection needed",
+      userAddress,
+      chainId,
+      parameters: {
+        From: tokenIn,
+        To: tokenOut,
+        Amount: amountIn,
+        TokenClass: tokenClass,
+        MaturityDays: maturityDays,
+        Type: type,
+      },
+    });
+
+    const suggestions =
+      walletSupportedPendleMarketTokenSymbols.length === 0
+        ? {
+            labelDescription: "Use EXACT label format",
+            textDescription: "Use EXACT text format",
+            content: allPendleMarkets
+              .sort((a, b) => b.liquidity - a.liquidity)
+              .slice(0, 5)
+              .map((market) => ({
+                label: `PT-${market.underlyingAssetName}-${market.maturityDate.split("T")[0]} (APY: ${formatDecimalToPercentage(market.impliedApy)})`,
+                text: `I want to select ${market.underlyingAssetName}`,
+              })),
+          }
+        : {
+            labelDescription: "Use EXACT label format",
+            textDescription: "Use EXACT text format",
+            content: walletSupportedPendleMarketTokenSymbols
+              .slice(0, 5)
+              .map((token) => ({
+                label: `Use ${token}`,
+                text: `Use ${token} from my portfolio instead`,
+              })),
+          };
+
+    const instructions = generateCommonInstructions({
+      suggestionType: "next-step",
+      specificInstructions: `Generate natural, conversational suggestions for Pendle strategy selection.
+  
+  LABEL FORMAT (${suggestions!.labelDescription}):
+  ${suggestions!.content.map((s) => `- "${s.label}"`).join("\n")}
+  
+  TEXT FORMAT (${suggestions!.textDescription}):
+  ${suggestions!.content.map((s) => `- "${s.text}"`).join("\n")}
+  
+  Each suggestion MUST:
+  - Be natural and conversational
+  - Use EXACT labels and texts without modifications
+  - MUST use information only from LABEL FORMAT AND TEXT FORMAT
+  - Lead to amount selection and next steps
+  `,
+    });
+
+    return `<task>Generate selection suggestions for Pendle strategy</task>
+  ${intentContext}
+  ${instructions}
+  ${generateOutputFormat()}`;
+  }
 
   if (pendleFilteredMarkets.length === 1 && type && tokenIn && amountIn) {
     const walletAsset = walletAssets.find(
@@ -146,7 +214,6 @@ Each suggestion should:
 - Be natural and conversational
 - Clearly indicate confirmation or modification intent
 - Use SPECIFIC amounts in both label and text for modifications
-- Completely ignore the agent/Levvski responses and the "✨ Filtered Pendle Markets" section, it is for display purposes only
 - Reference the actual parameters when appropriate`,
     });
 
@@ -188,7 +255,6 @@ Each suggestion MUST:
 - Be natural and conversational
 - Use EXACT labels and texts without modifications
 - MUST use information only from LABEL FORMAT AND TEXT FORMAT
-- Completely ignore the agent/Levvski responses and the "✨ Filtered Pendle Markets" section, it is for display purposes only
 - Lead to amount selection and next steps
 `,
     });
@@ -330,7 +396,6 @@ Each suggestion MUST:
 - Be natural and conversational
 - Use EXACT labels and texts without modifications
 - MUST use information only from LABEL FORMAT AND TEXT FORMAT
-- Completely ignore the agent/Levvski responses and the "✨ Filtered Pendle Markets" section, it is for display purposes only
 - Lead to amount selection and next steps
 `,
     });
@@ -408,7 +473,6 @@ Each suggestion MUST:
 - Provide specific amounts based on balance when available${amounts.isNativeToken ? "\n- Reserve 5% for gas if native token" : ""}
 - Use EXACT labels and texts without modifications
 - MUST use information only from LABEL FORMAT AND TEXT FORMAT
-- Completely ignore the agent/Levvski responses and the "✨ Filtered Pendle Markets" section, it is for display purposes only
 - Lead to confirmation step`,
     });
 
@@ -457,7 +521,6 @@ Each suggestion should:
 - **MUST include "buy PT" in the text**
 - Reference actual available PT tokens
 - Lead to PT token selection and next steps
-- Completely ignore the agent/Levvski responses and the "✨ Filtered Pendle Markets" section, it is for display purposes only
 - Use EXACT labels and texts without modifications`,
   });
 

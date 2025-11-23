@@ -9,12 +9,13 @@ import {
   extractedPendleParamsSchema,
   ExtractedPendleParams,
 } from "../prompts/pendle";
-import { LEVVA_PROVIDER_NAME, LevvaProviderState } from "./index";
+import { LEVVA_PROVIDER_NAME, LevvaProviderState, Token } from "./index";
 import { EMPTY_RESULT, selectProviderState, checkSimpleReply } from "./util";
 import { IntentManager, IntentContext } from "../services/intent-manager";
 import { zodJsonSchema } from "../prompts/util";
 import { PendleMarket } from "../api/levva/schema";
 import { TokenDataWithInfo } from "../types/token";
+import { BalanceData } from "../services/levva/wallet";
 
 export interface PendleParamsProviderData {
   tokenInData?: TokenDataWithInfo;
@@ -23,8 +24,9 @@ export interface PendleParamsProviderData {
   amountIn?: string;
   slippage?: string;
   type?: "buy" | "sell" | "deposit" | "withdraw";
-  intentContext?: IntentContext;
   pendleFilteredMarkets?: PendleMarket[];
+  walletSupportedPendleMarketTokenSymbols?: string[];
+  intentContext?: IntentContext;
 }
 
 export const PENDLE_PARAMS_PROVIDER_NAME = "PENDLE_PARAMS";
@@ -129,6 +131,10 @@ export const pendleParamsProvider: Provider = {
     let pendleMarkets: PendleMarket[] = [];
     let userPortfolio: string | undefined;
     let pendleTokens: string | undefined;
+    let walletTokens: {
+      asset: BalanceData;
+      token: Token | undefined;
+    }[] = [];
 
     try {
       const walletAssets = await levvaService.wallet.getWalletAssets({
@@ -142,8 +148,7 @@ export const pendleParamsProvider: Provider = {
 
       pendleMarkets = (await levvaService.getPendleMarkets(chainId)) ?? [];
 
-      // Filter non-zero balances and format with token info
-      const portfolioEntries = walletAssets
+      walletTokens = walletAssets
         .filter((asset) => asset.amount > 0n)
         .map((asset) => {
           const token = tokens?.find(
@@ -151,6 +156,12 @@ export const pendleParamsProvider: Provider = {
               t.address?.toLowerCase() === asset.token.toLowerCase() ||
               (asset.token === ETH_NULL_ADDR && t.symbol === "ETH")
           );
+          return { asset, token };
+        });
+
+      // Filter non-zero balances and format with token info
+      const portfolioEntries = walletTokens
+        .map(({ asset, token }) => {
           const price =
             asset.token === ETH_NULL_ADDR
               ? tokenPricesMap.get("weth")
@@ -384,6 +395,40 @@ Please provide a valid token symbol (like USDC, ETH, WETH) for the token you wan
         : (tokenInData!.address! as `0x${string}`);
 
     data.tokenInData = tokenInData;
+
+    const pendleSupportedTokens =
+      await levvaService.getPendleMarketSupportedTokens(
+        chainId,
+        data.pendleMarketAddress! as `0x${string}`
+      );
+
+    const pendleSupportedInTokens = new Set(
+      pendleSupportedTokens.tokensIn.map((t) => t.toLowerCase())
+    );
+
+    if (!pendleSupportedInTokens.has(data.tokenInData.address!.toLowerCase())) {
+      const tokens = walletTokens
+        .filter((wt) => pendleSupportedInTokens.has(wt.asset.token))
+        .map((wt) => {
+          const symbol =
+            wt.token?.symbol ||
+            (wt.asset.token === ETH_NULL_ADDR ? "ETH" : "Unknown");
+          return symbol;
+        });
+
+      data.walletSupportedPendleMarketTokenSymbols = tokens;
+
+      return {
+        ...EMPTY_RESULT,
+        data: { ...data, intentContext },
+        values: {
+          strategy: `${tokenInData.symbol} is not supported by Pendle router. ${tokens.length > 0 ? `Please choose one of the supported tokens from your wallet: ${tokens.join(",")}` : "There is not supported token in your wallet. Please choose other Pendle market."}`,
+        },
+        text: `${tokenInData.symbol} is not supported by Pendle router. Select other token in.`,
+      };
+    } else {
+      data.walletSupportedPendleMarketTokenSymbols = undefined;
+    }
 
     if (!amountIn) {
       return {

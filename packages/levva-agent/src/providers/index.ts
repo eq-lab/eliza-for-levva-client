@@ -6,7 +6,7 @@ import { getChain, parseTokenInfo } from "../util";
 import { LevvaService } from "../services/levva/class";
 import { isHex } from "viem";
 
-interface Token {
+export interface Token {
   symbol: string;
   name: string;
   decimals: number;
@@ -29,7 +29,6 @@ const groupTokens = (tokens: Token[]) => {
   const bySymbol: Record<string, Token> = {};
 
   for (const token of tokens) {
-    const info = parseTokenInfo(token.info);
     const { symbol, address } = token;
     bySymbol[symbol] = token;
 
@@ -37,11 +36,7 @@ const groupTokens = (tokens: Token[]) => {
       byAddress[address] = token;
     }
 
-    if (info.swap?.type === "pendle") {
-      pendle.push(token);
-    } else {
-      common.push(token);
-    }
+    common.push(token);
   }
 
   return { pendle, common, bySymbol, byAddress };
