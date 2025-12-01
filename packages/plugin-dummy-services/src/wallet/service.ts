@@ -1,4 +1,4 @@
-import { IAgentRuntime, Service } from '@elizaos/core';
+import { IAgentRuntime, Service } from "@elizaos/core";
 
 // Define wallet-specific types locally since they're not in core
 export interface WalletPortfolio {
@@ -16,13 +16,13 @@ export interface WalletPortfolio {
  */
 export class DummyWalletService extends Service {
   // Use a custom service type since WALLET isn't in ServiceType enum
-  static readonly serviceType = 'wallet';
+  static readonly serviceType = "wallet";
 
-  capabilityDescription = 'Dummy wallet service for testing';
+  capabilityDescription = "Dummy wallet service for testing";
   private balances: Map<string, bigint> = new Map();
   private prices: Map<string, number> = new Map();
   private decimals: Map<string, number> = new Map();
-  private quoteAsset = 'USDC';
+  private quoteAsset = "USDC";
 
   constructor(runtime: IAgentRuntime) {
     super(runtime);
@@ -36,17 +36,17 @@ export class DummyWalletService extends Service {
 
   async start(): Promise<void> {
     // Initialize with default USDC balance
-    this.balances.set('USDC', BigInt(10000 * 1e6)); // 10,000 USDC with 6 decimals
-    this.prices.set('USDC', 1); // USDC always has price 1
-    this.decimals.set('USDC', 6);
-    console.log('[DummyWalletService] started.');
+    this.balances.set("USDC", BigInt(10000 * 1e6)); // 10,000 USDC with 6 decimals
+    this.prices.set("USDC", 1); // USDC always has price 1
+    this.decimals.set("USDC", 6);
+    console.log("[DummyWalletService] started.");
   }
 
   async stop(): Promise<void> {
     this.balances.clear();
     this.prices.clear();
     this.decimals.clear();
-    console.log('[DummyWalletService] stopped.');
+    console.log("[DummyWalletService] stopped.");
   }
 
   async getBalance(asset: string): Promise<bigint> {
@@ -74,7 +74,7 @@ export class DummyWalletService extends Service {
     }
   }
 
-  resetWallet(initialCash: number = 10000, quoteAsset: string = 'USDC'): void {
+  resetWallet(initialCash: number = 10000, quoteAsset: string = "USDC"): void {
     this.balances.clear();
     this.prices.clear();
     this.decimals.clear();
@@ -86,11 +86,11 @@ export class DummyWalletService extends Service {
 
   async transferSol(from: string, to: string, amount: number): Promise<string> {
     const amountBigInt = BigInt(amount);
-    const solBalance = this.balances.get('SOL') || BigInt(0);
+    const solBalance = this.balances.get("SOL") || BigInt(0);
     if (solBalance < amountBigInt) {
       throw new Error(`Insufficient SOL balance`);
     }
-    this.balances.set('SOL', solBalance - amountBigInt);
+    this.balances.set("SOL", solBalance - amountBigInt);
     return `dummy-tx-${Date.now()}`;
   }
 
@@ -125,7 +125,8 @@ export class DummyWalletService extends Service {
 
     // Calculate allocations
     for (const asset of assets) {
-      asset.allocation = totalValueUsd > 0 ? (asset.valueUsd / totalValueUsd) * 100 : 0;
+      asset.allocation =
+        totalValueUsd > 0 ? (asset.valueUsd / totalValueUsd) * 100 : 0;
     }
 
     return {
@@ -136,6 +137,6 @@ export class DummyWalletService extends Service {
   }
 
   get serviceName(): string {
-    return 'dummy-wallet';
+    return "dummy-wallet";
   }
 }
