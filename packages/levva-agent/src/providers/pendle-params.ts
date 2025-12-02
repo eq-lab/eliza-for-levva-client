@@ -287,7 +287,7 @@ export const pendleParamsProvider: Provider = {
     }
 
     if (pendleFilteredMarkets.length == 1) {
-      data.pendleMarketAddress = pendleFilteredMarkets[0].poolAddress;
+      data.pendleMarketAddress = pendleFilteredMarkets[0].pendleMarketAddress;
     }
 
     if (data.userTokenData?.symbol !== userToken) {

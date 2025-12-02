@@ -42,7 +42,7 @@ export class TokenServiceComponent {
   private getTokenDataWithInfoCacheKey = (params: {
     chainId: number;
     symbolOrAddress?: string;
-    shouldUpsert?: boolean;
+    skipUpsert?: boolean;
   }) => `token-data-with-info:${params.chainId}:${params.symbolOrAddress}`;
 
   getTokenDataWithInfo = createTimedCache(

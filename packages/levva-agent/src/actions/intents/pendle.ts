@@ -283,7 +283,11 @@ async function executePendleStrategyTransaction(
     pendleMarketAddress: pendleMarketAddress,
   });
 
-  const amountUnits = parseUnits(amount!, userTokenData!.decimals);
+  const amountUnits =
+    operationType === "buy" || operationType === "deposit"
+      ? parseUnits(amount!, userTokenData!.decimals)
+      : parseUnits(amount!, pendleTokenData!.decimals);
+
   let calldata: CalldataWithDescription[] = [];
   let thought: string;
   let text: string;

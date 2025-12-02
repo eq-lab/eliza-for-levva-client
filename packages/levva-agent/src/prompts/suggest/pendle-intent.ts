@@ -439,7 +439,10 @@ ${generateOutputFormat()}`;
     );
 
     const { fullAmount, amount75, amount50, amount25 } = amounts;
-    const amountContext = generateAmountContext(walletAsset?.symbol!, amounts);
+    const amountContext = generateAmountContext(
+      walletAsset?.symbol ?? "",
+      amounts
+    );
 
     const gasNote = amounts.isNativeToken
       ? `\nIMPORTANT: ${walletAsset?.symbol} is native token - suggest max 95% to reserve gas for transaction.`
