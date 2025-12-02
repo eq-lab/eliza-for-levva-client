@@ -56,11 +56,13 @@ export const getChain = (chainId: number = 1) => {
 
 export const getClient = (chain: Chain) => {
   if (!clients[chain.id]) {
-    const rpcs = endpoints[chain.id];
+    let rpcs = endpoints[chain.id];
 
     if (!rpcs?.length) {
       throw new Error(`No endpoints found for chain id: ${chain.id}`);
     }
+
+    rpcs = chain.rpcUrls.default.http.concat(rpcs);
 
     const client = createPublicClient<Transport, Chain, undefined>({
       chain,

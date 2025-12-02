@@ -16,6 +16,7 @@ import {
   handlePendleStrategyIntent,
 } from "./intents";
 import { formatDecimalToPercentage } from "../util";
+import { formatCoin } from "../util/format-coin";
 
 const description =
   "Handle Pendle explore, buy, sell, deposit, and withdraw requests using intent-based system with multi-step process support.";
@@ -81,18 +82,24 @@ export const action: Action = {
         providerData.pendleFilteredMarkets &&
         providerData.pendleFilteredMarkets?.length > 0
       ) {
-        const filteredPendleMarketsText = providerData.pendleFilteredMarkets
-          .sort((a, b) => b.liquidity - a.liquidity)
-          .map(
-            (market) =>
-              `\n- ${market.underlyingType} yield **PT ${market.underlyingAssetName}-${market.maturityDate.split("T")[0]}**, APY: ${formatDecimalToPercentage(market.impliedApy)}, PT liquidity: $${market.liquidity.toFixed(2)}`
-          )
-          .slice(0, 5);
+        const filteredPendleMarketsText =
+          providerData.pendleFilteredMarkets
+            ?.sort((a, b) => b.impliedApy - a.impliedApy)
+            .map((market) => {
+              const maturityDate = new Date(market.maturityDate)
+                .toDateString()
+                .slice(4, 15);
+              const percentageApy = formatDecimalToPercentage(
+                market.impliedApy
+              );
+              const liquidityInUsd = formatCoin(+market.liquidity.toFixed(2));
+
+              return `\n- ${market.underlyingType} yield **${market.underlyingAssetName} – matures on ${maturityDate}**, Implied APY: ${percentageApy}, PT Liquidity: ~$${liquidityInUsd}`;
+            })
+            .join("\n") ?? [];
 
         await callback!({
-          text: `
-## ✨ Filtered Pendle Markets:
-\n${filteredPendleMarketsText}`,
+          text: `\n## ✨ Filtered Pendle Markets:\n${filteredPendleMarketsText}`,
           source: message.content.source,
           actions: [`${LEVVA_ACTIONS.SELECT_PENDLE_STRATEGY}`],
         });
@@ -135,11 +142,11 @@ export const action: Action = {
 
       // 6. If no intent context but we have Pendle parameters, handle as direct Pendle strategy request
       if (
-        providerData.type &&
-        providerData.tokenInData &&
-        providerData.tokenOutData &&
+        providerData.operationType &&
+        providerData.userTokenData &&
+        providerData.pendleTokenData &&
         providerData.pendleMarketAddress &&
-        providerData.amountIn
+        providerData.amount
       ) {
         runtime.logger.info(
           "Processing direct Pendle strategy request without intent context"
@@ -376,16 +383,11 @@ IntentManager.registerIntent({
     "remove liquidity Pendle",
     "exit Pendle pool",
     "unstake Pendle",
-
-    // General Pendle references
-    "Pendle",
-    "PT token",
-    "principal token",
   ],
   handler: handlePendleStrategyIntent,
   generateSuggestions: generatePendleStrategySuggestions,
   description:
-    "Handle Pendle explore, buy, sell, deposit, and withdraw requests with multi-step process support",
+    "Handle Pendle buy, sell, deposit, and withdraw requests with multi-step process support",
 });
 
 export const suggest: Suggestion[] = [];

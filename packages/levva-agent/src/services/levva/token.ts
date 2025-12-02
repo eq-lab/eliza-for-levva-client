@@ -39,48 +39,72 @@ export class TokenServiceComponent {
   getToken = (params: Parameters<typeof getTokenImpl>[1]) =>
     getTokenImpl(this.runtime, params);
 
-  getTokenDataWithInfo = async ({
-    chainId,
-    symbolOrAddress,
-  }: {
+  private getTokenDataWithInfoCacheKey = (params: {
     chainId: number;
     symbolOrAddress?: string;
-  }) => {
-    const chain = getChain(chainId);
-    let tokenData: TokenDataWithInfo | undefined;
+    skipUpsert?: boolean;
+  }) => `token-data-with-info:${params.chainId}:${params.symbolOrAddress}`;
 
-    if (!isHex(symbolOrAddress)) {
-      const symbol = symbolOrAddress;
+  getTokenDataWithInfo = createTimedCache(
+    this,
+    86400000, // 1 day in milliseconds,
+    async (params: {
+      chainId: number;
+      symbolOrAddress?: string;
+      skipUpsert?: boolean;
+    }) => {
+      const { chainId, symbolOrAddress, skipUpsert = false } = params;
+      const chain = getChain(chainId);
+      let tokenData: TokenDataWithInfo | undefined;
 
-      if (symbol?.toLowerCase() === chain.nativeCurrency.symbol.toLowerCase()) {
-        this.runtime.logger.info("Using native currency as token value");
-        tokenData = extractTokenData(chain.nativeCurrency);
+      if (!isHex(symbolOrAddress)) {
+        const symbol = symbolOrAddress;
+
+        if (
+          symbol?.toLowerCase() === chain.nativeCurrency.symbol.toLowerCase()
+        ) {
+          this.runtime.logger.info("Using native currency as token value");
+          tokenData = extractTokenData(chain.nativeCurrency);
+        } else {
+          const token = (await this.getToken({ chainId: chain.id, symbol }))[0];
+
+          if (!token) {
+            return;
+          }
+
+          tokenData = extractTokenData(token);
+          /* @ts-expect-error fix typing */
+          tokenData.info = parseTokenInfo(token.info);
+        }
       } else {
-        const token = (await this.getToken({ chainId: chain.id, symbol }))[0];
+        const tokens = await this.getToken({
+          address: symbolOrAddress as `0x${string}`,
+          chainId: chain.id,
+        });
 
-        if (!token) {
-          return;
+        if (tokens.length > 0) {
+          tokenData = extractTokenData(tokens[0]);
+        } else {
+          tokenData = await getTokenData(chain.id, symbolOrAddress);
         }
 
-        tokenData = extractTokenData(token);
-        /* @ts-expect-error fix typing */
-        tokenData.info = parseTokenInfo(token.info);
+        // todo now we can get market from adapter contract for base token, can be used
+        if (!skipUpsert) {
+          this.runtime.logger.info(
+            `Saving ${symbolOrAddress} as ${tokenData?.symbol}`
+          );
+
+          await upsertToken(this.runtime, {
+            ...(tokenData as Required<TokenData>),
+            chainId: chain.id,
+          });
+        }
       }
-    } else {
-      tokenData = await getTokenData(chain.id, symbolOrAddress);
-      this.runtime.logger.info(
-        `Saving ${symbolOrAddress} as ${tokenData.symbol}`
-      );
 
-      // todo now we can get market from adapter contract for base token, can be used
-      await upsertToken(this.runtime, {
-        ...(tokenData as Required<TokenData>),
-        chainId: chain.id,
-      });
-    }
-
-    return tokenData;
-  };
+      return tokenData;
+    },
+    this.getTokenDataWithInfoCacheKey
+  );
 
   getWETH = async (chainId: number) => {
     const [weth] = await this.getToken({ chainId, symbol: "WETH" });

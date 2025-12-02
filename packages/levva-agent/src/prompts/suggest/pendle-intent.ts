@@ -8,6 +8,7 @@
 
 import { PendleMarket } from "../../api/levva/schema";
 import { INTENT_TYPE } from "../../constants/enum";
+import { PendleParamsProviderData } from "../../providers/pendle-params";
 import type { IntentContext } from "../../services/intent-manager";
 import { formatDecimalToPercentage } from "../../util";
 import {
@@ -26,22 +27,22 @@ export interface PendleStrategyIntentSuggestionParams {
   userAddress: `0x${string}`;
   chainId: number;
   returnData: {
-    tokenIn?: string;
-    tokenOut?: string;
-    amountIn?: string;
+    userToken?: string;
+    pendleToken?: string;
+    amount?: string;
     maturity?: string;
     tokenClass?: string;
     maturityDays?: string;
-    type?: string;
+    operationType?: string;
     [key: string]: any;
   };
-  walletAssets: Array<{
-    address: string;
+  walletAsset?: {
+    address: `0x${string}`;
     symbol: string;
-    balance: bigint;
     decimals: number;
-    balanceUsd: string;
-  }>;
+    balance: bigint;
+  };
+  providerData?: PendleParamsProviderData;
   walletSupportedPendleMarketTokenSymbols?: string[];
   pendleFilteredMarkets: PendleMarket[];
   allPendleMarkets: PendleMarket[];
@@ -52,16 +53,16 @@ export function generatePendleStrategyIntentSuggestionsPrompt(
 ): string {
   const {
     returnData,
-    walletAssets,
+    walletAsset,
     pendleFilteredMarkets,
     allPendleMarkets,
     userAddress,
     chainId,
+    providerData,
     walletSupportedPendleMarketTokenSymbols,
   } = params;
 
-  const { tokenIn, tokenOut, amountIn, tokenClass, maturityDays, type } =
-    returnData;
+  const { tokenClass, maturityDays } = returnData;
 
   if (walletSupportedPendleMarketTokenSymbols) {
     const intentContext = generateIntentContextSection({
@@ -73,12 +74,12 @@ export function generatePendleStrategyIntentSuggestionsPrompt(
       userAddress,
       chainId,
       parameters: {
-        From: tokenIn,
-        To: tokenOut,
-        Amount: amountIn,
+        WalletToken: walletAsset?.symbol,
+        PendleToken: providerData?.pendleTokenData?.symbol,
+        Amount: providerData?.amount,
         TokenClass: tokenClass,
         MaturityDays: maturityDays,
-        Type: type,
+        Type: providerData?.operationType,
       },
     });
 
@@ -130,11 +131,12 @@ export function generatePendleStrategyIntentSuggestionsPrompt(
   ${generateOutputFormat()}`;
   }
 
-  if (pendleFilteredMarkets.length === 1 && type && tokenIn && amountIn) {
-    const walletAsset = walletAssets.find(
-      (a) => a.symbol.toLowerCase() === tokenIn.toLowerCase()
-    );
-
+  if (
+    pendleFilteredMarkets.length === 1 &&
+    providerData?.operationType &&
+    providerData?.userTokenData?.symbol &&
+    providerData?.amount
+  ) {
     const amounts = calculateAmountsFromBalance(
       walletAsset?.balance ?? 0n,
       walletAsset?.decimals ?? 18,
@@ -147,20 +149,24 @@ export function generatePendleStrategyIntentSuggestionsPrompt(
       userAddress,
       chainId,
       parameters: {
-        From: tokenIn,
-        To: tokenOut ?? pendleFilteredMarkets[0]!.underlyingAssetName,
-        Amount: amountIn,
+        WalletToken: walletAsset?.symbol,
+        PendleToken:
+          providerData?.pendleTokenData?.symbol ??
+          pendleFilteredMarkets[0]!.underlyingAssetName,
+        Amount: providerData?.amount,
         TokenClass: tokenClass ?? pendleFilteredMarkets[0]!.underlyingType,
         MaturityDays: maturityDays ?? pendleFilteredMarkets[0]!.maturityDate,
-        Type: type,
+        Type: providerData?.operationType,
         ...(amounts.hasBalance
-          ? { "Available Balance": `${amounts.fullAmount} ${tokenIn}` }
+          ? {
+              "Available Balance": `${amounts.fullAmount} ${walletAsset?.symbol}`,
+            }
           : {}),
       },
     });
 
     const amountContext = amounts.hasBalance
-      ? `\nFor amount modifications, user has ${amounts.fullAmount} ${tokenIn} available. Suggest specific amounts: ${amounts.amount25} ${tokenIn}, ${amounts.amount50} ${tokenIn}, ${amounts.amount75} ${tokenIn}.`
+      ? `\nFor amount modifications, user has ${amounts.fullAmount} ${walletAsset?.symbol} available. Suggest specific amounts: ${amounts.amount25} ${walletAsset?.symbol}, ${amounts.amount50} ${walletAsset?.symbol}, ${amounts.amount75} ${walletAsset?.symbol}.`
       : "";
 
     // Build label examples
@@ -170,7 +176,7 @@ export function generatePendleStrategyIntentSuggestionsPrompt(
     ];
     if (amounts.hasBalance) {
       labelExamples.push(
-        `- "Use ${amounts.amount50} ${tokenIn}" - for 50% amount`
+        `- "Use ${amounts.amount50} ${walletAsset?.symbol}" - for 50% amount`
       );
     } else {
       labelExamples.push(`- "Different amount" - for amount change`);
@@ -184,14 +190,14 @@ export function generatePendleStrategyIntentSuggestionsPrompt(
     ];
     if (amounts.hasBalance) {
       textExamples.push(
-        `- "Actually, buy/deposit ${amounts.amount50} ${tokenIn} instead" - modify with specific amount`
+        `- "Actually, buy/deposit ${amounts.amount50} ${walletAsset?.symbol} instead" - modify with specific amount`
       );
     } else {
       textExamples.push(
         `- "Actually, let me use a different amount" - modify amount`
       );
     }
-    textExamples.push(`- "Cancel and buy something else" - restart`);
+    textExamples.push(`- "Cancel this Pendle strategy" - restart`);
 
     const instructions = generateCommonInstructions({
       suggestionType: "confirmation",
@@ -223,19 +229,19 @@ ${instructions}
 ${generateOutputFormat()}`;
   }
 
-  if (!type) {
+  if (!providerData?.operationType) {
     const intentContext = generateIntentContextSection({
       intentType: `${INTENT_TYPE.SELECT_PENDLE_STRATEGY}`,
       status: "Operation type selection needed (buy/sell/deposit/withdraw)",
       userAddress,
       chainId,
       parameters: {
-        From: tokenIn,
-        To: tokenOut,
-        Amount: amountIn,
+        WalletToken: walletAsset?.symbol,
+        PendleToken: providerData?.pendleTokenData?.symbol,
+        Amount: providerData?.amount,
         TokenClass: tokenClass,
         MaturityDays: maturityDays,
-        Type: type,
+        Type: providerData?.operationType,
       },
     });
 
@@ -246,10 +252,14 @@ ${generateOutputFormat()}`;
 LABEL FORMAT:
 - "Buy zero coupon bond" - for buy operation
 - "Deposit liquidity" - for deposit operation
+- "Sell PT token" - for sell operation
+- "Withdraw liquidity" - for withdraw operation
 
 TEXT FORMAT:
 - "Buy Pendle PT token" - for buy operation
 - "Deposit liquidity to Pendle pool" - for deposit operation
+- "Sell PT token" - for sell operation
+- "Withdraw liquidity" - for withdraw operation
 
 Each suggestion MUST:
 - Be natural and conversational
@@ -283,12 +293,12 @@ ${generateOutputFormat()}`;
         userAddress,
         chainId,
         parameters: {
-          From: tokenIn,
-          To: tokenOut,
-          Amount: amountIn,
+          WalletToken: walletAsset?.symbol,
+          PendleToken: providerData?.pendleTokenData?.symbol,
+          Amount: providerData?.amount,
           TokenClass: tokenClass,
           MaturityDays: maturityDays,
-          Type: type,
+          Type: providerData?.operationType,
         },
       });
 
@@ -311,12 +321,12 @@ ${generateOutputFormat()}`;
         userAddress,
         chainId,
         parameters: {
-          From: tokenIn,
-          To: tokenOut,
-          Amount: amountIn,
+          WalletToken: walletAsset?.symbol,
+          PendleToken: providerData?.pendleTokenData?.symbol,
+          Amount: providerData?.amount,
           TokenClass: tokenClass,
           MaturityDays: maturityDays,
-          Type: type,
+          Type: providerData?.operationType,
         },
       });
 
@@ -363,12 +373,12 @@ ${generateOutputFormat()}`;
         userAddress,
         chainId,
         parameters: {
-          From: tokenIn,
-          To: tokenOut,
-          Amount: amountIn,
+          WalletToken: walletAsset?.symbol,
+          PendleToken: providerData?.pendleTokenData?.symbol,
+          Amount: providerData?.amount,
           TokenClass: tokenClass,
           MaturityDays: maturityDays,
-          Type: type,
+          Type: providerData?.operationType,
         },
       });
 
@@ -406,23 +416,19 @@ ${instructions}
 ${generateOutputFormat()}`;
   }
 
-  if (pendleFilteredMarkets.length === 1 && !amountIn) {
-    const walletAsset = walletAssets.find(
-      (a) => a.symbol?.toLowerCase() === tokenIn!.toLowerCase()
-    );
-
+  if (!providerData?.amount) {
     const intentContext = generateIntentContextSection({
       intentType: `${INTENT_TYPE.SELECT_PENDLE_STRATEGY}`,
       status: "Amount selection needed",
       userAddress,
       chainId,
       parameters: {
-        From: tokenIn,
-        To: tokenOut,
-        Amount: amountIn,
+        WalletToken: walletAsset?.symbol,
+        PendleToken: providerData?.pendleTokenData?.symbol,
+        Amount: providerData?.amount,
         TokenClass: tokenClass,
         MaturityDays: maturityDays,
-        Type: type,
+        Type: providerData?.operationType,
       },
     });
 
@@ -433,43 +439,46 @@ ${generateOutputFormat()}`;
     );
 
     const { fullAmount, amount75, amount50, amount25 } = amounts;
-    const amountContext = generateAmountContext(tokenIn!, amounts);
+    const amountContext = generateAmountContext(
+      walletAsset?.symbol ?? "",
+      amounts
+    );
 
     const gasNote = amounts.isNativeToken
-      ? `\nIMPORTANT: ${tokenIn} is native token - suggest max 95% to reserve gas for transaction.`
+      ? `\nIMPORTANT: ${walletAsset?.symbol} is native token - suggest max 95% to reserve gas for transaction.`
       : "";
 
     const instructions = generateCommonInstructions({
       suggestionType: "next-step",
       specificInstructions: `Generate 3-4 natural, conversational suggestions for amount selection.
 
-CRITICAL: The token symbol is "${tokenIn}" - use ONLY this exact symbol, nothing else.
-${amounts.hasBalance ? `User has ${fullAmount} ${tokenIn} available in wallet${amounts.isNativeToken ? " (95% max to reserve gas)" : ""}.` : "No balance available."}${gasNote}
+CRITICAL: The token symbol is "${walletAsset?.symbol}" - use ONLY this exact symbol, nothing else.
+${amounts.hasBalance ? `User has ${fullAmount} ${walletAsset?.symbol} available in wallet${amounts.isNativeToken ? " (95% max to reserve gas)" : ""}.` : "No balance available."}${gasNote}
 
 LABEL FORMAT (use specific amounts, NOT generic labels):
 ${
   amounts.hasBalance
-    ? `- "Full balance" - for ${amounts.isNativeToken ? "95%" : "all"} ${tokenIn}
-- "75% of ${tokenIn}" - for 75% of ${tokenIn}
-- "50% of ${tokenIn}" - for 50% of ${tokenIn}
-- "25% of ${tokenIn}" - for 25% of ${tokenIn}`
+    ? `- "Full balance" - for ${amounts.isNativeToken ? "95%" : "all"} ${walletAsset?.symbol}
+- "75% of ${walletAsset?.symbol}" - for 75% of ${walletAsset?.symbol}
+- "50% of ${walletAsset?.symbol}" - for 50% of ${walletAsset?.symbol}
+- "25% of ${walletAsset?.symbol}" - for 25% of ${walletAsset?.symbol}`
     : `- You have no balance available`
 }
 
-TEXT FORMAT (use "${tokenIn}" exactly as shown and ACTUAL amounts):
+TEXT FORMAT (use "${walletAsset?.symbol}" exactly as shown and ACTUAL amounts):
 ${
   amounts.hasBalance
-    ? `- "I want to buy ${fullAmount} ${tokenIn}" - full ${amounts.isNativeToken ? "(95%)" : ""} balance
-- "Use ${amount75} ${tokenIn}" - 75% of balance
-- "Use ${amount50} ${tokenIn}" - 50% of balance
-- "Use ${amount25} ${tokenIn}" - 25% of balance`
+    ? `- "I want to ${providerData?.operationType} ${fullAmount} ${walletAsset?.symbol}" - full ${amounts.isNativeToken ? "(95%)" : ""} balance
+- "Use ${amount75} ${walletAsset?.symbol}" - 75% of balance
+- "Use ${amount50} ${walletAsset?.symbol}" - 50% of balance
+- "Use ${amount25} ${walletAsset?.symbol}" - 25% of balance`
     : `- You have no balance available`
 }
 - "What amount should I use?" - ask for guidance
 
 Each suggestion MUST:
 - Be natural and conversational
-- Use ONLY the token symbol "${tokenIn}" (no extra characters or variations)
+- Use ONLY the token symbol "${walletAsset?.symbol}" (no extra characters or variations)
 - Provide specific amounts based on balance when available${amounts.isNativeToken ? "\n- Reserve 5% for gas if native token" : ""}
 - Use EXACT labels and texts without modifications
 - MUST use information only from LABEL FORMAT AND TEXT FORMAT
@@ -504,21 +513,21 @@ ${generateOutputFormat()}`;
     suggestionType: "next-step",
     specificInstructions: `Generate 3-5 natural, conversational suggestions for Pendle strategy selection:
 
-CRITICAL: All suggestions MUST include the word "buy PT" to clearly indicate intent to buy PT token.
+CRITICAL: All suggestions MUST include the word "${providerData?.operationType}" to clearly indicate intent to ${providerData?.operationType} PT token.
 
 SUGGESTION PRIORITIES:
 1. Select by PT token (specific tokens)
 2. Ask about PT token recommendations
 3. Inquire about PT token types (Stable, ETH, BTC)
 
-SUGGESTION FORMATS (must include "buy PT"):
-- "Buy PT [Token Name]" - by specific token
+SUGGESTION FORMATS (must include "${providerData?.operationType} PT"):
+- "${providerData?.operationType} PT [Token Name]" - by specific token
 - "What PT tokens do you recommend?" - ask for guidance
 - "Tell me about PT token options" - learn more
 
 Each suggestion should:
 - Be natural and conversational
-- **MUST include "buy PT" in the text**
+- **MUST include "${providerData?.operationType} PT" in the text**
 - Reference actual available PT tokens
 - Lead to PT token selection and next steps
 - Use EXACT labels and texts without modifications`,
@@ -526,9 +535,9 @@ Each suggestion should:
 
   return `<task>Generate PT token selection suggestions for Pendle strategy</task>
 ${intentContext}
-<supportedTokens>
+<pendleTokens>
 ${ptTokensList || "No PT tokens available"}
-</supportedTokens>
+</pendleTokens>
 ${instructions}
 ${generateOutputFormat()}`;
 }
