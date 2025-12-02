@@ -94,7 +94,7 @@ export const action: Action = {
               );
               const liquidityInUsd = formatCoin(+market.liquidity.toFixed(2));
 
-              return `\n- ${market.underlyingType} yield **${market.underlyingAssetName} – matures on ${maturityDate}**, Implied APY: ${percentageApy}, PT Liquidity: ~${liquidityInUsd}`;
+              return `\n- ${market.underlyingType} yield **${market.underlyingAssetName} – matures on ${maturityDate}**, Implied APY: ${percentageApy}, PT Liquidity: ~$${liquidityInUsd}`;
             })
             .join("\n") ?? [];
 

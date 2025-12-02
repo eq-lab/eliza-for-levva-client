@@ -13,7 +13,6 @@ import { CalldataWithDescription } from "../../types/tx";
 import { rephrase } from "../../util/generate";
 import { IntentContext, IntentHandler } from "../../services/intent-manager";
 import { ActionResult } from "../../util/action-results";
-import { ETH_NULL_ADDR } from "../../constants/eth";
 import { selectProviderState } from "../../providers/util";
 import {
   PENDLE_PARAMS_PROVIDER_NAME,
@@ -65,6 +64,7 @@ export async function generatePendleStrategySuggestions(params: {
   const walletAsset = balanceData
     ? {
         address: walletTokenData!.address!,
+        symbol: walletTokenData!.symbol!,
         decimals: walletTokenData!.decimals,
         balance: balanceData.amount,
       }

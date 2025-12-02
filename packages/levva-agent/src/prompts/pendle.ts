@@ -41,7 +41,7 @@ export const extractedPendleParamsSchema = z
       .describe(
         "Token to use for the transaction: " +
           "For 'buy'/'deposit': Non-PT token from <userPortfolio> that user will spend. When NOT explicitly specified, AUTO-SELECT the token with HIGHEST usdValue (compare numerically: 12.90 > 1.99). MUST exclude tokens starting with 'PT-'. " +
-          "For 'sell'/'withdraw': User MUST explicitly specify. Ignore <userPortfolio> when specifying userToken. " +
+          "For 'sell'/'withdraw': User MUST explicitly specify Non-PT token to receive from <userPortfolio>. " +
           "CRITICAL: For buy/deposit, auto-select by highest usdValue when not specified. For sell/withdraw, return null if not specified."
       ),
     maturityDays: z
@@ -113,14 +113,14 @@ export const selectPendleDataFromMessagesPrompt = (ctx: {
 Extract Pendle transaction parameters from <currentMessage>${ctx.intentContext ? " using intent context for improved accuracy" : ""}.
 </task>
 <pendleTokens>
-Format: comma separated list of ("ptToken","class")
+Format: comma separated list of ('ptToken','class')
 
 ${ctx.pendleTokens}
 </pendleTokens>
 ${
   ctx.userPortfolio
     ? `<userPortfolio>
-Format: comma separated list of ("token","balance","usdValue")
+Format: comma separated list of ('token','balance','usdValue')
 
 ${ctx.userPortfolio}
 </userPortfolio>`
@@ -161,9 +161,13 @@ GENERAL INSTRUCTIONS:
 `
     : ""
 }
+- **CRITICAL**: Read user input EXACTLY as written - do not misread or hallucinate token names
+  * Example: "yousd" is NOT "yusd" - they are different strings
+  * Example: "yousd" matches "yoUSD" case-insensitively
+  * Double-check the EXACT spelling in <currentMessage> before matching to <pendleTokens>
 - **CRITICAL DISTINCTION**: tokenClass and pendleToken are INDEPENDENT parameters
   * tokenClass = asset category filter (Stable/BTC/ETH) - can be mentioned by user OR inferred
-  * pendleToken = specific token symbol (USDC/WBTC/WETH) - MUST be explicitly mentioned by user
+  * pendleToken = specific token name or symbol (USDC/WBTC/WETH/Rocket Pool ETH) - MUST be explicitly mentioned by user
   * **tokenClass alone is NOT sufficient**: Specifying only asset class without specific token name always results in pendleToken: null
   * Examples:
     - "I want a stable PT" → tokenClass: **Stable**, pendleToken: **null** (class only, no specific token)
@@ -171,7 +175,6 @@ GENERAL INSTRUCTIONS:
 - NEVER infer or suggest pendleToken, amount, maturityDays if not explicitly specified
 - EXCEPTION: userToken is AUTO-SELECTED for buy/deposit operations when not specified
 - If multiple Pendle requests exist, extract parameters for the MOST RECENT uncompleted one
-- Handle common aliases: "PT USDe" = pendleToken: "USDe", "buy principal tokens" = operationType: "buy"
 - **CRITICAL**: Extract parameters ONLY from USER messages, NOT from agent/Levvski responses
 ${ctx.intentContext ? '- Leverage intent context to resolve ambiguous references (e.g., "that token" referring to previously mentioned tokens)' : ""}
 
@@ -203,7 +206,7 @@ OPERATION TYPE GUIDANCE:
 AMOUNT PARSING RULES:
 - Extract only numeric values: "100", "0.5", "1000".
 - For buy/deposit: Use <userPortfolio> "balance" field to see available balances.
-- For sell/withdraw: User MUST explicitly specify. Ignore <userPortfolio> when specifying amount.
+- For sell/withdraw: User MUST explicitly specify Non-PT token to receive from <userPortfolio>.
 - Percentage conversion: If user says "50%" → look up token in <userPortfolio>, compute 0.5 × "balance" value.
 - Keyword conversion: If user says "all"/"max" → look up token in <userPortfolio>, use full "balance" value.
 - Trim trailing zeros (e.g., "15.460000" → "15.46").
@@ -254,8 +257,12 @@ TOKEN SELECTION GUIDANCE:
 **pendleToken** (PT token for the transaction):
   * MUST match a "ptToken" value from <pendleTokens> list
   * **USER** MUST explicitly say the token name in THEIR OWN messages (e.g., "USDC", "USDe", "WETH")
-  * User can prefix with "PT" (e.g., "PT USDC" → "USDC")
-  * Match case-insensitively (e.g., "usdc" matches "USDC")
+  * **Strip descriptive keywords before matching**:
+    - Remove "PT", "PT-" prefix: "PT USDC" → "USDC", "PT-USDC" → "USDC"
+    - Remove "Pendle" keyword: "Pendle USDC" → "USDC", "buy Pendle USDe" → "USDe"
+    - Remove "LP" keyword: "LP USDC" → "USDC", "deposit into LP yoUSD" → "yoUSD"
+    - Combined: "buy Pendle PT USDC" → "USDC", "LP PT-USDe" → "USDe"
+  * Match case-insensitively after stripping keywords (e.g., "usdc" matches "USDC")
   * If token not in <pendleTokens> "ptToken" field, return null and explain in thought field
   * **CRITICAL**: Phrases like "you can consider PT yoUSD or PT USDX" are agent suggestions, NOT user selections - return null
 
@@ -272,7 +279,7 @@ TOKEN SELECTION GUIDANCE:
   * Verify sufficient "balance" when amount is specified
 
 - **For "sell"/"withdraw" operations**:
-  * User MUST explicitly specify. Ignore <userPortfolio> when specifying userToken.
+  * User MUST explicitly specify Non-PT token to receive from <userPortfolio>.
   * **CRITICAL**: Return null if user does NOT explicitly mention a specific token.
 
 **General Rules:**
@@ -286,6 +293,7 @@ TOKEN SELECTION GUIDANCE:
 **Extraction Examples:**
 
 Given <userPortfolio>: [("USDC","3","3.00"), ("ETH","0.011","35.75"), ("PT-USDe-11DEC2025","0.316","0.00")]
+Given <pendleTokens>: [("yoUSD","Stable"), ("USDX","Stable"),("mRe7BTC","BTC"),("USDC","Stable")]
 
 - **Informational queries (all null)**:
   * "I want a PT" → operationType: null, pendleToken: null, tokenClass: null, userToken: null, amount: null
@@ -314,6 +322,7 @@ Given <userPortfolio>: [("USDC","3","3.00"), ("ETH","0.011","35.75"), ("PT-USDe-
 - **Ignoring agent responses and filtered markets**:
   * User: "maturity >90 days", Agent: "consider PT yoUSD or PT USDX", User: "Use 5 ETH" → pendleToken: null (ignore agent suggestions!)
   * User: "I choose PT yoUSD" → pendleToken: "yoUSD" (user explicitly selected!)
+  * User: "i want to buy pt yousd" → pendleToken: "yoUSD" (case-insensitive match: "yousd" matches "yoUSD")
 
 - **Maturity preference preservation**:
   * User: "ETH yield for 30-90 days", then "select wcgUSD (maturity: 2025-12-18)" → maturityDays: "30-90" (use stated preference, not calculated date)
