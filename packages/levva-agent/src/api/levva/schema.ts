@@ -20,6 +20,7 @@ const tokenSchema = z.object({
 const pendleMarketSchema = z.object({
   pendleMarketAddress: z.string(),
   underlyingAssetName: z.string(),
+  underlyingAssetSymbol: z.string(),
   underlyingType: z.enum(["Stable", "BTC", "ETH", "Other"]),
   maturityDate: z.string(),
   impliedApy: z.number(),

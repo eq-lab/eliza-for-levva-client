@@ -5,24 +5,46 @@ import { ETH_NULL_ADDR } from "src/constants/eth";
 
 export const getBalanceOf = async (
   chainId: number,
-  address: `0x${string}`,
-  token?: `0x${string}`
+  account: `0x${string}`,
+  tokens: `0x${string}`[]
 ) => {
   const chain = getChain(chainId);
   const client = getClient(chain);
 
-  if (token && token !== ETH_NULL_ADDR) {
-    return client.readContract({
-      address: token,
-      abi: erc20Abi,
-      functionName: "balanceOf",
-      args: [address],
+  const erc20Tokens = tokens.filter((token) => token !== ETH_NULL_ADDR);
+  let balances: { token: `0x${string}`; balance: bigint }[] = [];
+
+  if (erc20Tokens.length > 0) {
+    const erc20Balances = await client.multicall({
+      contracts: erc20Tokens.map((token) => ({
+        abi: erc20Abi,
+        address: token,
+        functionName: "balanceOf",
+        args: [account],
+      })),
+    });
+
+    balances = erc20Tokens.map((token, index) => ({
+      token: token,
+      balance:
+        erc20Balances[index].status === "success"
+          ? (erc20Balances[index].result as bigint)
+          : BigInt(0),
+    }));
+  }
+
+  const nativeToken = tokens.find((token) => token === ETH_NULL_ADDR);
+
+  if (nativeToken) {
+    const nativeBalance = await client.getBalance({ address: account });
+
+    balances.push({
+      token: nativeToken!,
+      balance: nativeBalance,
     });
   }
 
-  return client.getBalance({
-    address,
-  });
+  return balances;
 };
 
 export const getTokenData = async (
@@ -57,6 +79,73 @@ export const getTokenData = async (
   ]);
 
   return { address: getAddress(address), name, symbol, decimals };
+};
+
+export const getTokensData = async (
+  chainId: number,
+  tokens: (`0x${string}` | undefined)[]
+): Promise<(TokenData | undefined)[]> => {
+  const chain = getChain(chainId);
+  const client = getClient(chain);
+
+  const data = await client.multicall({
+    contracts: tokens
+      .filter((token) => token && token !== ETH_NULL_ADDR)
+      .map((token) => token!)
+      .flatMap((token) => [
+        {
+          abi: erc20Abi,
+          address: token,
+          functionName: "name",
+        },
+        {
+          abi: erc20Abi,
+          address: token,
+          functionName: "symbol",
+        },
+        {
+          abi: erc20Abi,
+          address: token,
+          functionName: "decimals",
+        },
+      ]),
+  });
+
+  const result: (TokenData | undefined)[] = [];
+
+  for (const [index, token] of tokens.entries()) {
+    if (!token) {
+      result.push(undefined);
+      continue;
+    }
+
+    if (token === ETH_NULL_ADDR) {
+      const { name, symbol, decimals } = chain.nativeCurrency;
+      result.push({ name, symbol, decimals });
+      continue;
+    }
+
+    const name =
+      data[index * 3].status === "success"
+        ? (data[index * 3].result as string)
+        : undefined;
+    const symbol =
+      data[index * 3 + 1].status === "success"
+        ? (data[index * 3 + 1].result as string)
+        : undefined;
+    const decimals =
+      data[index * 3 + 2].status === "success"
+        ? (data[index * 3 + 2].result as number)
+        : undefined;
+
+    if (name && symbol && decimals) {
+      result.push({ address: getAddress(token), name, symbol, decimals });
+    } else {
+      result.push(undefined);
+    }
+  }
+
+  return result;
 };
 
 export const extractTokenData = (

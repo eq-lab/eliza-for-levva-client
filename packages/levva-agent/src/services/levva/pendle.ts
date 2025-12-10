@@ -44,29 +44,34 @@ export const getPendleParams = async (
   };
 };
 
-export const getPendleMarketTokens = async (
+export const getPendleMarketPtTokens = async (
   chainId: number,
-  marketAddress: `0x${string}`
-): Promise<
-  | {
-      syAddress: `0x${string}`;
-      ptAddress: `0x${string}`;
-      ytAddress: `0x${string}`;
-    }
-  | undefined
-> => {
+  marketAddresses: `0x${string}`[]
+): Promise<Map<`0x${string}`, `0x${string}` | undefined>> => {
   const chain = getChain(chainId);
   const client = getClient(chain);
 
-  const [syAddress, ptAddress, ytAddress] = await client.readContract({
-    abi: pendleMarketAbi,
-    address: marketAddress,
-    functionName: "readTokens",
+  const tokens = await client.multicall({
+    contracts: marketAddresses.map((market) => ({
+      abi: pendleMarketAbi,
+      address: market,
+      functionName: "readTokens",
+    })),
   });
 
-  return {
-    syAddress,
-    ptAddress,
-    ytAddress,
-  };
+  const ptTokens = tokens.map((result) =>
+    result.status === "success"
+      ? (
+          result.result as readonly [
+            `0x${string}`,
+            `0x${string}`,
+            `0x${string}`,
+          ]
+        )[1]
+      : undefined
+  );
+
+  return new Map(
+    ptTokens.map((token, index) => [marketAddresses[index], token])
+  );
 };

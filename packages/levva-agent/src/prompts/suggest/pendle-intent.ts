@@ -92,8 +92,8 @@ export function generatePendleStrategyIntentSuggestionsPrompt(
               .sort((a, b) => b.liquidity - a.liquidity)
               .slice(0, 5)
               .map((market) => ({
-                label: `PT-${market.underlyingAssetName}-${market.maturityDate.split("T")[0]} (APY: ${formatDecimalToPercentage(market.impliedApy)})`,
-                text: `I want to select ${market.underlyingAssetName}`,
+                label: `PT-${market.underlyingAssetSymbol}-${market.maturityDate.split("T")[0]} (APY: ${formatDecimalToPercentage(market.impliedApy)})`,
+                text: `I want to select ${market.underlyingAssetSymbol}`,
               })),
           }
         : {
@@ -152,7 +152,7 @@ export function generatePendleStrategyIntentSuggestionsPrompt(
         WalletToken: walletAsset?.symbol,
         PendleToken:
           providerData?.pendleTokenData?.symbol ??
-          pendleFilteredMarkets[0]!.underlyingAssetName,
+          pendleFilteredMarkets[0]!.underlyingAssetSymbol,
         Amount: providerData?.amount,
         TokenClass: tokenClass ?? pendleFilteredMarkets[0]!.underlyingType,
         MaturityDays: maturityDays ?? pendleFilteredMarkets[0]!.maturityDate,
@@ -386,8 +386,8 @@ ${generateOutputFormat()}`;
         labelDescription: "Use EXACT label format",
         textDescription: "Use EXACT text format",
         content: pendleFilteredMarkets.slice(0, 5).map((market) => ({
-          label: `PT-${market.underlyingAssetName}-${market.maturityDate.split("T")[0]} (APY: ${formatDecimalToPercentage(market.impliedApy)})`,
-          text: `I want to select ${market.underlyingAssetName}`,
+          label: `PT-${market.underlyingAssetSymbol}-${market.maturityDate.split("T")[0]} (APY: ${formatDecimalToPercentage(market.impliedApy)})`,
+          text: `I want to select ${market.underlyingAssetSymbol}`,
         })),
       };
     }
@@ -505,7 +505,7 @@ ${generateOutputFormat()}`;
   const ptTokensList = allPendleMarkets
     .map(
       (m) =>
-        `- ${m.underlyingAssetName} (maturity: ${m.maturityDate.split("T")[0]}, class: ${m.underlyingType}, APY: ${formatDecimalToPercentage(m.impliedApy)})`
+        `- ${m.underlyingAssetSymbol} (maturity: ${m.maturityDate.split("T")[0]}, class: ${m.underlyingType}, APY: ${formatDecimalToPercentage(m.impliedApy)})`
     )
     .join("\n");
 

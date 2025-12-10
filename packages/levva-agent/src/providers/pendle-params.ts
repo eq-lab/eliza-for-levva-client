@@ -137,6 +137,13 @@ export const pendleParamsProvider: Provider = {
     }[] = [];
 
     try {
+      pendleMarkets = (await levvaService.getPendleMarkets(chainId)) ?? [];
+
+      await levvaService.collectPendleMarketPtAndLpTokens(
+        chainId,
+        pendleMarkets
+      );
+
       const walletAssets = await levvaService.wallet.getWalletAssets({
         chainId,
         address: user.address,
@@ -146,8 +153,6 @@ export const pendleParamsProvider: Provider = {
         tokenPrices.map((token) => [token.symbol.toLowerCase(), token.priceUsd])
       );
 
-      pendleMarkets = (await levvaService.getPendleMarkets(chainId)) ?? [];
-
       walletTokens = walletAssets
         .filter((asset) => asset.amount > 0n)
         .map((asset) => {
@@ -156,32 +161,47 @@ export const pendleParamsProvider: Provider = {
               t.address?.toLowerCase() === asset.token.toLowerCase() ||
               (asset.token === ETH_NULL_ADDR && t.symbol === "ETH")
           );
-          return { asset, token };
-        });
 
-      // Filter non-zero balances and format with token info
-      const portfolioEntries = walletTokens
-        .map(({ asset, token }) => {
+          const symbol =
+            token?.symbol ||
+            (asset.token === ETH_NULL_ADDR ? "ETH" : "Unknown");
+
           const price =
             asset.token === ETH_NULL_ADDR
               ? tokenPricesMap.get("weth")
               : tokenPricesMap.get(token?.symbol?.toLowerCase() ?? "");
-          const symbol =
-            token?.symbol ||
-            (asset.token === ETH_NULL_ADDR ? "ETH" : "Unknown");
+
           const decimals = token?.decimals ?? 18;
           const balance = formatUnits(asset.amount, decimals);
-          const balanceUsd = price
-            ? (price * Number(balance)).toFixed(2)
-            : "0.00";
-          return `('${symbol}','${balance}','${balanceUsd}')`;
+          const balanceUsd = price ? (price * Number(balance)).toFixed(2) : 0;
+
+          if (token) {
+            token.symbol = symbol;
+          }
+
+          return {
+            asset,
+            token: token ?? {
+              address: asset.token,
+              symbol,
+              decimals,
+              name: symbol,
+            },
+            balanceUsd,
+          };
+        });
+
+      // Filter non-zero balances and format with token info
+      const portfolioEntries = walletTokens
+        .map(({ token }) => {
+          return `('${token!.symbol}','${balance}')`;
         })
         .join(",");
 
       const pendleAssets = pendleMarkets
         .map(
           (market) =>
-            `('${market.underlyingAssetName}','${market.underlyingType}')`
+            `('${market.underlyingAssetSymbol}','${market.underlyingType}')`
         )
         .join(",");
 
@@ -322,11 +342,12 @@ export const pendleParamsProvider: Provider = {
         operationType === "deposit" ||
         operationType === "sell"
       ) {
-        const pendleMarketTokens = await levvaService.getPendleMarketTokens(
-          levvaProviderState.chainId,
-          data.pendleMarketAddress as `0x${string}`
-        );
-        tokenAddress = pendleMarketTokens!.ptAddress;
+        // TODO: !!!
+        // const pendleMarketTokens = await levvaService.getPendleMarketTokens(
+        //   levvaProviderState.chainId,
+        //   data.pendleMarketAddress as `0x${string}`
+        // );
+        // tokenAddress = pendleMarketTokens!.ptAddress;
       } else if (operationType === "withdraw") {
         tokenAddress = data.pendleMarketAddress;
       }
@@ -442,7 +463,7 @@ Please provide a valid token symbol (like USDC, ETH, WETH) for the token you wan
         data: { ...data, intentContext },
         values: {
           strategy: writeUnknownTokenText(
-            pendleFilteredMarkets[0].underlyingAssetName
+            pendleFilteredMarkets[0].underlyingAssetSymbol
           ),
         },
         text: writeUnknownTokenText(
@@ -510,11 +531,19 @@ Please provide a valid token symbol (like USDC, ETH, WETH) for the token you wan
         ? data.userTokenData
         : data.pendleTokenData;
 
-    const balance = await levvaService.wallet.getBalanceOf(
+    const balanceDataEntries = await levvaService.wallet.getBalances(
       user.address,
       chainId,
-      walletTokenData.address!
+      [
+        {
+          address: walletTokenData.address!,
+          decimals: walletTokenData.decimals,
+        },
+      ]
     );
+
+    const balance =
+      balanceDataEntries.length > 0 ? balanceDataEntries[0] : undefined;
 
     const amountUnits = parseUnits(
       String(amount ?? 0),

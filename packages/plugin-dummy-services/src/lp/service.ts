@@ -1,4 +1,4 @@
-import { IAgentRuntime, Service, logger } from '@elizaos/core';
+import { IAgentRuntime, Service, logger } from "@elizaos/core";
 
 // Define LP-specific types locally since they're not in core
 export interface LpPositionDetails {
@@ -40,16 +40,16 @@ export interface TransactionResult {
  */
 export class DummyLpService extends Service {
   // Use a custom service type since LP isn't in ServiceType enum
-  static readonly serviceType = 'lp';
+  static readonly serviceType = "lp";
 
-  capabilityDescription = 'Dummy LP service for testing';
+  capabilityDescription = "Dummy LP service for testing";
 
   constructor(runtime: IAgentRuntime) {
     super(runtime);
   }
 
   public getDexName(): string {
-    return 'dummy';
+    return "dummy";
   }
 
   static async start(runtime: IAgentRuntime): Promise<DummyLpService> {
@@ -59,18 +59,18 @@ export class DummyLpService extends Service {
   }
 
   async start(): Promise<void> {
-    console.log('[DummyLpService] started.');
+    console.log("[DummyLpService] started.");
   }
 
   async stop(): Promise<void> {
-    console.log('[DummyLpService] stopped.');
+    console.log("[DummyLpService] stopped.");
   }
 
   async getPoolInfo(poolAddress: string): Promise<PoolInfo> {
     return {
       address: poolAddress,
-      tokenA: '0xTokenA',
-      tokenB: '0xTokenB',
+      tokenA: "0xTokenA",
+      tokenB: "0xTokenB",
       fee: 3000,
       liquidity: BigInt(1000000),
       sqrtPriceX96: BigInt(1000000),
@@ -80,9 +80,9 @@ export class DummyLpService extends Service {
 
   async getPosition(positionId: string): Promise<LpPositionDetails | null> {
     return {
-      poolAddress: '0xPool',
-      tokenA: '0xTokenA',
-      tokenB: '0xTokenB',
+      poolAddress: "0xPool",
+      tokenA: "0xTokenA",
+      tokenB: "0xTokenB",
       liquidity: BigInt(1000),
     };
   }
@@ -103,8 +103,8 @@ export class DummyLpService extends Service {
       success: true,
       transactionId: `dummy-tx-${Date.now()}`,
       lpTokensReceived: {
-        amount: '100000000', // 100 LP tokens
-        address: 'dummy-lp-mint-dummy-pool-1',
+        amount: "100000000", // 100 LP tokens
+        address: "dummy-lp-mint-dummy-pool-1",
         uiAmount: 100,
       },
     };
@@ -125,15 +125,15 @@ export class DummyLpService extends Service {
       success: true,
       transactionId: `dummy-tx-${Date.now()}`,
       tokensReceived: [
-        { token: 'tokenA', amount: '1000000000', symbol: 'SOL' }, // 1 token A
-        { token: 'tokenB', amount: '1000000', symbol: 'USDC' }, // 1 token B (different decimals)
+        { token: "tokenA", amount: "1000000000", symbol: "SOL" }, // 1 token A
+        { token: "tokenB", amount: "1000000", symbol: "USDC" }, // 1 token B (different decimals)
       ],
     };
   }
 
   async collectFees(positionId: string): Promise<TransactionResult> {
     return {
-      hash: '0xDummyHash',
+      hash: "0xDummyHash",
       success: true,
     };
   }
@@ -141,12 +141,12 @@ export class DummyLpService extends Service {
   async getBalances(address: string): Promise<TokenBalance[]> {
     return [
       {
-        token: '0xTokenA',
+        token: "0xTokenA",
         balance: BigInt(1000),
         decimals: 18,
       },
       {
-        token: '0xTokenB',
+        token: "0xTokenB",
         balance: BigInt(2000),
         decimals: 18,
       },
@@ -156,18 +156,18 @@ export class DummyLpService extends Service {
   async getPools(tokenAMint?: string): Promise<any[]> {
     const pools = [
       {
-        id: 'dummy-pool-1',
-        tokenA: { mint: 'So11111111111111111111111111111111111111112' },
-        tokenB: { mint: 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v' },
-        liquidity: '1000000',
-        type: 'concentrated',
+        id: "dummy-pool-1",
+        tokenA: { mint: "So11111111111111111111111111111111111111112" },
+        tokenB: { mint: "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v" },
+        liquidity: "1000000",
+        type: "concentrated",
       },
       {
-        id: 'dummy-stable-pool-2',
-        tokenA: { mint: 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v' },
-        tokenB: { mint: 'Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB' },
-        liquidity: '5000000',
-        type: 'stable',
+        id: "dummy-stable-pool-2",
+        tokenA: { mint: "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v" },
+        tokenB: { mint: "Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB" },
+        liquidity: "5000000",
+        type: "stable",
       },
     ];
 
@@ -177,16 +177,19 @@ export class DummyLpService extends Service {
     return pools;
   }
 
-  async getLpPositionDetails(userPublicKey: string, positionId: string): Promise<any> {
+  async getLpPositionDetails(
+    userPublicKey: string,
+    positionId: string
+  ): Promise<any> {
     // positionId format: 'dummy-lp-mint-dummy-pool-1'
-    const parts = positionId.split('-');
+    const parts = positionId.split("-");
     // Find the index of 'dummy' that starts the pool ID
-    const poolStartIndex = parts.lastIndexOf('dummy');
-    const poolId = parts.slice(poolStartIndex).join('-'); // Extract 'dummy-pool-1'
-    const lpMint = parts.slice(0, poolStartIndex).join('-'); // Extract 'dummy-lp-mint'
+    const poolStartIndex = parts.lastIndexOf("dummy");
+    const poolId = parts.slice(poolStartIndex).join("-"); // Extract 'dummy-pool-1'
+    const lpMint = parts.slice(0, poolStartIndex).join("-"); // Extract 'dummy-lp-mint'
 
     return {
-      dex: 'dummy',
+      dex: "dummy",
       poolId,
       userPublicKey,
       lpTokenBalance: {
@@ -203,8 +206,8 @@ export class DummyLpService extends Service {
       fees24h: 2.5,
       unclaimedFees: 5.75,
       underlyingTokens: [
-        { symbol: 'tokenA', amount: 500 },
-        { symbol: 'tokenB', amount: 500 },
+        { symbol: "tokenA", amount: 500 },
+        { symbol: "tokenB", amount: 500 },
       ],
       raw: {
         lpTokenDecimals: 9,
@@ -239,7 +242,7 @@ export class DummyLpService extends Service {
     slippage?: number
   ): Promise<TransactionResult> {
     return {
-      hash: '0xDummyHash',
+      hash: "0xDummyHash",
       success: true,
     };
   }

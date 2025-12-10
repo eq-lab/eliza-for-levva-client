@@ -12,8 +12,13 @@ import { LEVVA_SERVICE } from "../../constants/enum";
 import { ILevvaService } from "../../types/service";
 import { CalldataWithDescription } from "../../types/tx";
 import { balancesTable } from "../../schema/balances";
-import { getDb } from "../../util/db";
-import { getLevvaUser, getToken as getTokenImpl, TokenEntry } from "../../util";
+import { getDb, upsertTokens } from "../../util/db";
+import {
+  getLevvaUser,
+  getToken as getTokenImpl,
+  getTokensData,
+  TokenEntry,
+} from "../../util";
 import { ETH_NULL_ADDR } from "../../constants/eth";
 // News imports removed - now handled by NewsServiceComponent
 import {
@@ -36,9 +41,10 @@ import { checkSecret } from "./secrets";
 import { TokenServiceComponent } from "./token";
 import { NewsServiceComponent } from "./news-component";
 import { createTimedCache, createPermanentCache } from "./cache-util";
-import { getPendleMarketTokens } from "./pendle";
+import { getPendleMarketPtTokens } from "./pendle";
 import { PendleMarket } from "../../api/levva/schema";
 import { getPendleMarketSupportedTokens } from "../../api/pendle";
+import { TokenData } from "../../types/token";
 
 const REQUIRED_PLUGINS = ["levva"];
 
@@ -95,7 +101,6 @@ export class LevvaService extends Service implements ILevvaService {
 
     // Cleanup components
     this.token.cleanup();
-    this.wallet.cleanup();
     this.news.cleanup();
   }
 
@@ -193,13 +198,6 @@ export class LevvaService extends Service implements ILevvaService {
       throw error;
     }
   }
-
-  /** @deprecated Use this.wallet.getBalanceOf() directly instead */
-  getBalanceOf = (
-    address: `0x${string}`,
-    chainId: number,
-    token: `0x${string}`
-  ) => this.wallet.getBalanceOf(address, chainId, token);
 
   // -- End of Wallet Assets --
   // -- Crypto news --
@@ -325,7 +323,7 @@ export class LevvaService extends Service implements ILevvaService {
       return (
         (!tokenOut ||
           tokenOut.toLocaleLowerCase() ===
-            market.underlyingAssetName.toLocaleLowerCase()) &&
+            market.underlyingAssetSymbol.toLocaleLowerCase()) &&
         (!maturityDays ||
           (maturityDays === "<=30" && daysUntilMaturity <= 30) ||
           (maturityDays === "30-90" &&
@@ -336,17 +334,6 @@ export class LevvaService extends Service implements ILevvaService {
       );
     });
   }
-
-  private getPendleMarketTokensCacheKey = (
-    chainId: number,
-    address: `0x${string}`
-  ) => `pendle-market-tokens:${chainId}:${address}`;
-
-  getPendleMarketTokens = createPermanentCache(
-    this,
-    getPendleMarketTokens,
-    this.getPendleMarketTokensCacheKey
-  );
 
   private getPendleMarketSupportedTokensCacheKey = (
     chainId: number,
@@ -359,6 +346,83 @@ export class LevvaService extends Service implements ILevvaService {
     getPendleMarketSupportedTokens,
     this.getPendleMarketSupportedTokensCacheKey
   );
+
+  collectPendleMarketPtAndLpTokens = async (
+    chainId: number,
+    pendleMarkets: PendleMarket[]
+  ) => {
+    const marketAddresses = new Map(
+      pendleMarkets.map((m) => [
+        m.pendleMarketAddress.toLowerCase() as `0x${string}`,
+        m,
+      ])
+    );
+
+    const cached =
+      new Set(
+        await this.runtime.getCache<`0x${string}`[]>(
+          `pendle-markets-collected-pts-and-lps:${chainId}`
+        )
+      ) ?? new Set<`0x${string}`>();
+
+    const missingPendleMarkets = Array.from(marketAddresses.keys()).filter(
+      (address) => !cached.has(address)
+    );
+
+    if (missingPendleMarkets.length === 0) {
+      return;
+    }
+
+    const ptTokens = await getPendleMarketPtTokens(
+      chainId,
+      missingPendleMarkets
+    );
+
+    const lpTokensData = await getTokensData(chainId, missingPendleMarkets);
+    const ptTokensData = await getTokensData(
+      chainId,
+      Array.from(ptTokens.values()).map(
+        (t) => t?.toLowerCase() as `0x${string}`
+      )
+    );
+
+    const tokensToUpsert = [];
+
+    for (const [index, address] of missingPendleMarkets.entries()) {
+      if (cached.has(address)) {
+        continue;
+      }
+
+      const ptToken = ptTokens.get(address);
+      const lpTokenData = lpTokensData[index];
+      const ptTokenData = ptTokensData[index];
+
+      if (!ptToken || !lpTokenData || !ptTokenData) {
+        continue;
+      }
+
+      // SET LP-USDe-bla-bla
+      lpTokenData.symbol = `LP${ptTokenData.symbol.substring(2)}`;
+
+      tokensToUpsert.push(ptTokenData!);
+      tokensToUpsert.push(lpTokenData!);
+
+      cached.add(address);
+    }
+
+    await upsertTokens(
+      this.runtime,
+      tokensToUpsert.map((t) => ({
+        ...(t as Required<TokenData>),
+        chainId,
+      }))
+    );
+
+    await this.runtime.setCache(
+      `pendle-markets-collected-pts-and-lps:${chainId}`,
+      Array.from(cached)
+    );
+  };
 
   // -- End of Pendle Strategies --
 
@@ -455,7 +519,14 @@ export class LevvaService extends Service implements ILevvaService {
     // fixme access metadata's chainid
     const chains = [1, 8453, 42161];
     for (const chainId of chains) {
-      const balance = await this.getBalanceOf(address, chainId, ETH_NULL_ADDR);
+      const balanceDataEntries = await this.wallet.getBalances(
+        address,
+        chainId,
+        [{ address: ETH_NULL_ADDR, decimals: 18 }]
+      );
+
+      const balance =
+        balanceDataEntries.length > 0 ? balanceDataEntries[0] : undefined;
 
       if ((balance?.amount ?? 0n) > 0n) {
         return { result: true };

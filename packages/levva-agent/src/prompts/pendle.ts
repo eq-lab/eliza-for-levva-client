@@ -23,26 +23,27 @@ export const extractedPendleParamsSchema = z
       .enum(["Stable", "BTC", "ETH"])
       .nullable()
       .describe(
-        "Asset class category: 'Stable' (stablecoins like USDC, USDe), 'BTC' (Bitcoin-backed like WBTC), or 'ETH' (Ethereum-backed like WETH, stETH). " +
+        "Asset class category: 'Stable' (stablecoins), 'BTC' (Bitcoin-backed), or 'ETH' (Ethereum-backed). " +
           "ONLY extract if user explicitly mentions asset class. " +
           "Can be inferred from pendleToken if pendleToken is explicitly specified. " +
-          "Return null if pendleToken is not specified or cannot be determined."
+          "Return null if not explicitly specified."
       ),
-    pendleToken: z
+    tokenIn: z
       .string()
       .nullable()
       .describe(
-        "PT token from <pendleTokens> (e.g., 'USDe', 'WBTC', 'WETH'). User can prefix with 'PT' (e.g., 'PT USDC'), which should be stripped. " +
-          "CRITICAL: Asset class alone ('stable PT', 'BTC yield') is NOT sufficient. User MUST explicitly mention specific token name. Return null if no specific token mentioned."
+        "For buy/deposit: Non-PT, non-LP token from <userPortfolio> that user will spend. " +
+          "For sell: token symbol prefixed with 'PT-' from <userPortfolio> that user will spend. " +
+          "For withdraw: token symbol prefixed with 'LP-' from <userPortfolio> that user will spend. " +
+          "CRITICAL: Asset class alone ('stable PT', 'BTC yield') is NOT sufficient. User MUST explicitly mention specific token symbol. Return null if no specific token mentioned."
       ),
-    userToken: z
+    tokenOut: z
       .string()
       .nullable()
       .describe(
-        "Token to use for the transaction: " +
-          "For 'buy'/'deposit': Non-PT token from <userPortfolio> that user will spend. When NOT explicitly specified, AUTO-SELECT the token with HIGHEST usdValue (compare numerically: 12.90 > 1.99). MUST exclude tokens starting with 'PT-'. " +
-          "For 'sell'/'withdraw': User MUST explicitly specify Non-PT token to receive from <userPortfolio>. " +
-          "CRITICAL: For buy/deposit, auto-select by highest usdValue when not specified. For sell/withdraw, return null if not specified."
+        "For buy/deposit: token symbol from <pendleTokens> (e.g., 'yoUSD', 'mRe7BTC'). User can prefix with 'PT' or 'PT-' (e.g., 'PT yoUSD', 'PT-yoUSD'), which MUST be stripped. " +
+          "For sell/withdraw: Non-PT, non-LP token from <userPortfolio> that user will receive. " +
+          "CRITICAL: Asset class alone ('stable PT', 'BTC yield') is NOT sufficient. User MUST explicitly mention specific token symbol. Return null if no specific token mentioned."
       ),
     maturityDays: z
       .enum(["<=30", "30-90", ">90"])
@@ -64,10 +65,9 @@ export const extractedPendleParamsSchema = z
       .nullable()
       .describe(
         'Amount to use, as numeric string (e.g., "100", "0.5"). ' +
-          "For buy/deposit: Convert percentages/keywords: 50% → (0.5 × balance), 'all'/'max' → full balance. " +
-          "For sell/withdraw: User MUST explicitly specify. Ignore <userPortfolio> when specifying amount. " +
-          "NEVER include %, $, currency symbols, or token names in the value. " +
-          "CRITICAL: Return null if user does NOT explicitly mention a specific amount, number, percentage, or keyword like 'all'/'max'. Do NOT infer, calculate, or suggest amounts."
+          "Use token decimal precision from provided balance in <userPortfolio> data for the specified tokenIn. " +
+          "Convert percentages/keywords: 50% → (0.5 × balance), 'all'/'max' → full balance. " +
+          "NEVER include %, $, currency symbols, or token names in the value."
       ),
     operationType: z
       .enum(["deposit", "withdraw", "buy", "sell"])
@@ -112,20 +112,19 @@ export const selectPendleDataFromMessagesPrompt = (ctx: {
 }) => `<task>
 Extract Pendle transaction parameters from <currentMessage>${ctx.intentContext ? " using intent context for improved accuracy" : ""}.
 </task>
+
 <pendleTokens>
-Format: comma separated list of ('ptToken','class')
+Format: comma separated list of Pendle PT tokens/markets ('ptToken','class')
 
 ${ctx.pendleTokens}
 </pendleTokens>
-${
-  ctx.userPortfolio
-    ? `<userPortfolio>
-Format: comma separated list of ('token','balance','usdValue')
+
+<userPortfolio>
+Format: comma separated list of ('token','balance')
 
 ${ctx.userPortfolio}
-</userPortfolio>`
-    : ""
-}
+</userPortfolio>
+
 <currentMessage>
 ${ctx.currentMessage}
 </currentMessage>
@@ -165,15 +164,11 @@ GENERAL INSTRUCTIONS:
   * Example: "yousd" is NOT "yusd" - they are different strings
   * Example: "yousd" matches "yoUSD" case-insensitively
   * Double-check the EXACT spelling in <currentMessage> before matching to <pendleTokens>
-- **CRITICAL DISTINCTION**: tokenClass and pendleToken are INDEPENDENT parameters
+- **CRITICAL DISTINCTION**: tokenClass and tokenOut are INDEPENDENT parameters
   * tokenClass = asset category filter (Stable/BTC/ETH) - can be mentioned by user OR inferred
-  * pendleToken = specific token name or symbol (USDC/WBTC/WETH/Rocket Pool ETH) - MUST be explicitly mentioned by user
-  * **tokenClass alone is NOT sufficient**: Specifying only asset class without specific token name always results in pendleToken: null
-  * Examples:
-    - "I want a stable PT" → tokenClass: **Stable**, pendleToken: **null** (class only, no specific token)
-    - "I want PT USDC" → tokenClass: **Stable** (inferred), pendleToken: **USDC** (specific token named)
-- NEVER infer or suggest pendleToken, amount, maturityDays if not explicitly specified
-- EXCEPTION: userToken is AUTO-SELECTED for buy/deposit operations when not specified
+  * tokenOut = specific token name or symbol - MUST be explicitly mentioned by user
+  * **tokenClass alone is NOT sufficient**: Specifying only asset class without specific token name always results in tokenOut: null
+- NEVER infer or suggest tokenIn, tokenOut, amount, maturityDays if not explicitly specified
 - If multiple Pendle requests exist, extract parameters for the MOST RECENT uncompleted one
 - **CRITICAL**: Extract parameters ONLY from USER messages, NOT from agent/Levvski responses
 ${ctx.intentContext ? '- Leverage intent context to resolve ambiguous references (e.g., "that token" referring to previously mentioned tokens)' : ""}
@@ -185,7 +180,7 @@ OPERATION TYPE GUIDANCE:
   * Valid phrases: "buy PT", "purchase PT", "invest in PT", "long PT", "get PT", "acquire PT"
   * Invalid phrases: "I want PT", "explore Pendle strategies", "looking at PT" → return **null**
 
-- **sell**: User explicitly says action verbs for selling
+- **sell**: User explicitly says action verbs for selling PT tokens
   * Valid phrases: "sell PT", "exit position", "redeem PT", "close position", "liquidate PT"
   * Invalid phrases: "what about my PT", "check PT value" → return **null**
 
@@ -197,29 +192,23 @@ OPERATION TYPE GUIDANCE:
   * Valid phrases: "withdraw from Pendle", "remove liquidity", "exit pool", "unstake", "pull out"
   * Invalid phrases: "how's my pool", "check my liquidity" → return **null**
 
-**Examples**:
-- "I want a PT" → operationType: **null** (no action verb)
-- "buy PT USDC" → operationType: "buy" (clear action verb)
-- "explore Pendle strategies" → operationType: **null** (no action verb)
-- "sell my PT" → operationType: "sell" (clear action verb)
+TOKEN FLOW BY OPERATION:
+**CRITICAL**: Understand tokenIn/tokenOut based on operation type:
+
+- **buy**: tokenIn = token user SPENDS (from userPortfolio), tokenOut = token user RECEIVES (from pendleTokens)
+- **sell**: tokenIn = PT token user SPENDS (PT-xxx from userPortfolio), tokenOut = token user RECEIVES (from userPortfolio)
+- **deposit**: tokenIn = token user SPENDS (from userPortfolio), tokenOut = token user RECEIVES (from pendleTokens)
+- **withdraw**: tokenIn = LP token user SPENDS (LP-xxx from userPortfolio), tokenOut = token user RECEIVES (from userPortfolio)
 
 AMOUNT PARSING RULES:
 - Extract only numeric values: "100", "0.5", "1000".
-- For buy/deposit: Use <userPortfolio> "balance" field to see available balances.
-- For sell/withdraw: User MUST explicitly specify Non-PT token to receive from <userPortfolio>.
-- Percentage conversion: If user says "50%" → look up token in <userPortfolio>, compute 0.5 × "balance" value.
-- Keyword conversion: If user says "all"/"max" → look up token in <userPortfolio>, use full "balance" value.
+- Amount refers to tokenIn (what user is spending/using).
+- Percentage conversion: If user says "50%" → look up tokenIn in <userPortfolio>, compute 0.5 × "balance" value.
+- Keyword conversion: If user says "all"/"max" → look up tokenIn in <userPortfolio>, use full "balance" value.
 - Trim trailing zeros (e.g., "15.460000" → "15.46").
 - If token not in portfolio or balance unavailable: Return null for amount, explain reason in thought field.
 - NEVER include: %, $, currency symbols, or token symbols in the amount field.
 - NEVER infer or suggest amount if not explicitly specified.
-
-**CRITICAL NOTE on usdValue comparisons**:
-- The "usdValue" field is a STRING but represents a DECIMAL NUMBER
-- When comparing usdValues, convert to numbers FIRST: "12.90" (number: 12.90) > "1.99" (number: 1.99)
-- Example: ("USDe","1.995","1.99") has usdValue "1.99" = 1.99 as a number
-- Example: ("ETH","0.0044","12.90") has usdValue "12.90" = 12.90 as a number
-- 12.90 > 1.99, so ETH should be selected
 
 SLIPPAGE PARSING RULES:
 - Slippage is OPTIONAL - only extract if user explicitly mentions it
@@ -234,100 +223,100 @@ SLIPPAGE PARSING RULES:
   * "0.123" → "0.123"
 
 TOKEN CLASS SELECTION GUIDANCE:
-**CRITICAL**: tokenClass alone is NOT sufficient to select a token. Specific token name is always required for pendleToken.
+**CRITICAL**: tokenClass alone is NOT sufficient to select a token. Specific token symbol is always required.
 
 - **Asset Classes**:
-  * **"Stable"**: Stablecoins (e.g. USDC, USDe, DAI, USDT, etc.)
-  * **"BTC"**: Bitcoin-backed assets (e.g. WBTC, tBTC, etc.)
-  * **"ETH"**: Ethereum-backed assets (e.g. WETH, stETH, wstETH, rETH, etc.)
+  * **"Stable"**: Stablecoins
+  * **"BTC"**: Bitcoin-backed assets
+  * **"ETH"**: Ethereum-backed assets
 
 - **Extraction Rules**:
   * Extract tokenClass when user mentions asset type/category: "stable", "stablecoin", "BTC", "bitcoin", "ETH", "ethereum"
   * Common phrases: "stable PT", "BTC yield", "ETH yield", "USD yield" → extract tokenClass
-  * Can be inferred from pendleToken when pendleToken is explicitly specified
-  * tokenClass is INDEPENDENT from pendleToken - they are separate parameters
+  * Can be inferred from tokenOut when tokenOut is explicitly specified
+  * tokenClass is INDEPENDENT from tokenOut - they are separate parameters
 
-- **CRITICAL**: Asset class only (no specific token) → pendleToken must be null
-  * "I want a stable PT" → tokenClass: "Stable", pendleToken: **null** (only class specified)
-  * "I want BTC yield" → tokenClass: "BTC", pendleToken: **null** (only class specified)
-  * "I want PT WBTC" → tokenClass: "BTC" (inferred), pendleToken: "WBTC" (specific token named)
+- **CRITICAL**: Asset class only (no specific token) → tokenOut must be null
+  * "I want a stable PT" → tokenClass: "Stable", tokenOut: **null**
+  * "I want BTC yield" → tokenClass: "BTC", tokenOut: **null**
+  * "I want PT yoUSD" → tokenClass: "Stable" (inferred), tokenOut: "yoUSD"
 
 TOKEN SELECTION GUIDANCE:
 
-**pendleToken** (PT token for the transaction):
-  * MUST match a "ptToken" value from <pendleTokens> list
-  * **USER** MUST explicitly say the token name in THEIR OWN messages (e.g., "USDC", "USDe", "WETH")
-  * **Strip descriptive keywords before matching**:
-    - Remove "PT", "PT-" prefix: "PT USDC" → "USDC", "PT-USDC" → "USDC"
-    - Remove "Pendle" keyword: "Pendle USDC" → "USDC", "buy Pendle USDe" → "USDe"
-    - Remove "LP" keyword: "LP USDC" → "USDC", "deposit into LP yoUSD" → "yoUSD"
-    - Combined: "buy Pendle PT USDC" → "USDC", "LP PT-USDe" → "USDe"
-  * Match case-insensitively after stripping keywords (e.g., "usdc" matches "USDC")
-  * If token not in <pendleTokens> "ptToken" field, return null and explain in thought field
-  * **CRITICAL**: Phrases like "you can consider PT yoUSD or PT USDX" are agent suggestions, NOT user selections - return null
-
-**userToken** (token user will use/spend):
+**tokenIn** (token user will SPEND):
 - **For "buy"/"deposit" operations**:
-  * MUST match a "token" value from <userPortfolio> (non-PT tokens only)
-  * **AUTO-SELECTION RULE**: When user does NOT specify userToken, automatically select the token with the HIGHEST usdValue
-    - Compare usdValue NUMERICALLY as decimal numbers: 12.90 > 1.99 > 0.00
-    - MUST exclude ALL tokens starting with "PT-"
-    - Example: Portfolio [("USDe","1.995","1.99"), ("ETH","0.0044","12.90")] → select "ETH" (12.90 is highest)
-    - Example: Portfolio [("USDC","3","3.00"), ("ETH","0.011","35.75"), ("PT-USDe","0.316","0.00")] → select "ETH" (35.75 is highest)
-  * When user explicitly specifies userToken (e.g., "with USDC", "using ETH", "use 0.2 USDC"), ALWAYS use their specified token
-  * **CRITICAL**: Explicit userToken in <currentMessage> overrides ANY previous returnData value (e.g., "use USDC instead" overrides previous "ETH")
-  * Verify sufficient "balance" when amount is specified
+  * Non-PT, non-LP token from <userPortfolio> that user will spend
+  * **CRITICAL**: Return null if user does NOT explicitly mention a specific token.
+  * Example: "buy PT with USDC" → tokenIn: "USDC"
+
+- **For "sell" operations**:
+  * Must be PT-prefixed token from <userPortfolio> (e.g., "PT-USDe-11DEC2025")
+  * User says "sell my PT-USDe" → tokenIn: "PT-USDe-11DEC2025" (match from portfolio)
+  * **CRITICAL**: Return null if user does NOT explicitly mention which PT token to sell.
+
+- **For "withdraw" operations**:
+  * Must be LP-prefixed token from <userPortfolio> (e.g., "LP-yoUSD-26MAR2026")
+  * User says "withdraw my LP yoUSD" → tokenIn: "LP-yoUSD-26MAR2026" (match from portfolio)
+  * **CRITICAL**: Return null if user does NOT explicitly mention which LP token to withdraw.
+
+**tokenOut** (token user will RECEIVE):
+- **For "buy" operations**:
+  * Token symbol from <pendleTokens> (e.g., "yoUSD", "mRe7BTC")
+  * **Strip descriptive keywords before matching**:
+    - Remove "PT", "PT-" prefix: "PT yoUSD" → "yoUSD", "PT-USDC" → "USDC"
+    - Remove "Pendle" keyword: "Pendle yoUSD" → "yoUSD"
+    - Combined: "buy Pendle PT yoUSD" → "yoUSD"
+  * Match case-insensitively after stripping keywords
+  * **CRITICAL**: Return null if no specific token mentioned or token not in <pendleTokens>
+
+- **For "deposit" operations**:
+  * Token symbol from <pendleTokens> for the LP pool (e.g., "yoUSD" for LP-yoUSD)
+  * **Strip descriptive keywords before matching**:
+    - Remove "LP", "LP-" prefix: "LP yoUSD" → "yoUSD"
+    - Remove "Pendle" keyword: "deposit into Pendle yoUSD" → "yoUSD"
+  * **CRITICAL**: Return null if no specific token mentioned
 
 - **For "sell"/"withdraw" operations**:
-  * User MUST explicitly specify Non-PT token to receive from <userPortfolio>.
-  * **CRITICAL**: Return null if user does NOT explicitly mention a specific token.
+  * Non-PT, non-LP token user wants to RECEIVE (from <userPortfolio>)
+  * Example: "sell PT-USDe for USDC" → tokenOut: "USDC"
+  * **CRITICAL**: Return null if user does NOT explicitly mention what token to receive
 
 **General Rules:**
 - Extract tokens ONLY when user explicitly mentions specific token names or symbols
-- Asset class alone ('stable', 'BTC', 'ETH') is NOT sufficient for pendleToken - specific token name required
+- Asset class alone ('stable', 'BTC', 'ETH') is NOT sufficient - specific token name required
 - NEVER infer or suggest tokens based on user's intent or class alone
-- Return null for any parameter not explicitly specified (EXCEPT userToken for buy/deposit - use auto-selection)
-- Verify pendleToken exists in <pendleTokens> "ptToken" field for buy/deposit
-- For buy/deposit: Verify userToken exists in <userPortfolio> "token" field for all operations
+- Return null for any parameter not explicitly specified
+- **CRITICAL**: Phrases like "you can consider PT yoUSD or PT USDX" are agent suggestions, NOT user selections - return null
 
 **Extraction Examples:**
 
-Given <userPortfolio>: [("USDC","3","3.00"), ("ETH","0.011","35.75"), ("PT-USDe-11DEC2025","0.316","0.00")]
-Given <pendleTokens>: [("yoUSD","Stable"), ("USDX","Stable"),("mRe7BTC","BTC"),("USDC","Stable")]
+Given <userPortfolio>: [("USDC","3"), ("ETH","0.011"), ("PT-USDe-11DEC2025","0.316"), ("LP-yoUSD-26MAR2026","1.5")]
+Given <pendleTokens>: [("yoUSD","Stable"), ("USDX","Stable"), ("mRe7BTC","BTC"), ("USDe","Stable")]
 
 - **Informational queries (all null)**:
-  * "I want a PT" → operationType: null, pendleToken: null, tokenClass: null, userToken: null, amount: null
-  * "interested in PT" → operationType: null, pendleToken: null, tokenClass: null, userToken: null, amount: null
+  * "I want a PT" → operationType: null, tokenIn: null, tokenOut: null, tokenClass: null, amount: null
+  * "interested in PT" → operationType: null, tokenIn: null, tokenOut: null, tokenClass: null, amount: null
 
-- **Asset class only (pendleToken: null)**:
-  * "I want a stable PT" → operationType: null, pendleToken: null, tokenClass: "Stable", userToken: null, amount: null
-  * "buy stable PT" → operationType: "buy", pendleToken: null, tokenClass: "Stable", userToken: "ETH" (auto-select 35.75 > 3.00), amount: null
-  * User: "deposit into Stable yield strategy", Agent: "you can consider PT yoUSD or PT USDX" → pendleToken: null (agent suggestion, not user selection!)
+- **Asset class only (tokenOut: null)**:
+  * "I want a stable PT" → operationType: null, tokenOut: null, tokenClass: "Stable", tokenIn: null, amount: null
+  * "buy stable PT" → operationType: "buy", tokenOut: null, tokenClass: "Stable", tokenIn: null, amount: null
 
-- **Buy with auto-selected userToken** (userToken not specified → select highest usdValue):
-  * "buy PT" → operationType: "buy", pendleToken: null, tokenClass: null, userToken: "ETH" (auto-select: 35.75 is highest), amount: null
-  * "buy PT USDC" → operationType: "buy", pendleToken: "USDC", tokenClass: "Stable", userToken: "ETH" (auto-select: 35.75 > 3.00), amount: null
-  * "buy 100 PT USDC" → operationType: "buy", pendleToken: "USDC", tokenClass: "Stable", userToken: "ETH" (auto-select: 35.75 is highest), amount: "100"
-  * "buy mRe7BTC pt" → operationType: "buy", pendleToken: "mRe7BTC", tokenClass: "BTC", userToken: "ETH" (auto-select: 35.75 > 3.00), amount: null
+- **Buy operations** (tokenIn = spend, tokenOut = PT to receive):
+  * "buy PT yoUSD with 100 USDC" → operationType: "buy", tokenIn: "USDC", tokenOut: "yoUSD", tokenClass: "Stable", amount: "100"
+  * "buy PT yoUSD using ETH" → operationType: "buy", tokenIn: "ETH", tokenOut: "yoUSD", tokenClass: "Stable", amount: null
+  * "buy PT mRe7BTC" → operationType: "buy", tokenIn: null, tokenOut: "mRe7BTC", tokenClass: "BTC", amount: null
 
-- **Buy with explicit userToken** (userToken specified by user):
-  * "buy 100 PT USDC with USDC" → operationType: "buy", pendleToken: "USDC", tokenClass: "Stable", userToken: "USDC" (explicit), amount: "100"
-  * "buy PT USDC using ETH" → operationType: "buy", pendleToken: "USDC", tokenClass: "Stable", userToken: "ETH" (explicit), amount: null
-  * "use 0.2 USDC from my wallet" (when returnData has userToken: "ETH") → userToken: "USDC" (explicit override), amount: "0.2"
+- **Sell operations** (tokenIn = PT to sell, tokenOut = token to receive):
+  * "sell my PT-USDe" → operationType: "sell", tokenIn: "PT-USDe-11DEC2025", tokenOut: null, tokenClass: "Stable"
+  * "sell PT-USDe for USDC" → operationType: "sell", tokenIn: "PT-USDe-11DEC2025", tokenOut: "USDC", tokenClass: "Stable"
 
-- **Sell operations**:
-  * "sell my PT-WBTC" → operationType: "sell", userToken: null, pendleToken: "WBTC", tokenClass: "BTC"
-  * "sell PT-USDe for USDC" → operationType: "sell", userToken: USDC, pendleToken: "USDe", tokenClass: "Stable"
+- **Deposit operations** (tokenIn = spend, tokenOut = LP pool):
+  * "deposit 1 USDC into yoUSD pool" → operationType: "deposit", tokenIn: "USDC", tokenOut: "yoUSD", tokenClass: "Stable", amount: "1"
+  * "add liquidity to Pendle yoUSD" → operationType: "deposit", tokenIn: null, tokenOut: "yoUSD", tokenClass: "Stable", amount: null
 
-- **Ignoring agent responses and filtered markets**:
-  * User: "maturity >90 days", Agent: "consider PT yoUSD or PT USDX", User: "Use 5 ETH" → pendleToken: null (ignore agent suggestions!)
-  * User: "I choose PT yoUSD" → pendleToken: "yoUSD" (user explicitly selected!)
-  * User: "i want to buy pt yousd" → pendleToken: "yoUSD" (case-insensitive match: "yousd" matches "yoUSD")
-
-- **Maturity preference preservation**:
-  * User: "ETH yield for 30-90 days", then "select wcgUSD (maturity: 2025-12-18)" → maturityDays: "30-90" (use stated preference, not calculated date)
-  * User: "invest long term", then "PT USDC maturing 2026-03-26" → maturityDays: ">90" (both indicate same category)
-  * User: "short term yield", then "I choose PT with maturity 2025-12-18" → maturityDays: "<=30" (use stated preference if within same intent)
+- **Withdraw operations** (tokenIn = LP to withdraw, tokenOut = token to receive):
+  * "withdraw my LP yoUSD" → operationType: "withdraw", tokenIn: "LP-yoUSD-26MAR2026", tokenOut: null, tokenClass: "Stable"
+  * "withdraw LP yoUSD for USDC" → operationType: "withdraw", tokenIn: "LP-yoUSD-26MAR2026", tokenOut: "USDC", tokenClass: "Stable"
 
 MATURITY DAYS SELECTION GUIDANCE:
 Categories: "<=30" (short-term, 1-30d), "30-90" (medium-term, 31-90d), ">90" (long-term, 91+d)
