@@ -17,7 +17,7 @@ export interface Token {
 export interface LevvaProviderState {
   chainId: number;
   user?: { id: UUID; address: `0x${string}` };
-  tokens?: Token[];
+  tokens: Token[];
   bySymbol?: Record<string, Token>;
   byAddress?: Record<`0x${string}`, Token>;
 }

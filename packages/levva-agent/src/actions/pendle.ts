@@ -116,9 +116,8 @@ export const action: Action = {
       // 6. If no intent context but we have Pendle parameters, handle as direct Pendle strategy request
       if (
         providerData.operationType &&
-        providerData.userTokenData &&
-        providerData.pendleTokenData &&
-        providerData.pendleMarketAddress &&
+        providerData.tokenInData &&
+        providerData.tokenOutData &&
         providerData.amount
       ) {
         runtime.logger.info(

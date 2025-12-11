@@ -74,8 +74,8 @@ export function generatePendleStrategyIntentSuggestionsPrompt(
       userAddress,
       chainId,
       parameters: {
-        WalletToken: walletAsset?.symbol,
-        PendleToken: providerData?.pendleTokenData?.symbol,
+        TokenIn: providerData?.tokenInData?.symbol,
+        TokenOut: providerData?.tokenOutData?.symbol,
         Amount: providerData?.amount,
         TokenClass: tokenClass,
         MaturityDays: maturityDays,
@@ -134,7 +134,8 @@ export function generatePendleStrategyIntentSuggestionsPrompt(
   if (
     pendleFilteredMarkets.length === 1 &&
     providerData?.operationType &&
-    providerData?.userTokenData?.symbol &&
+    providerData?.tokenInData?.symbol &&
+    providerData?.tokenOutData?.symbol &&
     providerData?.amount
   ) {
     const amounts = calculateAmountsFromBalance(
@@ -150,9 +151,8 @@ export function generatePendleStrategyIntentSuggestionsPrompt(
       chainId,
       parameters: {
         WalletToken: walletAsset?.symbol,
-        PendleToken:
-          providerData?.pendleTokenData?.symbol ??
-          pendleFilteredMarkets[0]!.underlyingAssetSymbol,
+        TokenIn: providerData?.tokenInData?.symbol,
+        TokenOut: providerData?.tokenOutData?.symbol,
         Amount: providerData?.amount,
         TokenClass: tokenClass ?? pendleFilteredMarkets[0]!.underlyingType,
         MaturityDays: maturityDays ?? pendleFilteredMarkets[0]!.maturityDate,
@@ -237,7 +237,8 @@ ${generateOutputFormat()}`;
       chainId,
       parameters: {
         WalletToken: walletAsset?.symbol,
-        PendleToken: providerData?.pendleTokenData?.symbol,
+        TokenIn: providerData?.tokenInData?.symbol,
+        TokenOut: providerData?.tokenOutData?.symbol,
         Amount: providerData?.amount,
         TokenClass: tokenClass,
         MaturityDays: maturityDays,
@@ -294,7 +295,8 @@ ${generateOutputFormat()}`;
         chainId,
         parameters: {
           WalletToken: walletAsset?.symbol,
-          PendleToken: providerData?.pendleTokenData?.symbol,
+          TokenIn: providerData?.tokenInData?.symbol,
+          TokenOut: providerData?.tokenOutData?.symbol,
           Amount: providerData?.amount,
           TokenClass: tokenClass,
           MaturityDays: maturityDays,
@@ -322,7 +324,8 @@ ${generateOutputFormat()}`;
         chainId,
         parameters: {
           WalletToken: walletAsset?.symbol,
-          PendleToken: providerData?.pendleTokenData?.symbol,
+          TokenIn: providerData?.tokenInData?.symbol,
+          TokenOut: providerData?.tokenOutData?.symbol,
           Amount: providerData?.amount,
           TokenClass: tokenClass,
           MaturityDays: maturityDays,
@@ -374,7 +377,8 @@ ${generateOutputFormat()}`;
         chainId,
         parameters: {
           WalletToken: walletAsset?.symbol,
-          PendleToken: providerData?.pendleTokenData?.symbol,
+          TokenIn: providerData?.tokenInData?.symbol,
+          TokenOut: providerData?.tokenOutData?.symbol,
           Amount: providerData?.amount,
           TokenClass: tokenClass,
           MaturityDays: maturityDays,
@@ -424,7 +428,8 @@ ${generateOutputFormat()}`;
       chainId,
       parameters: {
         WalletToken: walletAsset?.symbol,
-        PendleToken: providerData?.pendleTokenData?.symbol,
+        TokenIn: providerData?.tokenInData?.symbol,
+        TokenOut: providerData?.tokenOutData?.symbol,
         Amount: providerData?.amount,
         TokenClass: tokenClass,
         MaturityDays: maturityDays,

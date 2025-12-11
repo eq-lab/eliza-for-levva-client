@@ -103,6 +103,10 @@ export class TokenServiceComponent {
         }
       }
 
+      if (tokenData?.symbol === "ETH") {
+        tokenData.address = ETH_NULL_ADDR;
+      }
+
       return tokenData;
     },
     this.getTokenDataWithInfoCacheKey

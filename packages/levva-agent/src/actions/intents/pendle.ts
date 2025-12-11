@@ -47,17 +47,13 @@ export async function generatePendleStrategySuggestions(params: {
     state
   );
 
-  const walletTokenData =
-    providerData?.operationType === "buy" ||
-    providerData?.operationType === "deposit"
-      ? providerData?.userTokenData
-      : providerData?.pendleTokenData;
+  const tokenInData = providerData?.tokenInData;
 
-  const balanceDataEntries = walletTokenData
+  const balanceDataEntries = tokenInData
     ? await levvaService.wallet.getBalances(userAddress, chainId, [
         {
-          address: walletTokenData.address!,
-          decimals: walletTokenData.decimals,
+          address: tokenInData.address!,
+          decimals: tokenInData.decimals,
         },
       ])
     : [];
@@ -67,9 +63,9 @@ export async function generatePendleStrategySuggestions(params: {
 
   const walletAsset = balanceData
     ? {
-        address: walletTokenData!.address!,
-        symbol: walletTokenData!.symbol!,
-        decimals: walletTokenData!.decimals,
+        address: tokenInData!.address!,
+        symbol: tokenInData!.symbol!,
+        decimals: tokenInData!.decimals,
         balance: balanceData.amount,
       }
     : undefined;
@@ -151,10 +147,9 @@ export const handlePendleStrategyIntent: IntentHandler = async (
     // Check if we have all required parameters
     if (
       !params.operationType ||
-      !params.userTokenData ||
-      !params.pendleTokenData ||
+      !params.tokenInData ||
+      !params.tokenOutData ||
       !params.amount ||
-      !params.pendleMarketAddress ||
       params.walletSupportedPendleMarketTokenSymbols
     ) {
       // Missing parameters - ask user for more information
@@ -270,27 +265,17 @@ async function executePendleStrategyTransaction(
   levvaService: LevvaService,
   prevActions?: any
 ): Promise<ActionResult> {
-  const {
-    userTokenData,
-    pendleTokenData,
-    pendleMarketAddress,
-    amount,
-    operationType,
-    slippage,
-  } = params;
+  const { tokenInData, tokenOutData, amount, operationType, slippage } = params;
 
   runtime.logger.info("Executing Pendle strategy transaction", {
     intentId: intentContext.id,
     operationType,
     amount,
-    tokenInSymbol: userTokenData?.symbol,
-    pendleMarketAddress: pendleMarketAddress,
+    tokenInSymbol: tokenInData?.symbol,
+    tokenOutSymbol: tokenOutData?.symbol,
   });
 
-  const amountUnits =
-    operationType === "buy" || operationType === "deposit"
-      ? parseUnits(amount!, userTokenData!.decimals)
-      : parseUnits(amount!, pendleTokenData!.decimals);
+  const amountUnits = parseUnits(amount!, tokenInData!.decimals);
 
   let calldata: CalldataWithDescription[] = [];
   let thought: string;
@@ -301,8 +286,8 @@ async function executePendleStrategyTransaction(
       const convert = await getPendleConvert({
         receiver: levvaProviderState.user!.address as `0x${string}`,
         chainId: `${levvaProviderState.chainId}`,
-        tokensIn: userTokenData!.address! as `0x${string}`,
-        tokensOut: pendleTokenData!.address! as `0x${string}`,
+        tokensIn: tokenInData!.address! as `0x${string}`,
+        tokensOut: tokenOutData!.address! as `0x${string}`,
         amountsIn: `${amountUnits}`,
         slippage: slippage as `${number}`,
         enableAggregator: "true",
@@ -323,8 +308,8 @@ async function executePendleStrategyTransaction(
               functionName: "approve",
               args: [route.to as `0x${string}`, BigInt(approval.amount)],
             }),
-            title: `Approve ${formatUnits(BigInt(approval.amount), userTokenData!.decimals!)} ${userTokenData!.symbol!}`,
-            description: `Approve spending ${formatUnits(BigInt(approval.amount), userTokenData!.decimals!)} ${userTokenData!.symbol!} to ${pendleTokenData!.symbol!}`,
+            title: `Approve ${formatUnits(BigInt(approval.amount), tokenInData!.decimals!)} ${tokenInData!.symbol!}`,
+            description: `Approve spending ${formatUnits(BigInt(approval.amount), tokenInData!.decimals!)} ${tokenInData!.symbol!} to ${tokenOutData!.symbol!}`,
           });
         }
       }
@@ -333,15 +318,15 @@ async function executePendleStrategyTransaction(
         to: route.to as `0x${string}`,
         data: route.data as `0x${string}`,
         value: route.value,
-        title: `Swap ${amount} ${userTokenData!.symbol} to ${pendleTokenData!.symbol!}`,
-        description: `Swap ${amount!} ${userTokenData!.symbol} to ${pendleTokenData!.symbol!}`,
+        title: `Swap ${amount} ${tokenInData!.symbol} to ${tokenOutData!.symbol!}`,
+        description: `Swap ${amount!} ${tokenInData!.symbol} to ${tokenOutData!.symbol!}`,
       });
 
       const description =
         calldata.length > 1
           ? `### Transaction steps\n${calldata.map((c, i) => `${i + 1}. ${c.description}`).join("\n")}`
           : calldata[0].description;
-      thought = `Prepared Pendle strategy transaction for intent ${intentContext.id}: ${operationType} ${pendleTokenData!.symbol!} for ${amount} ${userTokenData!.symbol!}`;
+      thought = `Prepared Pendle strategy transaction for intent ${intentContext.id}: ${operationType} ${tokenOutData!.symbol!} for ${amount} ${tokenInData!.symbol!}`;
       text = `${description}\n\nPlease approve transactions in your wallet.`;
       break;
     }
@@ -349,8 +334,8 @@ async function executePendleStrategyTransaction(
       const convert = await getPendleConvert({
         receiver: levvaProviderState.user!.address as `0x${string}`,
         chainId: `${levvaProviderState.chainId}`,
-        tokensIn: userTokenData!.address! as `0x${string}`,
-        tokensOut: pendleMarketAddress! as `0x${string}`,
+        tokensIn: tokenInData!.address! as `0x${string}`,
+        tokensOut: tokenOutData!.address! as `0x${string}`,
         amountsIn: `${amountUnits}`,
         slippage: slippage as `${number}`,
         enableAggregator: "true",
@@ -371,8 +356,8 @@ async function executePendleStrategyTransaction(
               functionName: "approve",
               args: [route.to as `0x${string}`, BigInt(approval.amount)],
             }),
-            title: `Approve ${formatUnits(BigInt(approval.amount), userTokenData!.decimals!)} ${userTokenData!.symbol!}`,
-            description: `Approve spending ${formatUnits(BigInt(approval.amount), userTokenData!.decimals!)} ${userTokenData!.symbol!} to ${pendleTokenData!.symbol!}`,
+            title: `Approve ${formatUnits(BigInt(approval.amount), tokenInData!.decimals!)} ${tokenInData!.symbol!}`,
+            description: `Approve spending ${formatUnits(BigInt(approval.amount), tokenInData!.decimals!)} ${tokenInData!.symbol!} to ${tokenOutData!.symbol!}`,
           });
         }
       }
@@ -381,15 +366,15 @@ async function executePendleStrategyTransaction(
         to: route.to as `0x${string}`,
         data: route.data as `0x${string}`,
         value: route.value,
-        title: `Provide liquidity ${amount} ${userTokenData!.symbol} to ${pendleTokenData!.symbol!} Pendle pool`,
-        description: `Provide liquidity ${amount!} ${userTokenData!.symbol} to ${pendleTokenData!.symbol!} Pendle pool`,
+        title: `Provide liquidity ${amount} ${tokenInData!.symbol} to ${tokenOutData!.symbol!} Pendle pool`,
+        description: `Provide liquidity ${amount!} ${tokenInData!.symbol} to ${tokenOutData!.symbol!} Pendle pool`,
       });
 
       const description =
         calldata.length > 1
           ? `### Transaction steps\n${calldata.map((c, i) => `${i + 1}. ${c.description}`).join("\n")}`
           : calldata[0].description;
-      thought = `Prepared Pendle strategy transaction for intent ${intentContext.id}: ${operationType} to ${pendleTokenData!.symbol!} Pendle pool for ${amount} ${userTokenData!.symbol!}`;
+      thought = `Prepared Pendle strategy transaction for intent ${intentContext.id}: ${operationType} to ${tokenOutData!.symbol!} Pendle pool for ${amount} ${tokenInData!.symbol!}`;
       text = `${description}\n\nPlease approve transactions in your wallet.`;
       break;
     }
@@ -397,8 +382,8 @@ async function executePendleStrategyTransaction(
       const convert = await getPendleConvert({
         receiver: levvaProviderState.user!.address as `0x${string}`,
         chainId: `${levvaProviderState.chainId}`,
-        tokensIn: pendleTokenData!.address! as `0x${string}`,
-        tokensOut: userTokenData!.address! as `0x${string}`,
+        tokensIn: tokenInData!.address! as `0x${string}`,
+        tokensOut: tokenOutData!.address! as `0x${string}`,
         amountsIn: `${amountUnits}`,
         slippage: slippage as `${number}`,
         enableAggregator: "true",
@@ -419,8 +404,8 @@ async function executePendleStrategyTransaction(
               functionName: "approve",
               args: [route.to as `0x${string}`, BigInt(approval.amount)],
             }),
-            title: `Approve ${formatUnits(BigInt(approval.amount), pendleTokenData!.decimals!)} PT ${pendleTokenData!.symbol!}`,
-            description: `Approve spending ${formatUnits(BigInt(approval.amount), pendleTokenData!.decimals!)} PT ${pendleTokenData!.symbol!} to ${userTokenData!.symbol!}`,
+            title: `Approve ${formatUnits(BigInt(approval.amount), tokenInData!.decimals!)} ${tokenInData!.symbol!}`,
+            description: `Approve spending ${formatUnits(BigInt(approval.amount), tokenInData!.decimals!)} ${tokenInData!.symbol!} to ${tokenOutData!.symbol!}`,
           });
         }
       }
@@ -429,15 +414,15 @@ async function executePendleStrategyTransaction(
         to: route.to as `0x${string}`,
         data: route.data as `0x${string}`,
         value: route.value,
-        title: `Swap ${amount} PT ${pendleTokenData!.symbol} to ${userTokenData!.symbol}`,
-        description: `Swap ${amount!} PT ${pendleTokenData!.symbol} to ${userTokenData!.symbol}`,
+        title: `Swap ${amount} PT ${tokenInData!.symbol} to ${tokenOutData!.symbol}`,
+        description: `Swap ${amount!} PT ${tokenInData!.symbol} to ${tokenOutData!.symbol}`,
       });
 
       const description =
         calldata.length > 1
           ? `### Transaction steps\n${calldata.map((c, i) => `${i + 1}. ${c.description}`).join("\n")}`
           : calldata[0].description;
-      thought = `Prepared Pendle strategy transaction for intent ${intentContext.id}: ${operationType} PT ${pendleTokenData!.symbol!} for ${amount} ${userTokenData!.symbol!}`;
+      thought = `Prepared Pendle strategy transaction for intent ${intentContext.id}: ${operationType} ${tokenInData!.symbol!} for ${amount} ${tokenOutData!.symbol!}`;
       text = `${description}\n\nPlease approve transactions in your wallet.`;
       break;
     }
@@ -445,8 +430,8 @@ async function executePendleStrategyTransaction(
       const convert = await getPendleConvert({
         receiver: levvaProviderState.user!.address as `0x${string}`,
         chainId: `${levvaProviderState.chainId}`,
-        tokensIn: pendleTokenData!.address! as `0x${string}`,
-        tokensOut: userTokenData!.address! as `0x${string}`,
+        tokensIn: tokenInData!.address! as `0x${string}`,
+        tokensOut: tokenOutData!.address! as `0x${string}`,
         amountsIn: `${amountUnits}`,
         slippage: slippage as `${number}`,
         enableAggregator: "true",
@@ -467,8 +452,8 @@ async function executePendleStrategyTransaction(
               functionName: "approve",
               args: [route.to as `0x${string}`, BigInt(approval.amount)],
             }),
-            title: `Approve ${formatUnits(BigInt(approval.amount), pendleTokenData!.decimals!)} PT ${pendleTokenData!.symbol!}`,
-            description: `Approve spending ${formatUnits(BigInt(approval.amount), pendleTokenData!.decimals!)} PT ${pendleTokenData!.symbol!} to ${userTokenData!.symbol!}`,
+            title: `Approve ${formatUnits(BigInt(approval.amount), tokenInData!.decimals!)} ${tokenInData!.symbol!}`,
+            description: `Approve spending ${formatUnits(BigInt(approval.amount), tokenInData!.decimals!)} ${tokenInData!.symbol!} to ${tokenOutData!.symbol!}`,
           });
         }
       }
@@ -477,15 +462,15 @@ async function executePendleStrategyTransaction(
         to: route.to as `0x${string}`,
         data: route.data as `0x${string}`,
         value: route.value,
-        title: `Withdraw liquidity ${amount} LP ${pendleTokenData!.symbol} to ${userTokenData!.symbol}`,
-        description: `Withdraw liquidity ${amount!} LP ${pendleTokenData!.symbol} to ${userTokenData!.symbol}`,
+        title: `Withdraw liquidity ${amount} LP ${tokenInData!.symbol} to ${tokenOutData!.symbol}`,
+        description: `Withdraw liquidity ${amount!} LP ${tokenInData!.symbol} to ${tokenOutData!.symbol}`,
       });
 
       const description =
         calldata.length > 1
           ? `### Transaction steps\n${calldata.map((c, i) => `${i + 1}. ${c.description}`).join("\n")}`
           : calldata[0].description;
-      thought = `Prepared Pendle strategy transaction for intent ${intentContext.id}: ${operationType} LP ${pendleTokenData!.symbol!} for ${amount} ${userTokenData!.symbol!}`;
+      thought = `Prepared Pendle strategy transaction for intent ${intentContext.id}: ${operationType} LP ${tokenInData!.symbol!} for ${amount} ${tokenOutData!.symbol!}`;
       text = `${description}\n\nPlease approve transactions in your wallet.`;
       break;
     }
@@ -539,8 +524,8 @@ async function executePendleStrategyTransaction(
       pendleStrategyDetails: {
         operationType,
         amount,
-        tokenIn: userTokenData,
-        pendleMarketAddress: pendleMarketAddress,
+        tokenIn: tokenInData,
+        tokenOut: tokenOutData,
       },
     },
     success: true,

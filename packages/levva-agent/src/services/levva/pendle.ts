@@ -3,6 +3,7 @@ import pendleAdapterAbi from "./abi/pendle.adapter.abi";
 import { getChain, getClient } from "../../util/eth";
 import { ETH_NULL_ADDR } from "../../constants/eth";
 import pendleMarketAbi from "./abi/pendle.market.abi";
+import { PendleMarket } from "../../api/levva/schema";
 
 const ADAPTERS = new Map<number, `0x${string}`>([
   [42161, "0x03fA449776FBE2a38771BD638be94E32592372f6"],
@@ -74,4 +75,35 @@ export const getPendleMarketPtTokens = async (
   return new Map(
     ptTokens.map((token, index) => [marketAddresses[index], token])
   );
+};
+
+export const toPendleSymbol = (
+  market: PendleMarket
+): { lp: string; pt: string } => {
+  const date = new Date(market.maturityDate);
+
+  const day = date.getUTCDate();
+
+  const monthNames = [
+    "JAN",
+    "FEB",
+    "MAR",
+    "APR",
+    "MAY",
+    "JUN",
+    "JUL",
+    "AUG",
+    "SEP",
+    "OCT",
+    "NOV",
+    "DEC",
+  ];
+  const month = monthNames[date.getUTCMonth()];
+
+  const year = date.getUTCFullYear();
+
+  return {
+    lp: `LP-${market.underlyingAssetSymbol}-${day}${month}${year}`,
+    pt: `PT-${market.underlyingAssetSymbol}-${day}${month}${year}`,
+  };
 };

@@ -25,7 +25,7 @@ export const extractedPendleParamsSchema = z
       .describe(
         "Asset class category: 'Stable' (stablecoins), 'BTC' (Bitcoin-backed), or 'ETH' (Ethereum-backed). " +
           "ONLY extract if user explicitly mentions asset class. " +
-          "Can be inferred from pendleToken if pendleToken is explicitly specified. " +
+          "Can be inferred from tokenOut if tokenOut is explicitly specified. " +
           "Return null if not explicitly specified."
       ),
     tokenIn: z

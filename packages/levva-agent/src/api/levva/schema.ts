@@ -22,7 +22,9 @@ const pendleMarketSchema = z.object({
   underlyingAssetName: z.string(),
   underlyingAssetSymbol: z.string(),
   underlyingType: z.enum(["Stable", "BTC", "ETH", "Other"]),
-  maturityDate: z.string(),
+  maturityDate: z
+    .string()
+    .transform((val) => (val.endsWith("Z") ? val : `${val}Z`)),
   impliedApy: z.number(),
   liquidity: z.number(),
   capacity: z.number(),
