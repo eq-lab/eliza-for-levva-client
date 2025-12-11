@@ -57,9 +57,9 @@ export const upsertTokens = async (
 ) => {
   const db = getDb(runtime);
   const valuesToInsert = values.map((v) => {
-    const { address: _address, info, ...rest } = v;
+    const { address: _address, ...rest } = v;
     const address = getAddress(_address);
-    return { ...rest, address, info: info ?? {} };
+    return { ...rest, address };
   });
 
   const action = db.insert(erc20Table).values(valuesToInsert);
@@ -67,7 +67,7 @@ export const upsertTokens = async (
   await action.onConflictDoUpdate({
     target: [erc20Table.chainId, erc20Table.address, erc20Table.symbol],
     set: {
-      info: sql`excluded.info`,
+      info: sql`COALESCE(excluded.info, ${erc20Table.info})`,
     },
   });
 };
