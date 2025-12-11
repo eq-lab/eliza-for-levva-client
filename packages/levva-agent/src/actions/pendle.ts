@@ -1,4 +1,4 @@
-import { type Action } from "@elizaos/core";
+import { IAgentRuntime, Memory, State, type Action } from "@elizaos/core";
 import { LEVVA_ACTIONS, LEVVA_SERVICE, INTENT_TYPE } from "../constants/enum";
 import { LEVVA_PROVIDER_NAME, LevvaProviderState } from "../providers";
 import { selectProviderState } from "../providers/util";
@@ -17,6 +17,7 @@ import {
 } from "./intents";
 import { formatDecimalToPercentage } from "../util";
 import { formatCoin } from "../util/format-coin";
+import { PendleMarket } from "../api/levva/schema";
 
 const description =
   "Handle Pendle explore, buy, sell, deposit, and withdraw requests using intent-based system with multi-step process support.";
@@ -95,12 +96,89 @@ export const action: Action = {
         throw new Error("User address is required");
       }
 
+      const displayPendleMarkets = async (
+        runtime: IAgentRuntime,
+        message: Memory,
+        composedState: State,
+        prevActions: string
+      ) => {
+        let thought: string;
+        let text: string;
+        let pendleMarkets: PendleMarket[] = [];
+
+        if (
+          providerData.pendleFilteredMarkets &&
+          providerData.pendleFilteredMarkets.length === 0
+        ) {
+          pendleMarkets = await levvaService.getPendleMarkets(
+            levvaProviderState.chainId
+          );
+
+          thought =
+            "No Pendle markets found, searched for all markets. I should ask for clarification.";
+          text = `✨ Here are the Pendle markets:`;
+        } else if (
+          providerData.pendleFilteredMarkets &&
+          providerData.pendleFilteredMarkets.length > 0
+        ) {
+          pendleMarkets = providerData.pendleFilteredMarkets;
+
+          thought =
+            "Searched for Pendle markets, found some. I should ask for clarification.";
+          text = `✨ Here are the filtered Pendle markets:`;
+        } else {
+          return { content: null, thought: null };
+        }
+
+        const formattedPendleMarkets =
+          pendleMarkets
+            ?.sort((a, b) => b.impliedApy - a.impliedApy)
+            .map((market) => {
+              const maturityDate = new Date(market.maturityDate)
+                .toDateString()
+                .slice(4, 15);
+              const percentageApy = formatDecimalToPercentage(
+                market.impliedApy
+              );
+              const liquidityInUsd = formatCoin(+market.liquidity.toFixed(2));
+
+              return `\n- ${market.underlyingType} yield **${market.underlyingAssetSymbol} – matures on ${maturityDate}**, Implied APY: ${percentageApy}, PT Liquidity: ~$${liquidityInUsd}`;
+            })
+            .join("\n") ?? [];
+
+        const responseContent = await rephrase({
+          runtime,
+          content: {
+            text: `${text}${formattedPendleMarkets}`,
+            thought,
+            actions: [`${LEVVA_ACTIONS.SELECT_PENDLE_STRATEGY}`],
+            source: message.content.source,
+          },
+          state: composedState,
+          prevActions,
+        });
+
+        await callback!(responseContent);
+
+        return {
+          thought,
+          content: responseContent,
+        };
+      };
+
       // 5. Check if we have intent context from provider
       if (providerData.intentContext) {
         runtime.logger.info("Using intent context from provider", {
           intentId: providerData.intentContext.id,
           type: providerData.intentContext.type,
         });
+
+        await displayPendleMarkets(
+          runtime,
+          message,
+          composedState,
+          prevActions
+        );
 
         // Use intent handler with context from provider
         return await handlePendleStrategyIntent(
@@ -151,51 +229,26 @@ export const action: Action = {
         }
       }
 
-      const filteredPendleMarketsText =
-        providerData.pendleFilteredMarkets
-          ?.sort((a, b) => b.impliedApy - a.impliedApy)
-          .map((market) => {
-            const maturityDate = new Date(market.maturityDate)
-              .toDateString()
-              .slice(4, 15);
-            const percentageApy = formatDecimalToPercentage(market.impliedApy);
-            const liquidityInUsd = formatCoin(+market.liquidity.toFixed(2));
-
-            return `\n- ${market.underlyingType} yield **${market.underlyingAssetSymbol} – matures on ${maturityDate}**, Implied APY: ${percentageApy}, PT Liquidity: ~$${liquidityInUsd}`;
-          })
-          .join("\n") ?? [];
-
       // 7. If no clear Pendle parameters, provide helpful guidance
-      const thought =
-        "User message doesn't contain clear Pendle parameters. I should ask for clarification.";
-      const text = `✨ Here are the filtered Pendle markets: ${filteredPendleMarketsText}`;
-
-      const responseContent = await rephrase({
+      const { thought, content } = await displayPendleMarkets(
         runtime,
-        content: {
-          text,
-          thought,
-          actions: [`${LEVVA_ACTIONS.SELECT_PENDLE_STRATEGY}`],
-          source: message.content.source,
-        },
-        state: composedState,
-        prevActions,
-      });
-
-      await callback!(responseContent);
+        message,
+        composedState,
+        prevActions
+      );
 
       return {
-        text: `Generated ${LEVVA_ACTIONS.SELECT_PENDLE_STRATEGY}: ${responseContent?.text}`,
+        text: `Generated ${LEVVA_ACTIONS.SELECT_PENDLE_STRATEGY}: ${content?.text}`,
         values: {
           success: true,
           responded: true,
-          lastReply: responseContent.text,
+          lastReply: content?.text,
           lastReplyTime: Date.now(),
-          thoughtProcess: responseContent?.thought,
+          thoughtProcess: content?.thought,
         },
         data: {
           actionName: `${LEVVA_ACTIONS.SELECT_PENDLE_STRATEGY}`,
-          response: responseContent,
+          response: content,
           thought,
           messageGenerated: true,
         },

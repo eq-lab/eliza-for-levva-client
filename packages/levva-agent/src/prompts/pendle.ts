@@ -23,7 +23,7 @@ export const extractedPendleParamsSchema = z
       .enum(["Stable", "BTC", "ETH"])
       .nullable()
       .describe(
-        "Asset class category: 'Stable' (stablecoins), 'BTC' (Bitcoin-backed), or 'ETH' (Ethereum-backed). " +
+        "Asset class category/strategy: 'Stable' (stablecoins), 'BTC' (Bitcoin-backed), or 'ETH' (Ethereum-backed). " +
           "ONLY extract if user explicitly mentions asset class. " +
           "Can be inferred from tokenOut if tokenOut is explicitly specified. " +
           "Return null if not explicitly specified."
@@ -132,7 +132,7 @@ ${
   ctx.intentContext
     ? `<intentContext>
 Intent Type: ${ctx.intentContext.type}
-${ctx.intentContext.returnData && Object.keys(ctx.intentContext.returnData).length > 0 ? `Previous Data: ${JSON.stringify(ctx.intentContext.returnData, null, 2)}` : ""}
+${ctx.intentContext.returnData && Object.keys(ctx.intentContext.returnData).length > 0 ? `LatestData: ${JSON.stringify(ctx.intentContext.returnData, null, 2)}` : ""}
 ${
   ctx.intentContext.memories
     ? `Intent Conversation History:
@@ -149,12 +149,12 @@ ${
     ? `
 PRIORITY INSTRUCTIONS for Intent-Based Extraction:
 1. **HIGHEST PRIORITY**: If user explicitly specifies a parameter in their <currentMessage>, ALWAYS use that value (overrides ALL previous context)
-2. Use returnData from previous interactions ONLY to fill parameters NOT mentioned in <currentMessage>
-3. **PARAMETER UPDATES**: If user says "use X instead", "with X", "change to X" in their <currentMessage>, the NEW value ALWAYS replaces returnData value
+2. Use LatestData from <intentContext> ONLY to fill parameters NOT mentioned in <currentMessage>
+3. **PARAMETER UPDATES**: If user says "use X instead", "with X", "change to X" in their <currentMessage>, the NEW value ALWAYS replaces LatestData from <intentContext> value
 4. This is part of an ongoing Pendle operation - use <intentContext> for missing parameters only
 5. Consider the full conversation history ("Intent Conversation History") within this intent for context
-6. RETRY HANDLING: If user says "retry"/"try again" and returnData has complete parameters, reuse those exact values
-7. CONTINUATION: If user says "yes"/"ok"/"proceed" with NO new specifications, use returnData parameters as-is
+6. RETRY HANDLING: If user says "retry"/"try again" and LatestData from <intentContext> has complete parameters, reuse those exact values
+7. CONTINUATION: If user says "yes"/"ok"/"proceed" with NO new specifications, use LatestData from <intentContext> parameters as-is
 
 GENERAL INSTRUCTIONS:
 `
@@ -231,15 +231,16 @@ TOKEN CLASS SELECTION GUIDANCE:
   * **"ETH"**: Ethereum-backed assets
 
 - **Extraction Rules**:
-  * Extract tokenClass when user mentions asset type/category: "stable", "stablecoin", "BTC", "bitcoin", "ETH", "ethereum"
-  * Common phrases: "stable PT", "BTC yield", "ETH yield", "USD yield" → extract tokenClass
+  * Extract tokenClass when user mentions asset type/category/strategy: "stable", "stablecoin", "BTC", "bitcoin", "ETH", "ethereum"
   * Can be inferred from tokenOut when tokenOut is explicitly specified
   * tokenClass is INDEPENDENT from tokenOut - they are separate parameters
-
-- **CRITICAL**: Asset class only (no specific token) → tokenOut must be null
+  * **CRITICAL**: Asset class only (no specific token)
   * "I want a stable PT" → tokenClass: "Stable", tokenOut: **null**
   * "I want BTC yield" → tokenClass: "BTC", tokenOut: **null**
   * "I want PT yoUSD" → tokenClass: "Stable" (inferred), tokenOut: "yoUSD"
+  * "I want to invest in BTC yield strategy" → tokenClass: "BTC", tokenOut: **null**
+  * "I want to invest in ETH yield strategy" → tokenClass: "ETH", tokenOut: **null**
+  * "I want to invest in stable yield strategy" → tokenClass: "Stable", tokenOut: **null**
 
 TOKEN SELECTION GUIDANCE:
 
@@ -300,6 +301,9 @@ Given <pendleTokens>: [("yoUSD","Stable"), ("USDX","Stable"), ("mRe7BTC","BTC"),
 - **Asset class only (tokenOut: null)**:
   * "I want a stable PT" → operationType: null, tokenOut: null, tokenClass: "Stable", tokenIn: null, amount: null
   * "buy stable PT" → operationType: "buy", tokenOut: null, tokenClass: "Stable", tokenIn: null, amount: null
+  * "buy BTC yield" → operationType: "buy", tokenOut: null, tokenClass: "BTC", tokenIn: null, amount: null
+  * "buy ETH yield" → operationType: "buy", tokenOut: null, tokenClass: "ETH", tokenIn: null, amount: null
+  * "buy stable yield" → operationType: "buy", tokenOut: null, tokenClass: "Stable", tokenIn: null, amount: null
 
 - **Buy operations** (tokenIn = spend, tokenOut = PT to receive):
   * "buy PT yoUSD with 100 USDC" → operationType: "buy", tokenIn: "USDC", tokenOut: "yoUSD", tokenClass: "Stable", amount: "100"
