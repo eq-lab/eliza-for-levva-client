@@ -78,33 +78,6 @@ export const action: Action = {
         );
       }
 
-      if (
-        providerData.pendleFilteredMarkets &&
-        providerData.pendleFilteredMarkets?.length > 0
-      ) {
-        const filteredPendleMarketsText =
-          providerData.pendleFilteredMarkets
-            ?.sort((a, b) => b.impliedApy - a.impliedApy)
-            .map((market) => {
-              const maturityDate = new Date(market.maturityDate)
-                .toDateString()
-                .slice(4, 15);
-              const percentageApy = formatDecimalToPercentage(
-                market.impliedApy
-              );
-              const liquidityInUsd = formatCoin(+market.liquidity.toFixed(2));
-
-              return `\n- ${market.underlyingType} yield **${market.underlyingAssetName} – matures on ${maturityDate}**, Implied APY: ${percentageApy}, PT Liquidity: ~$${liquidityInUsd}`;
-            })
-            .join("\n") ?? [];
-
-        await callback!({
-          text: `\n## ✨ Filtered Pendle Markets:\n${filteredPendleMarketsText}`,
-          source: message.content.source,
-          actions: [`${LEVVA_ACTIONS.SELECT_PENDLE_STRATEGY}`],
-        });
-      }
-
       // 3. Get previous actions context
       const prevActions = await getPreviousReplyContext(
         runtime,
@@ -143,9 +116,8 @@ export const action: Action = {
       // 6. If no intent context but we have Pendle parameters, handle as direct Pendle strategy request
       if (
         providerData.operationType &&
-        providerData.userTokenData &&
-        providerData.pendleTokenData &&
-        providerData.pendleMarketAddress &&
+        providerData.tokenInData &&
+        providerData.tokenOutData &&
         providerData.amount
       ) {
         runtime.logger.info(
@@ -179,11 +151,24 @@ export const action: Action = {
         }
       }
 
+      const filteredPendleMarketsText =
+        providerData.pendleFilteredMarkets
+          ?.sort((a, b) => b.impliedApy - a.impliedApy)
+          .map((market) => {
+            const maturityDate = new Date(market.maturityDate)
+              .toDateString()
+              .slice(4, 15);
+            const percentageApy = formatDecimalToPercentage(market.impliedApy);
+            const liquidityInUsd = formatCoin(+market.liquidity.toFixed(2));
+
+            return `\n- ${market.underlyingType} yield **${market.underlyingAssetSymbol} – matures on ${maturityDate}**, Implied APY: ${percentageApy}, PT Liquidity: ~$${liquidityInUsd}`;
+          })
+          .join("\n") ?? [];
+
       // 7. If no clear Pendle parameters, provide helpful guidance
       const thought =
         "User message doesn't contain clear Pendle parameters. I should ask for clarification.";
-      const text =
-        "I'd be happy to help you with Pendle! Please specify which tokens you'd like to buy, sell, deposit, or withdraw and the amount. For example: 'Buy 100 USDC PT' or 'Sell 0.5 ETH PT' or 'Deposit 100 USDC to Pendle pool' or 'Withdraw 0.5 ETH from Pendle pool'.";
+      const text = `✨ Here are the filtered Pendle markets: ${filteredPendleMarketsText}`;
 
       const responseContent = await rephrase({
         runtime,

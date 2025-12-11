@@ -16,11 +16,11 @@ import { zodJsonSchema } from "../prompts/util";
 import { PendleMarket } from "../api/levva/schema";
 import { TokenDataWithInfo } from "../types/token";
 import { BalanceData } from "../services/levva/wallet";
+import { toPendleSymbol } from "../services/levva/pendle";
 
 export interface PendleParamsProviderData {
-  userTokenData?: TokenDataWithInfo;
-  pendleTokenData?: TokenDataWithInfo;
-  pendleMarketAddress?: string;
+  tokenInData?: TokenDataWithInfo;
+  tokenOutData?: TokenDataWithInfo;
   amount?: string;
   slippage?: string;
   operationType?: "buy" | "sell" | "deposit" | "withdraw";
@@ -132,11 +132,20 @@ export const pendleParamsProvider: Provider = {
     let userPortfolio: string | undefined;
     let pendleTokens: string | undefined;
     let walletTokens: {
-      asset: BalanceData;
+      asset: BalanceData | undefined;
       token: Token | undefined;
+      balance: string;
+      balanceUsd: string | number;
     }[] = [];
 
     try {
+      pendleMarkets = (await levvaService.getPendleMarkets(chainId)) ?? [];
+
+      await levvaService.collectPendleMarketPtAndLpTokens(
+        chainId,
+        pendleMarkets
+      );
+
       const walletAssets = await levvaService.wallet.getWalletAssets({
         chainId,
         address: user.address,
@@ -146,42 +155,43 @@ export const pendleParamsProvider: Provider = {
         tokenPrices.map((token) => [token.symbol.toLowerCase(), token.priceUsd])
       );
 
-      pendleMarkets = (await levvaService.getPendleMarkets(chainId)) ?? [];
-
-      walletTokens = walletAssets
-        .filter((asset) => asset.amount > 0n)
-        .map((asset) => {
-          const token = tokens?.find(
-            (t) =>
-              t.address?.toLowerCase() === asset.token.toLowerCase() ||
-              (asset.token === ETH_NULL_ADDR && t.symbol === "ETH")
-          );
-          return { asset, token };
-        });
+      walletTokens = tokens.map((token) => {
+        const asset = walletAssets.find(
+          (a) =>
+            token.address?.toLowerCase() === a.token.toLowerCase() ||
+            (a.token === ETH_NULL_ADDR && token.symbol === "ETH")
+        );
+        const symbol =
+          token.symbol || (asset?.token === ETH_NULL_ADDR ? "ETH" : "Unknown");
+        const price =
+          asset?.token === ETH_NULL_ADDR
+            ? tokenPricesMap.get("weth")
+            : tokenPricesMap.get(token.symbol?.toLowerCase() ?? "");
+        const decimals = token.decimals ?? 18;
+        const balance = formatUnits(asset?.amount ?? 0n, decimals);
+        const balanceUsd = price ? (price * Number(balance)).toFixed(2) : 0;
+        if (token) {
+          token.symbol = symbol;
+        }
+        return {
+          asset,
+          token: token,
+          balance,
+          balanceUsd,
+        };
+      });
 
       // Filter non-zero balances and format with token info
       const portfolioEntries = walletTokens
-        .map(({ asset, token }) => {
-          const price =
-            asset.token === ETH_NULL_ADDR
-              ? tokenPricesMap.get("weth")
-              : tokenPricesMap.get(token?.symbol?.toLowerCase() ?? "");
-          const symbol =
-            token?.symbol ||
-            (asset.token === ETH_NULL_ADDR ? "ETH" : "Unknown");
-          const decimals = token?.decimals ?? 18;
-          const balance = formatUnits(asset.amount, decimals);
-          const balanceUsd = price
-            ? (price * Number(balance)).toFixed(2)
-            : "0.00";
-          return `('${symbol}','${balance}','${balanceUsd}')`;
+        .map(({ token, balance }) => {
+          return `('${token!.symbol}','${balance}')`;
         })
         .join(",");
 
       const pendleAssets = pendleMarkets
         .map(
           (market) =>
-            `('${market.underlyingAssetName}','${market.underlyingType}')`
+            `('${market.underlyingAssetSymbol}','${market.underlyingType}')`
         )
         .join(",");
 
@@ -254,8 +264,8 @@ export const pendleParamsProvider: Provider = {
 
     const data: PendleParamsProviderData = {};
     const {
-      userToken,
-      pendleToken,
+      tokenIn,
+      tokenOut,
       tokenClass,
       maturityDays,
       amount,
@@ -273,9 +283,18 @@ export const pendleParamsProvider: Provider = {
 
     data.slippage = slippage ?? "0.005";
 
+    const pendleTokenSymbol =
+      operationType === "buy" || operationType === "deposit"
+        ? tokenOut
+        : tokenIn;
+
+    const pendleMarketSymbol = pendleTokenSymbol
+      ?.replace(/^(LP-|PT-)/i, "")
+      .replace(/-\d{2}[A-Z]{3}\d{4}$/i, "");
+
     const pendleFilteredMarkets = await levvaService.filterPendleMarkets(
       pendleMarkets,
-      pendleToken ?? undefined,
+      pendleMarketSymbol ?? undefined,
       maturityDays ?? undefined,
       tokenClass ?? undefined
     );
@@ -286,92 +305,119 @@ export const pendleParamsProvider: Provider = {
       data.pendleFilteredMarkets = [];
     }
 
-    if (pendleFilteredMarkets.length == 1) {
-      data.pendleMarketAddress = pendleFilteredMarkets[0].pendleMarketAddress;
-    }
-
-    if (data.userTokenData?.symbol !== userToken) {
-      let userTokenData = userToken
-        ? await levvaService.token.getTokenDataWithInfo({
-            chainId,
-            symbolOrAddress: userToken,
-            skipUpsert: true,
-          })
-        : undefined;
-
-      if (userTokenData) {
-        userTokenData.address =
-          userTokenData?.symbol == "ETH"
-            ? ETH_NULL_ADDR
-            : (userTokenData!.address! as `0x${string}`);
-
-        data.userTokenData = userTokenData;
-      }
-    }
-
-    if (
-      pendleFilteredMarkets.length === 1 &&
-      data.pendleTokenData?.symbol !== pendleToken
-    ) {
-      let tokenAddress: string | undefined;
-
-      data.pendleMarketAddress = pendleFilteredMarkets[0]!.pendleMarketAddress;
-
-      if (
-        operationType === "buy" ||
-        operationType === "deposit" ||
-        operationType === "sell"
-      ) {
-        const pendleMarketTokens = await levvaService.getPendleMarketTokens(
-          levvaProviderState.chainId,
-          data.pendleMarketAddress as `0x${string}`
-        );
-        tokenAddress = pendleMarketTokens!.ptAddress;
-      } else if (operationType === "withdraw") {
-        tokenAddress = data.pendleMarketAddress;
-      }
-
-      const pendleTokenData = await levvaService.token.getTokenDataWithInfo({
-        chainId: levvaProviderState.chainId,
-        symbolOrAddress: tokenAddress,
+    if (tokenIn && tokenIn !== data.tokenInData?.symbol) {
+      let tokenInData = await levvaService.token.getTokenDataWithInfo({
+        chainId,
+        symbolOrAddress: tokenIn,
         skipUpsert: true,
       });
 
-      if (pendleTokenData) {
-        data.pendleTokenData = pendleTokenData;
-      }
-
-      if (operationType === "sell" || operationType === "withdraw") {
-        const pendleSupportedTokens =
-          await levvaService.getPendleMarketSupportedTokens(
-            chainId,
-            data.pendleMarketAddress! as `0x${string}`
-          );
-
-        const isSupportedTokenOut = data.userTokenData
-          ? pendleSupportedTokens.tokensOut.some(
-              (t) =>
-                t.toLowerCase() === data.userTokenData?.address?.toLowerCase()
-            )
-          : false;
-
-        if (!isSupportedTokenOut) {
-          const userTokens = new Set(
-            walletTokens.map((wt) => wt.token?.address?.toLowerCase())
-          );
-          const targetToken = pendleSupportedTokens.tokensOut.find((t) =>
-            userTokens.has(t.toLowerCase())
-          );
-
-          data.userTokenData = await levvaService.token.getTokenDataWithInfo({
-            chainId,
-            symbolOrAddress:
-              targetToken ?? pendleSupportedTokens.tokensOut[0]?.toLowerCase(),
-            skipUpsert: true,
-          });
-        }
+      if (tokenInData) {
+        data.tokenInData = tokenInData;
       }
     }
+
+    if (tokenOut && tokenOut !== data.tokenOutData?.symbol) {
+      let tokenOutData: TokenDataWithInfo | undefined;
+
+      if (operationType === "buy" && pendleFilteredMarkets.length === 1) {
+        const { pt } = toPendleSymbol(pendleFilteredMarkets[0]);
+
+        tokenOutData = await levvaService.token.getTokenDataWithInfo({
+          chainId,
+          symbolOrAddress: pt,
+          skipUpsert: true,
+        });
+      } else if (
+        operationType === "deposit" &&
+        pendleFilteredMarkets.length === 1
+      ) {
+        const { lp } = toPendleSymbol(pendleFilteredMarkets[0]);
+
+        tokenOutData = await levvaService.token.getTokenDataWithInfo({
+          chainId,
+          symbolOrAddress: lp,
+          skipUpsert: true,
+        });
+      } else if (operationType === "sell" || operationType === "withdraw") {
+        tokenOutData = await levvaService.token.getTokenDataWithInfo({
+          chainId,
+          symbolOrAddress: tokenOut,
+          skipUpsert: true,
+        });
+
+        // TODO: check if token is supported by Pendle market
+      }
+
+      if (tokenOutData) {
+        data.tokenOutData = tokenOutData;
+      }
+    }
+
+    // if (
+    //   pendleFilteredMarkets.length === 1 &&
+    //   data.pendleTokenData?.symbol !== pendleToken
+    // ) {
+    //   let tokenAddress: string | undefined;
+
+    //   data.pendleMarketAddress = pendleFilteredMarkets[0]!.pendleMarketAddress;
+
+    //   if (
+    //     operationType === "buy" ||
+    //     operationType === "deposit" ||
+    //     operationType === "sell"
+    //   ) {
+    //     // TODO: !!!
+    //     // const pendleMarketTokens = await levvaService.getPendleMarketTokens(
+    //     //   levvaProviderState.chainId,
+    //     //   data.pendleMarketAddress as `0x${string}`
+    //     // );
+    //     // tokenAddress = pendleMarketTokens!.ptAddress;
+    //   } else if (operationType === "withdraw") {
+    //     tokenAddress = data.pendleMarketAddress;
+    //   }
+
+    //   const pendleTokenData = await levvaService.token.getTokenDataWithInfo({
+    //     chainId: levvaProviderState.chainId,
+    //     symbolOrAddress: tokenAddress,
+    //     skipUpsert: true,
+    //   });
+
+    //   if (pendleTokenData) {
+    //     data.pendleTokenData = pendleTokenData;
+    //   }
+
+    //   if (operationType === "sell" || operationType === "withdraw") {
+    //     const pendleSupportedTokens =
+    //       await levvaService.getPendleMarketSupportedTokens(
+    //         chainId,
+    //         data.pendleMarketAddress! as `0x${string}`
+    //       );
+
+    //     const isSupportedTokenOut = data.userTokenData
+    //       ? pendleSupportedTokens.tokensOut.some(
+    //           (t) =>
+    //             t.toLowerCase() === data.userTokenData?.address?.toLowerCase()
+    //         )
+    //       : false;
+
+    //     if (!isSupportedTokenOut) {
+    //       const userTokens = new Set(
+    //         walletTokens.map((wt) => wt.token?.address?.toLowerCase())
+    //       );
+    //       const targetToken = pendleSupportedTokens.tokensOut.find((t) =>
+    //         userTokens.has(t.toLowerCase())
+    //       );
+
+    //       data.userTokenData = await levvaService.token.getTokenDataWithInfo({
+    //         chainId,
+    //         symbolOrAddress:
+    //           targetToken ?? pendleSupportedTokens.tokensOut[0]?.toLowerCase(),
+    //         skipUpsert: true,
+    //       });
+    //     }
+    //   }
+    // }
 
     if (!data.operationType) {
       return {
@@ -429,29 +475,7 @@ export const pendleParamsProvider: Provider = {
       };
     }
 
-    if (!data.pendleTokenData) {
-      const writeUnknownTokenText = (token: string) => `## ❓ Unknown Token
-
-**Token**: ${token}
-**Issue**: Token not found in our database
-
-Please provide a valid token symbol (like USDC, ETH, WETH) for the token you want to use for the transaction.`;
-
-      return {
-        ...EMPTY_RESULT,
-        data: { ...data, intentContext },
-        values: {
-          strategy: writeUnknownTokenText(
-            pendleFilteredMarkets[0].underlyingAssetName
-          ),
-        },
-        text: writeUnknownTokenText(
-          pendleFilteredMarkets[0].underlyingAssetName
-        ),
-      };
-    }
-
-    if (!data.userTokenData) {
+    if (!data.tokenInData || !data.tokenOutData) {
       return {
         ...EMPTY_RESULT,
         data: { ...data, intentContext },
@@ -459,14 +483,14 @@ Please provide a valid token symbol (like USDC, ETH, WETH) for the token you wan
           strategy:
             "Please provide the token you want to use for the transaction.",
         },
-        text: "Failed to extract Pendle parameters: unknown token in",
+        text: "Failed to extract Pendle parameters: unknown token",
       };
     }
 
     const pendleSupportedTokens =
       await levvaService.getPendleMarketSupportedTokens(
         chainId,
-        data.pendleMarketAddress! as `0x${string}`
+        pendleFilteredMarkets[0].pendleMarketAddress as `0x${string}`
       );
 
     const pendleSupportedInTokens = new Set(
@@ -475,19 +499,21 @@ Please provide a valid token symbol (like USDC, ETH, WETH) for the token you wan
 
     if (
       (operationType == "buy" || operationType == "deposit") &&
-      !pendleSupportedInTokens.has(data.userTokenData.address!.toLowerCase())
+      !pendleSupportedInTokens.has(data.tokenInData.address!.toLowerCase())
     ) {
-      const unknownToken = data.userTokenData?.symbol;
-      data.userTokenData = undefined;
+      const unknownToken = data.tokenInData?.symbol;
+      data.tokenInData = undefined;
 
       const tokens = walletTokens
-        .filter((wt) =>
-          pendleSupportedInTokens.has(wt.asset.token.toLowerCase())
+        .filter(
+          (wt) =>
+            wt.asset &&
+            pendleSupportedInTokens.has(wt.asset.token.toLowerCase())
         )
         .map((wt) => {
           const symbol =
             wt.token?.symbol ||
-            (wt.asset.token === ETH_NULL_ADDR ? "ETH" : "Unknown");
+            (wt.asset!.token === ETH_NULL_ADDR ? "ETH" : "Unknown");
           return symbol;
         });
 
@@ -505,20 +531,23 @@ Please provide a valid token symbol (like USDC, ETH, WETH) for the token you wan
       data.walletSupportedPendleMarketTokenSymbols = undefined;
     }
 
-    const walletTokenData =
-      data.operationType === "buy" || data.operationType === "deposit"
-        ? data.userTokenData
-        : data.pendleTokenData;
-
-    const balance = await levvaService.wallet.getBalanceOf(
+    const balanceDataEntries = await levvaService.wallet.getBalances(
       user.address,
       chainId,
-      walletTokenData.address!
+      [
+        {
+          address: data.tokenInData!.address!,
+          decimals: data.tokenInData!.decimals,
+        },
+      ]
     );
+
+    const balance =
+      balanceDataEntries.length > 0 ? balanceDataEntries[0] : undefined;
 
     const amountUnits = parseUnits(
       String(amount ?? 0),
-      walletTokenData.decimals
+      data.tokenInData!.decimals
     );
 
     if (balance?.amount === 0n || (balance?.amount ?? 0n) < amountUnits) {
@@ -526,25 +555,25 @@ Please provide a valid token symbol (like USDC, ETH, WETH) for the token you wan
 
       const currentBalance = formatUnits(
         balance?.amount ?? 0n,
-        walletTokenData.decimals
+        data.tokenInData!.decimals
       );
       // Use actual token decimals for shortfall display
-      const tokenDecimals = walletTokenData.decimals ?? 18;
+      const tokenDecimals = data.tokenInData!.decimals ?? 18;
       const insufficientBalanceText = `## ❌ Insufficient Balance
 
-**Token**: ${walletTokenData.symbol} (${walletTokenData.name})
-${amount ? `**Requested Amount**: ${amount} ${walletTokenData.symbol}` : ""}
-**Current Balance**: ${currentBalance} ${walletTokenData.symbol}
-${amount ? `**Shortfall**: ${(parseFloat(amount!) - parseFloat(currentBalance)).toFixed(tokenDecimals)} ${walletTokenData.symbol}` : ""}
+**Token**: ${data.tokenInData!.symbol} (${data.tokenInData!.name})
+${amount ? `**Requested Amount**: ${amount} ${data.tokenInData!.symbol}` : ""}
+**Current Balance**: ${currentBalance} ${data.tokenInData!.symbol}
+${amount ? `**Shortfall**: ${(parseFloat(amount!) - parseFloat(currentBalance)).toFixed(tokenDecimals)} ${data.tokenInData!.symbol}` : ""}
 
-You need more ${walletTokenData.symbol} to complete this operation.`;
+You need more ${data.tokenInData!.symbol} to complete this operation.`;
 
       return {
         ...EMPTY_RESULT,
         data: { ...data, intentContext },
         values: {
           strategy: insufficientBalanceText,
-          userTokenData: walletTokenData,
+          tokenInData: data.tokenInData!,
           amount: amount,
           error: "insufficient_balance",
         },
@@ -558,9 +587,9 @@ You need more ${walletTokenData.symbol} to complete this operation.`;
         data: { ...data, intentContext },
         values: {
           strategy:
-            `${data.userTokenData.symbol} from your wallet has been selected as the token to use for the transaction.` +
+            `${data.tokenInData!.symbol} from your wallet has been selected as the token to use for the transaction.` +
             `\nYou can change the token by explicitly mentioning the token you want to use.` +
-            `\nPlease provide the amount of ${data.userTokenData.symbol} you want to use.`,
+            `\nPlease provide the amount of ${data.tokenInData!.symbol} you want to use.`,
         },
         text: "Failed to extract Pendle parameters: unknown amount",
       };
@@ -568,9 +597,9 @@ You need more ${walletTokenData.symbol} to complete this operation.`;
 
     const userBalance = formatUnits(
       balance?.amount ?? 0n,
-      walletTokenData.decimals
+      data.tokenInData!.decimals
     );
-    const balanceInfo = `Current balance: ${userBalance} ${walletTokenData.symbol}`;
+    const balanceInfo = `Current balance: ${userBalance} ${data.tokenInData!.symbol}`;
     const formatTokenInfo = (token: TokenDataWithInfo) => {
       const isNative = !token.address || token.address === ETH_NULL_ADDR;
       return `${token.symbol} (${token.name})${isNative ? " - Native token" : ` - ${token.address}`}`;
@@ -581,43 +610,43 @@ You need more ${walletTokenData.symbol} to complete this operation.`;
     if (operationType === "buy") {
       text = `## Buy PT Token 🔄
 
-**From**: ${formatTokenInfo(walletTokenData)}
-**To**: ${formatTokenInfo(data.pendleTokenData)}
-**Amount**: ${data.amount} ${walletTokenData.symbol}
+**From**: ${formatTokenInfo(data.tokenInData!)}
+**To**: ${formatTokenInfo(data.tokenOutData!)}
+**Amount**: ${data.amount} ${data.tokenInData!.symbol}
 **${balanceInfo}**
 **Platform**: Pendle
 
-User wants to deposit ${data.amount} ${walletTokenData.symbol} to ${data.pendleTokenData.symbol} on Pendle.`;
+User wants to deposit ${data.amount} ${data.tokenInData!.symbol} to ${data.tokenOutData!.symbol} on Pendle.`;
     } else if (operationType === "deposit") {
       text = `## Add liquidity to Pendle pool 🔄
 
-**From**: ${formatTokenInfo(walletTokenData)}
-**To**: LP ${formatTokenInfo(data.pendleTokenData)}
-**Amount**: ${data.amount} ${walletTokenData.symbol}
+**From**: ${formatTokenInfo(data.tokenInData!)}
+**To**: ${formatTokenInfo(data.tokenOutData!)}
+**Amount**: ${data.amount} ${data.tokenInData!.symbol}
 **${balanceInfo}**
 **Platform**: Pendle
 
-User wants to add liquidity ${data.amount} ${walletTokenData.symbol} to LP ${data.pendleTokenData.symbol} on Pendle.`;
+User wants to add liquidity ${data.amount} ${data.tokenInData!.symbol} to ${data.tokenOutData!.symbol} on Pendle.`;
     } else if (operationType === "sell") {
       text = `## Sell PT Token 🔄
 
-**From**: PT ${formatTokenInfo(data.pendleTokenData)}
-**To**: ${formatTokenInfo(walletTokenData)}
-**Amount**: ${data.amount} ${data.pendleTokenData.symbol}
+**From**: ${formatTokenInfo(data.tokenInData!)}
+**To**: ${formatTokenInfo(data.tokenOutData!)}
+**Amount**: ${data.amount} ${data.tokenInData!.symbol}
 **${balanceInfo}**
 **Platform**: Pendle
 
-User wants to sell ${data.amount} PT ${data.pendleTokenData.symbol} to ${walletTokenData.symbol} on Pendle.`;
+User wants to sell ${data.amount} ${data.tokenInData!.symbol} to ${data.tokenOutData!.symbol} on Pendle.`;
     } else if (operationType === "withdraw") {
       text = `## Withdraw from Pendle pool 🔄
 
-**From**: LP ${formatTokenInfo(data.pendleTokenData)}
-**To**: ${formatTokenInfo(walletTokenData)}
-**Amount**: ${data.amount} LP ${data.pendleTokenData.symbol}
+**From**: ${formatTokenInfo(data.tokenInData!)}
+**To**: ${formatTokenInfo(data.tokenOutData!)}
+**Amount**: ${data.amount} ${data.tokenInData!.symbol}
 **${balanceInfo}**
 **Platform**: Pendle
 
-User wants to withdraw ${data.amount} LP ${data.pendleTokenData.symbol} from Pendle pool.`;
+User wants to withdraw ${data.amount} ${data.tokenInData!.symbol} from Pendle pool.`;
     }
 
     // Update intent context with extracted parameters if available
@@ -625,11 +654,11 @@ User wants to withdraw ${data.amount} LP ${data.pendleTokenData.symbol} from Pen
       try {
         intentContext.returnData = {
           ...intentContext.returnData,
-          userTokenData: data.userTokenData,
-          pendleTokenData: data.pendleTokenData,
-          pendleMarketAddress: data.pendleMarketAddress,
+          tokenInData: data.tokenInData!,
+          tokenOutData: data.tokenOutData!,
           amount: data.amount,
           operationType: data.operationType,
+          slippage: data.slippage,
         };
         await intentManager.storeIntent(intentContext);
       } catch (error) {
@@ -645,9 +674,8 @@ User wants to withdraw ${data.amount} LP ${data.pendleTokenData.symbol} from Pen
       data: { ...data, intentContext },
       values: {
         strategy: text,
-        pendleTokenData: data.pendleTokenData,
-        userTokenData: data.userTokenData,
-        pendleMarketAddress: data.pendleMarketAddress,
+        tokenInData: data.tokenInData!,
+        tokenOutData: data.tokenOutData!,
         amount: data.amount,
         operationType: data.operationType,
         slippage: data.slippage,

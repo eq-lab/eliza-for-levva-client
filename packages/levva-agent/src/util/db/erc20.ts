@@ -1,5 +1,5 @@
 // todo move db helpers to service
-import { and, eq, inArray, InferSelectModel } from "drizzle-orm";
+import { and, eq, inArray, InferSelectModel, sql } from "drizzle-orm";
 import { getAddress } from "viem";
 import type { IAgentRuntime } from "@elizaos/core";
 import { getDb } from "./client";
@@ -51,30 +51,23 @@ export const getToken = async (
   }
 };
 
-export const upsertToken = async (
+export const upsertTokens = async (
   runtime: IAgentRuntime,
-  params: Required<TokenData> & { chainId: number; info?: TokenInfo }
+  values: (Required<TokenData> & { chainId: number; info?: TokenInfo })[]
 ) => {
   const db = getDb(runtime);
-  const { address: _address, info, ...rest } = params;
-  const address = getAddress(_address);
+  const valuesToInsert = values.map((v) => {
+    const { address: _address, ...rest } = v;
+    const address = getAddress(_address);
+    return { ...rest, address };
+  });
 
-  const action = db
-    .insert(erc20Table)
-    .values({ ...rest, address, info: info ?? {} });
+  const action = db.insert(erc20Table).values(valuesToInsert);
 
-  if (!params.info) {
-    return (await action.onConflictDoNothing().returning())?.[0];
-  }
-
-  return (
-    await action
-      .onConflictDoUpdate({
-        target: [erc20Table.chainId, erc20Table.address],
-        set: {
-          info: params.info,
-        },
-      })
-      .returning()
-  )?.[0];
+  await action.onConflictDoUpdate({
+    target: [erc20Table.chainId, erc20Table.address, erc20Table.symbol],
+    set: {
+      info: sql`COALESCE(excluded.info, ${erc20Table.info})`,
+    },
+  });
 };

@@ -117,11 +117,19 @@ async function handleRequestRedeem(
     throw new Error(`LP token not found for strategy ${strategy.id}`);
   }
 
-  const balance = await levvaService.getBalanceOf(
+  const balanceDataEntries = await levvaService.wallet.getBalances(
     address,
     chainId,
-    lpToken.address! // lp token guaranteed not ETH
+    [
+      {
+        address: lpToken.address!,
+        decimals: lpToken.decimals,
+      },
+    ]
   );
+
+  const balance =
+    balanceDataEntries.length > 0 ? balanceDataEntries[0] : undefined;
 
   let amountOut: bigint;
 

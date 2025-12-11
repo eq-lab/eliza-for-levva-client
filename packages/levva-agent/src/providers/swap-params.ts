@@ -304,11 +304,19 @@ Please provide a valid token symbol (like USDC, ETH, WETH) or token address (0x.
 
     data.tokenOut = tokenOut;
 
-    const balance = await service.getBalanceOf(
+    const balanceDataEntries = await service.wallet.getBalances(
       user.address,
       chainId,
-      tokenIn.address ?? ETH_NULL_ADDR
+      [
+        {
+          address: tokenIn.address ?? ETH_NULL_ADDR,
+          decimals: tokenIn.decimals,
+        },
+      ]
     );
+
+    const balance =
+      balanceDataEntries.length > 0 ? balanceDataEntries[0] : undefined;
 
     const amountUnits = parseUnits(String(data.amount ?? 0), tokenIn.decimals);
 

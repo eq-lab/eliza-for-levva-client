@@ -44,7 +44,12 @@ export async function getPendleConvert({
   const query = new URLSearchParams({ ...params, enableAggregator, slippage });
 
   const response = await fetch(
-    `https://api-v2.pendle.finance${path}?${query.toString()}`
+    `https://api-v2.pendle.finance${path}?${query.toString()}`,
+    {
+      headers: {
+        Authorization: `Bearer ${process.env.PENDLE_API_KEY}`,
+      },
+    }
   );
 
   const data = await response.json();
@@ -65,7 +70,11 @@ export async function getPendleMarketSupportedTokens(
 ) {
   const path = `/core/v1/sdk/${chainId}/markets/${market}/tokens`;
 
-  const response = await fetch(`https://api-v2.pendle.finance${path}`);
+  const response = await fetch(`https://api-v2.pendle.finance${path}`, {
+    headers: {
+      Authorization: `Bearer ${process.env.PENDLE_API_KEY}`,
+    },
+  });
 
   const data = await response.json();
   const result = PendleMarketSupportedTokensResponseSchema.safeParse(data);

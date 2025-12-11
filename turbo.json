@@ -44,7 +44,8 @@
         "POSTGRES_URL",
         "OPENROUTER_API_KEY",
         "OPENAI_EMBEDDING_API_KEY",
-        "REDIS_URL"
+        "REDIS_URL",
+        "PENDLE_API_KEY"
       ],
       "persistent": true
     },

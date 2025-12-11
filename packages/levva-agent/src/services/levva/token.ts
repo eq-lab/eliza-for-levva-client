@@ -7,7 +7,7 @@ import {
   getToken as getTokenImpl,
   parseTokenInfo,
   TokenEntry,
-  upsertToken,
+  upsertTokens,
 } from "../../util";
 import { TokenData, TokenDataWithInfo } from "../../types/token";
 import { ETH_NULL_ADDR } from "../../constants/eth";
@@ -94,11 +94,17 @@ export class TokenServiceComponent {
             `Saving ${symbolOrAddress} as ${tokenData?.symbol}`
           );
 
-          await upsertToken(this.runtime, {
-            ...(tokenData as Required<TokenData>),
-            chainId: chain.id,
-          });
+          await upsertTokens(this.runtime, [
+            {
+              ...(tokenData as Required<TokenData>),
+              chainId: chain.id,
+            },
+          ]);
         }
+      }
+
+      if (tokenData?.symbol === "ETH") {
+        tokenData.address = ETH_NULL_ADDR;
       }
 
       return tokenData;

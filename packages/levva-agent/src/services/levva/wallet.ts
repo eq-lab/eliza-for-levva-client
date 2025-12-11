@@ -1,15 +1,15 @@
-import { and, eq, gte, InferSelectModel } from "drizzle-orm";
+import { and, eq, gte, InferSelectModel, sql } from "drizzle-orm";
 import { getAddress, parseUnits, formatUnits } from "viem";
 import { type IAgentRuntime, ServiceType } from "@elizaos/core";
 import type { LevvaService } from "./class";
 import { PROXIES } from "./constants";
-import { BackgroundQueue } from "./background-queue";
 import { BrowserService } from "../browser";
 import { ETH_NULL_ADDR } from "../../constants/eth";
 import { USD_DECIMALS } from "../../constants/math";
 import { balancesTable } from "../../schema/balances";
 import type { CacheEntry } from "../../types/core";
 import { blockexplorers, getDb, TokenEntry, getBalanceOf } from "../../util";
+import { TokenResponse } from "../../api/levva/schema";
 
 export type BalanceEntry = InferSelectModel<typeof balancesTable>;
 
@@ -50,37 +50,38 @@ interface UpsertBalanceParams {
   value: bigint;
 }
 
-export const upsertBalance = async (
+export const upsertBalances = async (
   runtime: IAgentRuntime,
-  params: UpsertBalanceParams
+  values: UpsertBalanceParams[]
 ) => {
   const db = getDb(runtime);
   const now = new Date();
-  const { address, token, ...rest } = params;
+  const valuesToInsert = values.map((v) => ({
+    address: getAddress(v.address),
+    chainId: v.chainId,
+    token: v.token ? getAddress(v.token) : ETH_NULL_ADDR,
+    amount: v.amount,
+    value: v.value,
+    type: v.token !== ETH_NULL_ADDR ? ("erc20" as const) : ("native" as const),
+    updatedAt: now,
+  }));
 
-  return (
-    await db
-      .insert(balancesTable)
-      .values({
-        ...rest,
-        address: getAddress(address),
-        type: token && token !== ETH_NULL_ADDR ? "erc20" : "native",
-        token: token ? getAddress(token) : ETH_NULL_ADDR,
+  await db
+    .insert(balancesTable)
+    .values(valuesToInsert)
+    .onConflictDoUpdate({
+      target: [
+        balancesTable.chainId,
+        balancesTable.address,
+        balancesTable.token,
+      ],
+      set: {
+        amount: sql`excluded.amount`,
+        value: sql`excluded.value`,
+        type: sql`excluded.type`,
         updatedAt: now,
-      })
-      .onConflictDoUpdate({
-        target: [
-          balancesTable.chainId,
-          balancesTable.address,
-          balancesTable.token,
-        ],
-        set: {
-          ...rest,
-          updatedAt: now,
-        },
-      })
-      .returning()
-  )?.[0];
+      },
+    });
 };
 
 export interface AssetEntry {
@@ -185,91 +186,82 @@ export interface BalanceData {
   value: bigint;
 }
 
-export class WalletServiceComponent extends BackgroundQueue<BalanceData> {
-  // Balance operation constants
-  private BALANCE_PREFIX = "wallet-balance:";
-  private service: LevvaService;
-  constructor(runtime: IAgentRuntime, service: LevvaService) {
-    super(runtime);
-    this.service = service;
-  }
-
-  cleanup() {
-    // Cleanup base queue functionality
-    this.cleanupQueue();
-
-    this.runtime.logger.info("WalletServiceComponent cleanup completed");
-  }
-
-  // Balance operation helpers
-  private createBalanceId = (params: {
-    address: `0x${string}`;
-    chainId: number;
-    token: `0x${string}` | undefined;
-  }) => {
-    return `${this.BALANCE_PREFIX}${params.address}:${params.chainId}:${params.token ?? "native"}`;
-  };
-
-  // Implementation of abstract method from BackgroundQueue
-  protected onBackgroundResolved = async (event: {
-    id: string;
-    value: BalanceData;
-  }) => {
-    // All events in this queue are balance updates
-    await upsertBalance(this.runtime, event.value);
-    this.runtime.logger.debug(`Updated balance for ${event.id}`, event.value);
-  };
+export class WalletServiceComponent {
+  constructor(
+    private readonly runtime: IAgentRuntime,
+    private readonly service: LevvaService
+  ) {}
 
   // Balance fetching with queue system
-  getBalanceOf = (
-    address: `0x${string}`,
+  async getBalances(
+    account: `0x${string}`,
     chainId: number,
-    token: `0x${string}`
-  ) => {
-    const id = this.createBalanceId({
-      address,
-      chainId,
-      token,
-    });
+    tokens: { address: `0x${string}`; decimals: number }[]
+  ): Promise<BalanceData[]> {
+    if (tokens.length === 0) {
+      return [];
+    }
 
-    return this.inBackground(id, async () => {
-      const amount = await getBalanceOf(chainId, address, token);
+    const balances = new Map<`0x${string}`, bigint>(
+      (
+        await getBalanceOf(
+          chainId,
+          account,
+          tokens.map((t) => t.address)
+        )
+      ).map((b) => [b.token, b.balance])
+    );
 
-      // Get token data from external API
-      let value = BigInt(0);
-      let decimals = 18; // Default
-      let _token = token;
+    const externalTokenDataTasks = [];
 
-      if (token === ETH_NULL_ADDR) {
-        _token = (await this.service.getWETH(chainId)).address as `0x${string}`;
-        decimals = 18;
+    for (const token of tokens) {
+      let tokenAddress = token.address;
+
+      if (token.address === ETH_NULL_ADDR) {
+        tokenAddress = (await this.service.getWETH(chainId))
+          .address as `0x${string}`;
       }
 
-      const tokenData = await this.service.token.getExternalTokenData(
-        _token,
-        chainId
+      externalTokenDataTasks.push(
+        this.service.token.getExternalTokenData(tokenAddress, chainId)
       );
+    }
 
-      if (tokenData) {
-        decimals = tokenData.decimals;
+    const externalTokenData = new Map<`0x${string}`, TokenResponse>(
+      (await Promise.all(externalTokenDataTasks))
+        .filter((t) => t !== undefined)
+        .map((t) => [t.address as `0x${string}`, t])
+    );
 
-        if (tokenData.priceUsd) {
-          // Convert priceUsd to string without scientific notation
-          const priceUsdString = tokenData.priceUsd.toFixed(USD_DECIMALS);
-          const priceUsdBigInt = parseUnits(priceUsdString, USD_DECIMALS);
-          value = (amount * priceUsdBigInt) / BigInt(10) ** BigInt(decimals);
-        }
+    const result = tokens.map((token) => {
+      const balance = balances.get(token.address);
+      const tokenData = externalTokenData.get(token.address);
+      let priceUsd = BigInt(0);
+
+      if (tokenData && tokenData.priceUsd && balance) {
+        // Convert priceUsd to string without scientific notation
+        const priceUsdString = tokenData.priceUsd.toFixed(USD_DECIMALS);
+        const priceUsdBigInt = parseUnits(priceUsdString, USD_DECIMALS);
+        priceUsd =
+          (balance * priceUsdBigInt) / BigInt(10) ** BigInt(token.decimals);
       }
 
       return {
-        amount,
-        address,
-        token,
-        chainId,
-        value,
+        amount: balance ?? BigInt(0),
+        address: account,
+        token: token.address,
+        chainId: chainId,
+        value: priceUsd,
       };
     });
-  };
+
+    if (result.length > 0) {
+      await upsertBalances(this.runtime, result);
+      this.runtime.logger.debug(`Updated balance for ${account}`);
+    }
+
+    return result;
+  }
 
   async getWalletAssets(params: {
     address: `0x${string}`;
@@ -298,11 +290,13 @@ export class WalletServiceComponent extends BackgroundQueue<BalanceData> {
 
     // Fetch missing token balances using queue system
     // Note: Background queue automatically saves via onBackgroundResolved
-    const missingBalanceData = await Promise.all(
-      missingTokens.map((token) => {
-        const tokenAddress = (token.address ?? ETH_NULL_ADDR) as `0x${string}`;
-        return this.getBalanceOf(params.address, params.chainId, tokenAddress);
-      })
+    const missingBalanceData = await this.getBalances(
+      params.address,
+      params.chainId,
+      missingTokens.map((token) => ({
+        address: (token.address ?? ETH_NULL_ADDR) as `0x${string}`,
+        decimals: token.decimals,
+      }))
     );
 
     // Combine existing balances from DB with newly fetched ones

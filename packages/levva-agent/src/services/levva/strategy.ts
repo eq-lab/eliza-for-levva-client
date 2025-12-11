@@ -369,11 +369,14 @@ export class StrategyComponent {
 
     let amountIn = parseUnits(amount, tokenIn.decimals);
 
-    const balance = await this.service.getBalanceOf(
+    const balanceDataEntries = await this.service.wallet.getBalances(
       sender,
       chainId,
-      tokenIn.address
+      [{ address: tokenIn.address, decimals: tokenIn.decimals }]
     );
+
+    const balance =
+      balanceDataEntries.length > 0 ? balanceDataEntries[0] : undefined;
 
     if (wrap) {
       const weth = await this.service.getWETH(chainId);
@@ -458,11 +461,19 @@ export class StrategyComponent {
 
     let amountIn = parseUnits(amount, tokenIn?.decimals ?? 18);
 
-    const balance = await this.service.getBalanceOf(
+    const balanceDataEntries = await this.service.wallet.getBalances(
       receiver,
       chainId,
-      tokenIn?.address ?? ETH_NULL_ADDR
+      [
+        {
+          address: tokenIn?.address ?? ETH_NULL_ADDR,
+          decimals: tokenIn?.decimals ?? 18,
+        },
+      ]
     );
+
+    const balance =
+      balanceDataEntries.length > 0 ? balanceDataEntries[0] : undefined;
 
     if ((balance?.amount ?? BigInt(0)) < amountIn) {
       throw new Error("Insufficient balance");
