@@ -401,7 +401,6 @@ export class LevvaService extends Service implements ILevvaService {
         continue;
       }
 
-      // SET LP-USDe-bla-bla
       lpTokenData.symbol = `LP${ptTokenData.symbol.substring(2)}`;
 
       tokensToUpsert.push(ptTokenData!);

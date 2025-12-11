@@ -88,32 +88,36 @@ export const getTokensData = async (
   const chain = getChain(chainId);
   const client = getClient(chain);
 
+  const contracts = tokens
+    .filter((token) => token && token !== ETH_NULL_ADDR)
+    .flatMap((token) => [
+      {
+        abi: erc20Abi,
+        address: token!,
+        functionName: "name",
+      },
+      {
+        abi: erc20Abi,
+        address: token!,
+        functionName: "symbol",
+      },
+      {
+        abi: erc20Abi,
+        address: token!,
+        functionName: "decimals",
+      },
+    ]);
+
   const data = await client.multicall({
-    contracts: tokens
-      .filter((token) => token && token !== ETH_NULL_ADDR)
-      .map((token) => token!)
-      .flatMap((token) => [
-        {
-          abi: erc20Abi,
-          address: token,
-          functionName: "name",
-        },
-        {
-          abi: erc20Abi,
-          address: token,
-          functionName: "symbol",
-        },
-        {
-          abi: erc20Abi,
-          address: token,
-          functionName: "decimals",
-        },
-      ]),
+    contracts,
+    batchSize: 100,
   });
 
   const result: (TokenData | undefined)[] = [];
 
-  for (const [index, token] of tokens.entries()) {
+  let erc20Index = 0;
+
+  for (const token of tokens) {
     if (!token) {
       result.push(undefined);
       continue;
@@ -126,16 +130,16 @@ export const getTokensData = async (
     }
 
     const name =
-      data[index * 3].status === "success"
-        ? (data[index * 3].result as string)
+      data[erc20Index * 3].status === "success"
+        ? (data[erc20Index * 3].result as string)
         : undefined;
     const symbol =
-      data[index * 3 + 1].status === "success"
-        ? (data[index * 3 + 1].result as string)
+      data[erc20Index * 3 + 1].status === "success"
+        ? (data[erc20Index * 3 + 1].result as string)
         : undefined;
     const decimals =
-      data[index * 3 + 2].status === "success"
-        ? (data[index * 3 + 2].result as number)
+      data[erc20Index * 3 + 2].status === "success"
+        ? (data[erc20Index * 3 + 2].result as number)
         : undefined;
 
     if (name && symbol && decimals) {
@@ -143,6 +147,8 @@ export const getTokensData = async (
     } else {
       result.push(undefined);
     }
+
+    erc20Index++;
   }
 
   return result;
