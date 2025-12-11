@@ -16,6 +16,7 @@ export const getBalanceOf = async (
 
   if (erc20Tokens.length > 0) {
     const erc20Balances = await client.multicall({
+      batchSize: 100,
       contracts: erc20Tokens.map((token) => ({
         abi: erc20Abi,
         address: token,

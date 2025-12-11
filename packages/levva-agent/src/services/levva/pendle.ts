@@ -53,6 +53,7 @@ export const getPendleMarketPtTokens = async (
   const client = getClient(chain);
 
   const tokens = await client.multicall({
+    batchSize: 100,
     contracts: marketAddresses.map((market) => ({
       abi: pendleMarketAbi,
       address: market,
