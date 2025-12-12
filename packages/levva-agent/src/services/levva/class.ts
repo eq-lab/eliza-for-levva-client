@@ -1,18 +1,17 @@
 import assert from "node:assert";
-import { encodeFunctionData, getAddress, sha256, toHex } from "viem";
-import { and, eq } from "drizzle-orm";
+import { encodeFunctionData, sha256, toHex } from "viem";
 import {
   Content,
   Entity,
   type IAgentRuntime,
   Service,
+  ServiceType,
   UUID,
 } from "@elizaos/core";
 import { LEVVA_SERVICE } from "../../constants/enum";
 import { ILevvaService } from "../../types/service";
 import { CalldataWithDescription } from "../../types/tx";
-import { balancesTable } from "../../schema/balances";
-import { getDb, upsertTokens } from "../../util/db";
+import { upsertTokens } from "../../util/db";
 import {
   getLevvaUser,
   getToken as getTokenImpl,
@@ -45,6 +44,7 @@ import { getPendleMarketPtTokens } from "./pendle";
 import { PendleMarket } from "../../api/levva/schema";
 import { getPendleMarketSupportedTokens } from "../../api/pendle";
 import { TokenData } from "../../types/token";
+import { RedisService } from "../redis";
 
 const REQUIRED_PLUGINS = ["levva"];
 
@@ -71,10 +71,15 @@ export class LevvaService extends Service implements ILevvaService {
     this.runtime = runtime; // making public until fix
     assert(checkPlugins(runtime), "Required plugins not found");
 
+    const redisService = runtime.getService<RedisService>(ServiceType.KV_STORE);
+    if (!redisService) {
+      throw new Error("Redis service not found");
+    }
+
     // Initialize NEW service components - pass service instance to constructor
     this.strategy = new StrategyComponent(runtime, this);
     this.token = new TokenServiceComponent(runtime);
-    this.wallet = new WalletServiceComponent(runtime, this);
+    this.wallet = new WalletServiceComponent(runtime, this, redisService);
     this.news = new NewsServiceComponent(runtime);
   }
 
@@ -169,35 +174,6 @@ export class LevvaService extends Service implements ILevvaService {
   /** @deprecated Use this.wallet.getWalletAssets() directly instead */
   getWalletAssets = (params: { address: `0x${string}`; chainId: number }) =>
     this.wallet.getWalletAssets(params);
-
-  /**
-   * Invalidate user balance cache by deleting balance entries from database
-   * This forces fresh balance queries on next request
-   */
-  async invalidateUserBalanceCache(address: `0x${string}`, chainId: number) {
-    try {
-      const db = getDb(this.runtime);
-      await db
-        .delete(balancesTable)
-        .where(
-          and(
-            eq(balancesTable.address, getAddress(address)),
-            eq(balancesTable.chainId, chainId)
-          )
-        );
-
-      this.runtime.logger.info("Invalidated user balance cache", {
-        address,
-        chainId,
-      });
-    } catch (error) {
-      this.runtime.logger.error(
-        "Failed to invalidate user balance cache:",
-        error
-      );
-      throw error;
-    }
-  }
 
   // -- End of Wallet Assets --
   // -- Crypto news --

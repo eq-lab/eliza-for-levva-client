@@ -1,11 +1,8 @@
 import {
   type Chain,
   createPublicClient,
-  erc20Abi,
   fallback,
-  getAddress,
   http,
-  isHex,
   type PublicClient,
   type Transport,
 } from "viem";

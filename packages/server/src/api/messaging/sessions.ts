@@ -7,11 +7,11 @@ import {
   type IKVStore,
   ServiceType,
   isKVStoreService,
-} from '@elizaos/core';
-import express from 'express';
-import { v4 as uuidv4 } from 'uuid';
-import type { AgentServer, CentralRootMessage } from '../../index';
-import { transformMessageAttachments } from '../../utils/media-transformer';
+} from "@elizaos/core";
+import express from "express";
+import { v4 as uuidv4 } from "uuid";
+import type { AgentServer, CentralRootMessage } from "../../index";
+import { transformMessageAttachments } from "../../utils/media-transformer";
 import type {
   Session,
   SessionTimeoutConfig,
@@ -23,7 +23,7 @@ import type {
   GetMessagesResponse,
   SessionInfoResponse,
   HealthCheckResponse,
-} from '../../types/sessions';
+} from "../../types/sessions";
 import {
   SessionNotFoundError,
   SessionExpiredError,
@@ -38,7 +38,7 @@ import {
   SessionRenewalError,
   MessageSendError,
   createErrorHandler,
-} from './errors/SessionErrors';
+} from "./errors/SessionErrors";
 
 interface SessionMetrics {
   totalCreated: number;
@@ -48,7 +48,10 @@ interface SessionMetrics {
   peakConcurrent: number;
 }
 
-function mergeSessionMetrics([metrics, ...rest]: SessionMetrics[]): SessionMetrics {
+function mergeSessionMetrics([
+  metrics,
+  ...rest
+]: SessionMetrics[]): SessionMetrics {
   return rest.reduce((acc, curr) => {
     return {
       totalCreated: acc.totalCreated + curr.totalCreated,
@@ -80,7 +83,7 @@ class SessionStore implements IKVStore<Session, SessionMetrics> {
 
   async set(sessionId: string, session: Session): Promise<void> {
     if (!isValidSession(session)) {
-      throw new SessionCreationError('Invalid session data');
+      throw new SessionCreationError("Invalid session data");
     }
 
     this.sessions.set(sessionId, session);
@@ -178,18 +181,24 @@ function safeParseInt(
 
   // Check for NaN or invalid number
   if (isNaN(parsed) || !isFinite(parsed)) {
-    logger.warn(`[Sessions API] Invalid integer value: "${value}", using fallback: ${fallback}`);
+    logger.warn(
+      `[Sessions API] Invalid integer value: "${value}", using fallback: ${fallback}`
+    );
     return fallback;
   }
 
   // Apply bounds if specified
   let result = parsed;
   if (min !== undefined && result < min) {
-    logger.warn(`[Sessions API] Value ${result} is below minimum ${min}, clamping to minimum`);
+    logger.warn(
+      `[Sessions API] Value ${result} is below minimum ${min}, clamping to minimum`
+    );
     result = min;
   }
   if (max !== undefined && result > max) {
-    logger.warn(`[Sessions API] Value ${result} is above maximum ${max}, clamping to maximum`);
+    logger.warn(
+      `[Sessions API] Value ${result} is above maximum ${max}, clamping to maximum`
+    );
     result = max;
   }
 
@@ -203,7 +212,12 @@ const DEFAULT_TIMEOUT_MINUTES = safeParseInt(
   1,
   10080 // 7 days max
 );
-const MIN_TIMEOUT_MINUTES = safeParseInt(process.env.SESSION_MIN_TIMEOUT_MINUTES, 5, 1, 60);
+const MIN_TIMEOUT_MINUTES = safeParseInt(
+  process.env.SESSION_MIN_TIMEOUT_MINUTES,
+  5,
+  1,
+  60
+);
 const MAX_TIMEOUT_MINUTES = safeParseInt(
   process.env.SESSION_MAX_TIMEOUT_MINUTES,
   1440, // 24 hours
@@ -223,9 +237,11 @@ const DEFAULT_WARNING_THRESHOLD_MINUTES = safeParseInt(
   60
 );
 const CLEANUP_INTERVAL_MS =
-  safeParseInt(process.env.SESSION_CLEANUP_INTERVAL_MINUTES, 5, 1, 60) * 60 * 1000;
+  safeParseInt(process.env.SESSION_CLEANUP_INTERVAL_MINUTES, 5, 1, 60) *
+  60 *
+  1000;
 
-const DEFAULT_SERVER_ID = '00000000-0000-0000-0000-000000000000' as UUID;
+const DEFAULT_SERVER_ID = "00000000-0000-0000-0000-000000000000" as UUID;
 
 // Agent-specific timeout configurations (cached from agent settings)
 const agentTimeoutConfigs = new Map<UUID, SessionTimeoutConfig>();
@@ -238,23 +254,23 @@ let processHandlersRegistered = false;
  * Type guard to check if an object is a valid Session
  */
 function isValidSession(obj: unknown): obj is Session {
-  if (!obj || typeof obj !== 'object') {
+  if (!obj || typeof obj !== "object") {
     return false;
   }
 
   const session = obj as Record<string, unknown>;
 
   return (
-    typeof session.id === 'string' &&
-    typeof session.agentId === 'string' &&
-    typeof session.channelId === 'string' &&
-    typeof session.userId === 'string' &&
+    typeof session.id === "string" &&
+    typeof session.agentId === "string" &&
+    typeof session.channelId === "string" &&
+    typeof session.userId === "string" &&
     session.createdAt instanceof Date &&
     session.lastActivity instanceof Date &&
     session.expiresAt instanceof Date &&
-    typeof session.renewalCount === 'number' &&
+    typeof session.renewalCount === "number" &&
     session.timeoutConfig !== undefined &&
-    typeof session.timeoutConfig === 'object'
+    typeof session.timeoutConfig === "object"
   );
 }
 
@@ -262,24 +278,24 @@ function isValidSession(obj: unknown): obj is Session {
  * Type guard for CreateSessionRequest
  */
 function isCreateSessionRequest(obj: unknown): obj is CreateSessionRequest {
-  if (!obj || typeof obj !== 'object') {
+  if (!obj || typeof obj !== "object") {
     return false;
   }
 
   const req = obj as Record<string, unknown>;
-  return typeof req.agentId === 'string' && typeof req.userId === 'string';
+  return typeof req.agentId === "string" && typeof req.userId === "string";
 }
 
 /**
  * Type guard for SendMessageRequest
  */
 function isSendMessageRequest(obj: unknown): obj is SendMessageRequest {
-  if (!obj || typeof obj !== 'object') {
+  if (!obj || typeof obj !== "object") {
     return false;
   }
 
   const req = obj as Record<string, unknown>;
-  return typeof req.content === 'string';
+  return typeof req.content === "string";
 }
 
 /**
@@ -287,22 +303,22 @@ function isSendMessageRequest(obj: unknown): obj is SendMessageRequest {
  * Accepts numbers or strings (which will be parsed later)
  */
 function isValidTimeoutConfig(obj: unknown): obj is SessionTimeoutConfig {
-  if (!obj || typeof obj !== 'object') {
+  if (!obj || typeof obj !== "object") {
     return false;
   }
 
   const config = obj as Record<string, unknown>;
   return (
     (config.timeoutMinutes === undefined ||
-      typeof config.timeoutMinutes === 'number' ||
-      typeof config.timeoutMinutes === 'string') &&
-    (config.autoRenew === undefined || typeof config.autoRenew === 'boolean') &&
+      typeof config.timeoutMinutes === "number" ||
+      typeof config.timeoutMinutes === "string") &&
+    (config.autoRenew === undefined || typeof config.autoRenew === "boolean") &&
     (config.maxDurationMinutes === undefined ||
-      typeof config.maxDurationMinutes === 'number' ||
-      typeof config.maxDurationMinutes === 'string') &&
+      typeof config.maxDurationMinutes === "number" ||
+      typeof config.maxDurationMinutes === "string") &&
     (config.warningThresholdMinutes === undefined ||
-      typeof config.warningThresholdMinutes === 'number' ||
-      typeof config.warningThresholdMinutes === 'string')
+      typeof config.warningThresholdMinutes === "number" ||
+      typeof config.warningThresholdMinutes === "string")
   );
 }
 
@@ -334,9 +350,11 @@ function getAgentTimeoutConfig(agent: IAgentRuntime): SessionTimeoutConfig {
   }
 
   // Try to get from agent settings with safe parsing
-  const timeoutSetting = agent.getSetting('SESSION_TIMEOUT_MINUTES');
-  const maxDurationSetting = agent.getSetting('SESSION_MAX_DURATION_MINUTES');
-  const warningThresholdSetting = agent.getSetting('SESSION_WARNING_THRESHOLD_MINUTES');
+  const timeoutSetting = agent.getSetting("SESSION_TIMEOUT_MINUTES");
+  const maxDurationSetting = agent.getSetting("SESSION_MAX_DURATION_MINUTES");
+  const warningThresholdSetting = agent.getSetting(
+    "SESSION_WARNING_THRESHOLD_MINUTES"
+  );
 
   const agentConfig: SessionTimeoutConfig = {
     timeoutMinutes: timeoutSetting
@@ -347,8 +365,8 @@ function getAgentTimeoutConfig(agent: IAgentRuntime): SessionTimeoutConfig {
           MAX_TIMEOUT_MINUTES
         )
       : DEFAULT_TIMEOUT_MINUTES,
-    autoRenew: agent.getSetting('SESSION_AUTO_RENEW')
-      ? agent.getSetting('SESSION_AUTO_RENEW') === 'true'
+    autoRenew: agent.getSetting("SESSION_AUTO_RENEW")
+      ? agent.getSetting("SESSION_AUTO_RENEW") === "true"
       : true,
     maxDurationMinutes: maxDurationSetting
       ? safeParseInt(
@@ -409,7 +427,10 @@ function mergeTimeoutConfigs(
         merged.timeoutMinutes = DEFAULT_TIMEOUT_MINUTES;
       } else {
         // Clamp to valid range
-        const timeout = Math.max(MIN_TIMEOUT_MINUTES, Math.min(MAX_TIMEOUT_MINUTES, timeoutValue));
+        const timeout = Math.max(
+          MIN_TIMEOUT_MINUTES,
+          Math.min(MAX_TIMEOUT_MINUTES, timeoutValue)
+        );
         merged.timeoutMinutes = timeout;
       }
     }
@@ -465,7 +486,8 @@ function calculateExpirationDate(
   _renewalCount: number // Prefix with underscore to indicate intentionally unused
 ): Date {
   const baseTime = config.autoRenew ? lastActivity : createdAt;
-  const timeoutMs = (config.timeoutMinutes || DEFAULT_TIMEOUT_MINUTES) * 60 * 1000;
+  const timeoutMs =
+    (config.timeoutMinutes || DEFAULT_TIMEOUT_MINUTES) * 60 * 1000;
 
   // Check if we've exceeded max duration
   if (config.maxDurationMinutes) {
@@ -490,7 +512,8 @@ function shouldWarnAboutExpiration(session: Session): boolean {
   }
 
   const warningThresholdMs =
-    (session.timeoutConfig.warningThresholdMinutes || DEFAULT_WARNING_THRESHOLD_MINUTES) *
+    (session.timeoutConfig.warningThresholdMinutes ||
+      DEFAULT_WARNING_THRESHOLD_MINUTES) *
     60 *
     1000;
   const timeRemaining = session.expiresAt.getTime() - Date.now();
@@ -508,7 +531,9 @@ function renewSession(session: Session): boolean {
 
   const now = new Date();
   const maxDurationMs =
-    (session.timeoutConfig.maxDurationMinutes || DEFAULT_MAX_DURATION_MINUTES) * 60 * 1000;
+    (session.timeoutConfig.maxDurationMinutes || DEFAULT_MAX_DURATION_MINUTES) *
+    60 *
+    1000;
   const timeSinceCreation = now.getTime() - session.createdAt.getTime();
 
   if (timeSinceCreation >= maxDurationMs) {
@@ -540,7 +565,8 @@ function createSessionInfoResponse(session: Session): SessionInfoResponse {
   const now = Date.now();
   const timeRemaining = Math.max(0, session.expiresAt.getTime() - now);
   const warningThresholdMs =
-    (session.timeoutConfig.warningThresholdMinutes || DEFAULT_WARNING_THRESHOLD_MINUTES) *
+    (session.timeoutConfig.warningThresholdMinutes ||
+      DEFAULT_WARNING_THRESHOLD_MINUTES) *
     60 *
     1000;
 
@@ -563,7 +589,7 @@ function createSessionInfoResponse(session: Session): SessionInfoResponse {
  * Validates session metadata
  */
 function validateMetadata(metadata: unknown): void {
-  if (!metadata || typeof metadata !== 'object') {
+  if (!metadata || typeof metadata !== "object") {
     return; // Empty metadata is valid
   }
 
@@ -581,12 +607,12 @@ function validateMetadata(metadata: unknown): void {
  * Validates message content
  */
 function validateContent(content: unknown): content is string {
-  if (typeof content !== 'string') {
-    throw new InvalidContentError('Content must be a string', content);
+  if (typeof content !== "string") {
+    throw new InvalidContentError("Content must be a string", content);
   }
 
   if (content.length === 0) {
-    throw new InvalidContentError('Content cannot be empty', content);
+    throw new InvalidContentError("Content cannot be empty", content);
   }
 
   if (content.length > MAX_CONTENT_LENGTH) {
@@ -609,7 +635,11 @@ type AsyncRequestHandler = (
 ) => Promise<void> | void;
 
 function asyncHandler(fn: AsyncRequestHandler): express.RequestHandler {
-  return (req: express.Request, res: express.Response, next: express.NextFunction) => {
+  return (
+    req: express.Request,
+    res: express.Response,
+    next: express.NextFunction
+  ) => {
     Promise.resolve(fn(req, res, next)).catch(next);
   };
 }
@@ -638,7 +668,7 @@ export function createSessionsRouter(
     const service = runtime.getService(ServiceType.KV_STORE);
 
     if (isKVStoreService(service)) {
-      return service.getStore('sessions');
+      return service.getStore("sessions");
     }
 
     return SessionStore.getInstance();
@@ -649,7 +679,7 @@ export function createSessionsRouter(
    * GET /api/messaging/sessions/health
    */
   router.get(
-    '/sessions/health',
+    "/sessions/health",
     asyncHandler(async (_req: express.Request, res: express.Response) => {
       let fallbackMetrics: SessionMetrics | undefined;
       const metrics: SessionMetrics[] = [];
@@ -675,8 +705,9 @@ export function createSessionsRouter(
         invalidSessions?: number;
         uptime?: number;
       } = {
-        status: 'healthy',
-        activeSessions: total.totalCreated - total.totalExpired - total.totalDeleted,
+        status: "healthy",
+        activeSessions:
+          total.totalCreated - total.totalExpired - total.totalDeleted,
         timestamp: new Date().toISOString(),
         expiringSoon: total.expiringSoon,
         uptime: process.uptime(),
@@ -690,21 +721,21 @@ export function createSessionsRouter(
    * POST /api/messaging/sessions
    */
   router.post(
-    '/sessions',
+    "/sessions",
     asyncHandler(async (req: express.Request, res: express.Response) => {
       const body: CreateSessionRequest = req.body;
 
       // Validate request structure
       if (!isCreateSessionRequest(body)) {
-        throw new MissingFieldsError(['agentId', 'userId']);
+        throw new MissingFieldsError(["agentId", "userId"]);
       }
 
       // Validate UUID formats
       if (!validateUuid(body.agentId)) {
-        throw new InvalidUuidError('agentId', body.agentId);
+        throw new InvalidUuidError("agentId", body.agentId);
       }
       if (!validateUuid(body.userId)) {
-        throw new InvalidUuidError('userId', body.userId);
+        throw new InvalidUuidError("userId", body.userId);
       }
 
       // Check if agent exists
@@ -722,7 +753,10 @@ export function createSessionsRouter(
 
       // Get agent timeout config and merge with session config
       const agentTimeoutConfig = getAgentTimeoutConfig(agent);
-      const finalTimeoutConfig = mergeTimeoutConfigs(body.timeoutConfig, agentTimeoutConfig);
+      const finalTimeoutConfig = mergeTimeoutConfigs(
+        body.timeoutConfig,
+        agentTimeoutConfig
+      );
 
       // Log timeout configuration
       logger.info(
@@ -750,11 +784,17 @@ export function createSessionsRouter(
         });
 
         // Add agent as participant
-        await serverInstance.addParticipantsToChannel(channelId, [body.agentId as UUID]);
+        await serverInstance.addParticipantsToChannel(channelId, [
+          body.agentId as UUID,
+        ]);
       } catch (error) {
-        throw new SessionCreationError('Failed to create channel or add participants', {
-          originalError: error instanceof Error ? error.message : String(error),
-        });
+        throw new SessionCreationError(
+          "Failed to create channel or add participants",
+          {
+            originalError:
+              error instanceof Error ? error.message : String(error),
+          }
+        );
       }
 
       // Create session with calculated expiration
@@ -772,7 +812,8 @@ export function createSessionsRouter(
         renewalCount: 0,
       };
 
-      await sessions.set(sessionId, session);
+      const ttlMs = session.expiresAt.getTime() - Date.now();
+      await sessions.set(sessionId, session, Math.max(ttlMs, 1000));
 
       const response: CreateSessionResponse = {
         sessionId,
@@ -793,7 +834,7 @@ export function createSessionsRouter(
    * GET /api/messaging/sessions/:sessionId
    */
   router.get(
-    '/sessions/:sessionId',
+    "/sessions/:sessionId",
     asyncHandler(async (req: express.Request, res: express.Response) => {
       const { sessionId } = req.params;
       let session: Session | undefined;
@@ -828,14 +869,14 @@ export function createSessionsRouter(
    * POST /api/messaging/sessions/:sessionId/messages
    */
   router.post(
-    '/sessions/:sessionId/messages',
+    "/sessions/:sessionId/messages",
     asyncHandler(async (req: express.Request, res: express.Response) => {
       const { sessionId } = req.params;
       const body: SendMessageRequest = req.body;
 
       // Validate request structure
       if (!isSendMessageRequest(body)) {
-        throw new InvalidContentError('Invalid message request format', body);
+        throw new InvalidContentError("Invalid message request format", body);
       }
 
       let session: Session | undefined;
@@ -867,11 +908,16 @@ export function createSessionsRouter(
       if (!wasRenewed && session.timeoutConfig.autoRenew) {
         // Auto-renew is enabled but renewal failed (max duration reached)
         const maxDurationMs =
-          (session.timeoutConfig.maxDurationMinutes || DEFAULT_MAX_DURATION_MINUTES) * 60 * 1000;
+          (session.timeoutConfig.maxDurationMinutes ||
+            DEFAULT_MAX_DURATION_MINUTES) *
+          60 *
+          1000;
         const timeSinceCreation = Date.now() - session.createdAt.getTime();
 
         if (timeSinceCreation >= maxDurationMs) {
-          logger.warn(`[Sessions API] Session ${sessionId} has reached maximum duration`);
+          logger.warn(
+            `[Sessions API] Session ${sessionId} has reached maximum duration`
+          );
         }
       } else if (!session.timeoutConfig.autoRenew) {
         // Just update last activity without renewing
@@ -885,7 +931,9 @@ export function createSessionsRouter(
           sentAt: new Date(),
         };
 
-        logger.info(`[Sessions API] Session ${sessionId} is near expiration, warning state set`);
+        logger.info(
+          `[Sessions API] Session ${sessionId} is near expiration, warning state set`
+        );
         // In a real implementation, you might want to send a notification to the client here
       }
 
@@ -894,7 +942,9 @@ export function createSessionsRouter(
         // Fetch the channel to get its metadata (which includes session metadata)
         let channelMetadata = {};
         try {
-          const channel = await serverInstance.getChannelDetails(session.channelId);
+          const channel = await serverInstance.getChannelDetails(
+            session.channelId
+          );
           if (channel && channel.metadata) {
             channelMetadata = channel.metadata;
           }
@@ -921,13 +971,18 @@ export function createSessionsRouter(
             content: body.content,
             attachments: body.attachments,
           },
-          sourceType: 'user',
+          sourceType: "user",
           metadata: mergedMetadata,
         });
       } catch (error) {
-        throw new MessageSendError(sessionId, 'Failed to create message in database', {
-          originalError: error instanceof Error ? error.message : String(error),
-        });
+        throw new MessageSendError(
+          sessionId,
+          "Failed to create message in database",
+          {
+            originalError:
+              error instanceof Error ? error.message : String(error),
+          }
+        );
       }
 
       // Include session status in response
@@ -954,7 +1009,7 @@ export function createSessionsRouter(
    * GET /api/messaging/sessions/:sessionId/messages
    */
   router.get(
-    '/sessions/:sessionId/messages',
+    "/sessions/:sessionId/messages",
     asyncHandler(async (req: express.Request, res: express.Response) => {
       const { sessionId } = req.params;
       // Parse query parameters with proper type handling
@@ -983,7 +1038,12 @@ export function createSessionsRouter(
       // Parse and validate query parameters
       let messageLimit = DEFAULT_LIMIT;
       if (query.limit) {
-        const parsedLimit = safeParseInt(query.limit, DEFAULT_LIMIT, 1, MAX_LIMIT);
+        const parsedLimit = safeParseInt(
+          query.limit,
+          DEFAULT_LIMIT,
+          1,
+          MAX_LIMIT
+        );
         // Since safeParseInt handles NaN, we can directly use the result
         messageLimit = parsedLimit;
       }
@@ -994,22 +1054,38 @@ export function createSessionsRouter(
       if (query.before) {
         const beforeTimestamp = parseInt(query.before, 10);
         if (isNaN(beforeTimestamp) || !isFinite(beforeTimestamp)) {
-          throw new InvalidPaginationError('before', query.before, 'Must be a valid timestamp');
+          throw new InvalidPaginationError(
+            "before",
+            query.before,
+            "Must be a valid timestamp"
+          );
         }
         beforeDate = new Date(beforeTimestamp);
         if (isNaN(beforeDate.getTime())) {
-          throw new InvalidPaginationError('before', query.before, 'Invalid date from timestamp');
+          throw new InvalidPaginationError(
+            "before",
+            query.before,
+            "Invalid date from timestamp"
+          );
         }
       }
 
       if (query.after) {
         const afterTimestamp = parseInt(query.after, 10);
         if (isNaN(afterTimestamp) || !isFinite(afterTimestamp)) {
-          throw new InvalidPaginationError('after', query.after, 'Must be a valid timestamp');
+          throw new InvalidPaginationError(
+            "after",
+            query.after,
+            "Must be a valid timestamp"
+          );
         }
         afterDate = new Date(afterTimestamp);
         if (isNaN(afterDate.getTime())) {
-          throw new InvalidPaginationError('after', query.after, 'Invalid date from timestamp');
+          throw new InvalidPaginationError(
+            "after",
+            query.after,
+            "Invalid date from timestamp"
+          );
         }
       }
 
@@ -1028,11 +1104,15 @@ export function createSessionsRouter(
         );
 
         messages = allMessages
-          .filter((msg) => msg.createdAt > afterDate && msg.createdAt < beforeDate)
+          .filter(
+            (msg) => msg.createdAt > afterDate && msg.createdAt < beforeDate
+          )
           .slice(0, messageLimit);
 
         if (allMessages.length === fetchLimit) {
-          logger.debug(`[Sessions API] Range query hit limit of ${fetchLimit} messages`);
+          logger.debug(
+            `[Sessions API] Range query hit limit of ${fetchLimit} messages`
+          );
         }
       } else if (afterDate) {
         // Forward pagination: messages newer than a timestamp
@@ -1043,7 +1123,9 @@ export function createSessionsRouter(
           fetchLimit
         );
 
-        const newerMessages = recentMessages.filter((msg) => msg.createdAt > afterDate);
+        const newerMessages = recentMessages.filter(
+          (msg) => msg.createdAt > afterDate
+        );
 
         if (newerMessages.length > messageLimit) {
           // Get the oldest N messages from the newer set for continuous pagination
@@ -1068,10 +1150,12 @@ export function createSessionsRouter(
         let rawMessage: ParsedRawMessage = {};
         try {
           const parsedData =
-            typeof msg.rawMessage === 'string' ? JSON.parse(msg.rawMessage) : msg.rawMessage;
+            typeof msg.rawMessage === "string"
+              ? JSON.parse(msg.rawMessage)
+              : msg.rawMessage;
 
           // Validate parsed data is an object
-          if (parsedData && typeof parsedData === 'object') {
+          if (parsedData && typeof parsedData === "object") {
             rawMessage = parsedData as ParsedRawMessage;
           }
         } catch (error) {
@@ -1091,21 +1175,27 @@ export function createSessionsRouter(
           },
         });
 
-        const metadata: SimplifiedMessage['metadata'] = {
+        const metadata: SimplifiedMessage["metadata"] = {
           thought: rawMessage.thought,
           actions: rawMessage.actions,
         };
 
         // Add any attachments from transformedMessage.metadata
-        if (transformedMessage.metadata && typeof transformedMessage.metadata === 'object') {
+        if (
+          transformedMessage.metadata &&
+          typeof transformedMessage.metadata === "object"
+        ) {
           Object.assign(metadata, transformedMessage.metadata);
         }
 
         return {
           id: msg.id,
-          content: typeof msg.content === 'string' ? msg.content : JSON.stringify(msg.content),
+          content:
+            typeof msg.content === "string"
+              ? msg.content
+              : JSON.stringify(msg.content),
           authorId: msg.authorId,
-          isAgent: msg.sourceType === 'agent_response',
+          isAgent: msg.sourceType === "agent_response",
           createdAt: msg.createdAt,
           metadata,
         };
@@ -1142,7 +1232,7 @@ export function createSessionsRouter(
    * POST /api/messaging/sessions/:sessionId/renew
    */
   router.post(
-    '/sessions/:sessionId/renew',
+    "/sessions/:sessionId/renew",
     asyncHandler(async (req: express.Request, res: express.Response) => {
       const { sessionId } = req.params;
       let session: Session | undefined;
@@ -1171,13 +1261,14 @@ export function createSessionsRouter(
       session.timeoutConfig.autoRenew = previousAutoRenew;
 
       if (!renewed) {
-        throw new SessionRenewalError(sessionId, 'Maximum duration reached', {
+        throw new SessionRenewalError(sessionId, "Maximum duration reached", {
           maxDuration: session.timeoutConfig.maxDurationMinutes,
           createdAt: session.createdAt,
           timeSinceCreation: Date.now() - session.createdAt.getTime(),
         });
       } else {
-        await store.set(sessionId, session);
+        const ttlMs = session.expiresAt.getTime() - Date.now();
+        await store.set(sessionId, session, Math.max(ttlMs, 1000));
       }
 
       const response = createSessionInfoResponse(session);
@@ -1190,7 +1281,7 @@ export function createSessionsRouter(
    * PATCH /api/messaging/sessions/:sessionId/timeout
    */
   router.patch(
-    '/sessions/:sessionId/timeout',
+    "/sessions/:sessionId/timeout",
     asyncHandler(async (req: express.Request, res: express.Response) => {
       const { sessionId } = req.params;
       const newConfig: SessionTimeoutConfig = req.body;
@@ -1212,7 +1303,10 @@ export function createSessionsRouter(
 
       // Validate the new config structure
       if (!isValidTimeoutConfig(newConfig)) {
-        throw new InvalidTimeoutConfigError('Invalid timeout configuration format', newConfig);
+        throw new InvalidTimeoutConfigError(
+          "Invalid timeout configuration format",
+          newConfig
+        );
       }
 
       // Validate numeric bounds only for valid numbers
@@ -1220,7 +1314,10 @@ export function createSessionsRouter(
         const timeoutValue = Number(newConfig.timeoutMinutes);
         // Only validate range if it's a valid number (NaN will be handled by mergeTimeoutConfigs)
         if (!isNaN(timeoutValue) && isFinite(timeoutValue)) {
-          if (timeoutValue < MIN_TIMEOUT_MINUTES || timeoutValue > MAX_TIMEOUT_MINUTES) {
+          if (
+            timeoutValue < MIN_TIMEOUT_MINUTES ||
+            timeoutValue > MAX_TIMEOUT_MINUTES
+          ) {
             throw new InvalidTimeoutConfigError(
               `Timeout must be between ${MIN_TIMEOUT_MINUTES} and ${MAX_TIMEOUT_MINUTES} minutes`,
               newConfig
@@ -1242,7 +1339,8 @@ export function createSessionsRouter(
         session.renewalCount
       );
 
-      await store.set(sessionId, session);
+      const ttlMs = session.expiresAt.getTime() - Date.now();
+      await store.set(sessionId, session, Math.max(ttlMs, 1000));
 
       logger.info(
         `[Sessions API] Updated timeout config for session ${sessionId}: timeout=${session.timeoutConfig.timeoutMinutes}, autoRenew=${session.timeoutConfig.autoRenew}, maxDuration=${session.timeoutConfig.maxDurationMinutes}`
@@ -1258,7 +1356,7 @@ export function createSessionsRouter(
    * POST /api/messaging/sessions/:sessionId/heartbeat
    */
   router.post(
-    '/sessions/:sessionId/heartbeat',
+    "/sessions/:sessionId/heartbeat",
     asyncHandler(async (req: express.Request, res: express.Response) => {
       const { sessionId } = req.params;
       let session: Session | undefined;
@@ -1284,14 +1382,19 @@ export function createSessionsRouter(
       if (session.timeoutConfig.autoRenew) {
         const renewed = renewSession(session);
         if (renewed) {
-          logger.info(`[Sessions API] Session renewed via heartbeat: ${sessionId}`);
+          logger.info(
+            `[Sessions API] Session renewed via heartbeat: ${sessionId}`
+          );
         }
       }
 
-      await store.set(sessionId, session);
+      const ttlMs = session.expiresAt.getTime() - Date.now();
+      await store.set(sessionId, session, Math.max(ttlMs, 1000));
       // Return updated session info
       const response = createSessionInfoResponse(session);
-      logger.debug(`[Sessions API] Heartbeat received for session: ${sessionId}`);
+      logger.debug(
+        `[Sessions API] Heartbeat received for session: ${sessionId}`
+      );
 
       res.json(response);
     })
@@ -1302,7 +1405,7 @@ export function createSessionsRouter(
    * DELETE /api/messaging/sessions/:sessionId
    */
   router.delete(
-    '/sessions/:sessionId',
+    "/sessions/:sessionId",
     asyncHandler(async (req: express.Request, res: express.Response) => {
       const { sessionId } = req.params;
       let session: Session | undefined;
@@ -1346,7 +1449,7 @@ export function createSessionsRouter(
    * GET /api/messaging/sessions
    */
   router.get(
-    '/sessions',
+    "/sessions",
     asyncHandler(async (_req: express.Request, res: express.Response) => {
       const responses: SessionInfoResponse[] = [];
       let fallback = false;
@@ -1366,7 +1469,9 @@ export function createSessionsRouter(
         const currentMetrics = await store.getMetrics?.();
 
         if (currentMetrics) {
-          metrics = metrics ? mergeSessionMetrics([metrics, currentMetrics]) : currentMetrics;
+          metrics = metrics
+            ? mergeSessionMetrics([metrics, currentMetrics])
+            : currentMetrics;
         }
 
         for await (const [, session] of store.entries()) {
@@ -1417,7 +1522,9 @@ export function createSessionsRouter(
           };
 
           logger.info(`[Sessions API] Session ${sessionId} will expire soon`);
-          store.set(sessionId, session);
+
+          const ttlMs = session.expiresAt.getTime() - Date.now();
+          await store.set(sessionId, session, Math.max(ttlMs, 1000));
         }
       }
 
@@ -1445,7 +1552,7 @@ export function createSessionsRouter(
     if (activeCleanupIntervals.has(cleanupInterval)) {
       clearInterval(cleanupInterval);
       activeCleanupIntervals.delete(cleanupInterval);
-      logger.info('[Sessions API] Cleanup interval cleared');
+      logger.info("[Sessions API] Cleanup interval cleared");
     }
   };
 
@@ -1454,7 +1561,7 @@ export function createSessionsRouter(
     processHandlersRegistered = true;
 
     const globalCleanup = () => {
-      logger.info('[Sessions API] Global cleanup initiated');
+      logger.info("[Sessions API] Global cleanup initiated");
       // Clear all active intervals
       for (const interval of activeCleanupIntervals) {
         clearInterval(interval);
@@ -1462,7 +1569,7 @@ export function createSessionsRouter(
       activeCleanupIntervals.clear();
 
       // Optional: Clear session data
-      if (process.env.CLEAR_SESSIONS_ON_SHUTDOWN === 'true') {
+      if (process.env.CLEAR_SESSIONS_ON_SHUTDOWN === "true") {
         for (const agent of agents.keys()) {
           const store = getSessionsStore(agent);
           (async () => {
@@ -1476,11 +1583,11 @@ export function createSessionsRouter(
       }
     };
 
-    process.once('SIGTERM', globalCleanup);
-    process.once('SIGINT', globalCleanup);
+    process.once("SIGTERM", globalCleanup);
+    process.once("SIGINT", globalCleanup);
 
     // Also handle uncaught exceptions and unhandled rejections
-    process.once('beforeExit', globalCleanup);
+    process.once("beforeExit", globalCleanup);
   }
 
   // Add error handling middleware

@@ -2,7 +2,7 @@
 import { UUID, type Provider } from "@elizaos/core";
 import { LEVVA_SERVICE } from "../constants/enum";
 import { RawMessage } from "../types/core";
-import { getChain, parseTokenInfo } from "../util";
+import { getChain } from "../util";
 import { LevvaService } from "../services/levva/class";
 import { isHex } from "viem";
 

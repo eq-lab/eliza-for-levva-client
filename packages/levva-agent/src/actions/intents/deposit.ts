@@ -779,7 +779,7 @@ export const onDepositSuccess = async (
       // Invalidate relevant caches after successful deposit
       await Promise.all([
         service.invalidateUserPositionsCache(userAddress, chainId),
-        service.invalidateUserBalanceCache(userAddress, chainId),
+        service.wallet.invalidateUserBalanceCache(userAddress, chainId),
       ]);
 
       runtime.logger.info("Invalidated user caches after deposit", {

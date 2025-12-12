@@ -890,7 +890,11 @@ export class AgentRuntime implements IAgentRuntime {
           };
 
           if (message.id) {
-            await this.stateCache?.set(message.id, accumulatedState);
+            await this.stateCache?.set(
+              message.id,
+              accumulatedState,
+              1000 * 60 * 60 // 1 hour TTL
+            );
           }
 
           // Execute action with context
@@ -1171,11 +1175,15 @@ export class AgentRuntime implements IAgentRuntime {
 
       // Store accumulated results for evaluators and providers
       if (message.id) {
-        await this.stateCache?.set(`${message.id}_action_results`, {
-          values: { actionResults },
-          data: { actionResults, actionPlan },
-          text: JSON.stringify(actionResults),
-        });
+        await this.stateCache?.set(
+          `${message.id}_action_results`,
+          {
+            values: { actionResults },
+            data: { actionResults, actionPlan },
+            text: JSON.stringify(actionResults),
+          },
+          1000 * 60 * 60 // 1 hour TTL
+        );
       }
     }
   }
@@ -1724,7 +1732,7 @@ export class AgentRuntime implements IAgentRuntime {
       text: providersText,
     } as State;
     if (message.id) {
-      await this.stateCache?.set(message.id, newState);
+      await this.stateCache?.set(message.id, newState, 1000 * 60 * 60); // 1 hour TTL
     }
     return newState;
   }

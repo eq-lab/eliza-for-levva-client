@@ -579,7 +579,7 @@ export const onSendSuccess = async (
   const chainId = 1; // Default to Ethereum mainnet
   try {
     // Invalidate user balance cache after successful send
-    await service.invalidateUserBalanceCache(userAddress, chainId);
+    await service.wallet.invalidateUserBalanceCache(userAddress, chainId);
     runtime.logger.info("Invalidated user balances cache after token send");
   } catch (error) {
     runtime.logger.error("Failed to invalidate cache after send:", error);
