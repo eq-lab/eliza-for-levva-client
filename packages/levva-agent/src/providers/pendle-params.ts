@@ -25,7 +25,6 @@ export interface PendleParamsProviderData {
   slippage?: string;
   operationType?: "buy" | "sell" | "deposit" | "withdraw";
   pendleFilteredMarkets?: PendleMarket[];
-  walletSupportedPendleMarketTokenSymbols?: string[];
   intentContext?: IntentContext;
 }
 
@@ -133,7 +132,7 @@ export const pendleParamsProvider: Provider = {
     let pendleTokens: string | undefined;
     let walletTokens: {
       asset: BalanceData | undefined;
-      token: Token | undefined;
+      token: Token;
       balance: string;
       balanceUsd: string | number;
     }[] = [];
@@ -170,12 +169,10 @@ export const pendleParamsProvider: Provider = {
         const decimals = token.decimals ?? 18;
         const balance = formatUnits(asset?.amount ?? 0n, decimals);
         const balanceUsd = price ? (price * Number(balance)).toFixed(2) : 0;
-        if (token) {
-          token.symbol = symbol;
-        }
+
         return {
           asset,
-          token: token,
+          token: { ...token, symbol },
           balance,
           balanceUsd,
         };
@@ -345,79 +342,12 @@ export const pendleParamsProvider: Provider = {
           symbolOrAddress: tokenOut,
           skipUpsert: true,
         });
-
-        // TODO: check if token is supported by Pendle market
       }
 
       if (tokenOutData) {
         data.tokenOutData = tokenOutData;
       }
     }
-
-    // if (
-    //   pendleFilteredMarkets.length === 1 &&
-    //   data.pendleTokenData?.symbol !== pendleToken
-    // ) {
-    //   let tokenAddress: string | undefined;
-
-    //   data.pendleMarketAddress = pendleFilteredMarkets[0]!.pendleMarketAddress;
-
-    //   if (
-    //     operationType === "buy" ||
-    //     operationType === "deposit" ||
-    //     operationType === "sell"
-    //   ) {
-    //     // TODO: !!!
-    //     // const pendleMarketTokens = await levvaService.getPendleMarketTokens(
-    //     //   levvaProviderState.chainId,
-    //     //   data.pendleMarketAddress as `0x${string}`
-    //     // );
-    //     // tokenAddress = pendleMarketTokens!.ptAddress;
-    //   } else if (operationType === "withdraw") {
-    //     tokenAddress = data.pendleMarketAddress;
-    //   }
-
-    //   const pendleTokenData = await levvaService.token.getTokenDataWithInfo({
-    //     chainId: levvaProviderState.chainId,
-    //     symbolOrAddress: tokenAddress,
-    //     skipUpsert: true,
-    //   });
-
-    //   if (pendleTokenData) {
-    //     data.pendleTokenData = pendleTokenData;
-    //   }
-
-    //   if (operationType === "sell" || operationType === "withdraw") {
-    //     const pendleSupportedTokens =
-    //       await levvaService.getPendleMarketSupportedTokens(
-    //         chainId,
-    //         data.pendleMarketAddress! as `0x${string}`
-    //       );
-
-    //     const isSupportedTokenOut = data.userTokenData
-    //       ? pendleSupportedTokens.tokensOut.some(
-    //           (t) =>
-    //             t.toLowerCase() === data.userTokenData?.address?.toLowerCase()
-    //         )
-    //       : false;
-
-    //     if (!isSupportedTokenOut) {
-    //       const userTokens = new Set(
-    //         walletTokens.map((wt) => wt.token?.address?.toLowerCase())
-    //       );
-    //       const targetToken = pendleSupportedTokens.tokensOut.find((t) =>
-    //         userTokens.has(t.toLowerCase())
-    //       );
-
-    //       data.userTokenData = await levvaService.token.getTokenDataWithInfo({
-    //         chainId,
-    //         symbolOrAddress:
-    //           targetToken ?? pendleSupportedTokens.tokensOut[0]?.toLowerCase(),
-    //         skipUpsert: true,
-    //       });
-    //     }
-    //   }
-    // }
 
     if (!data.operationType) {
       return {
@@ -497,6 +427,15 @@ export const pendleParamsProvider: Provider = {
       pendleSupportedTokens.tokensIn.map((t) => t.toLowerCase())
     );
 
+    const pendleSupportedOutTokens = new Set(
+      pendleSupportedTokens.tokensOut.map((t) => t.toLowerCase())
+    );
+
+    // buy:      tokenIn => check tokensIn, tokenOut => PT token
+    // deposit:  tokenIn => check tokensIn, tokenOut => LP token
+    // sell:     tokenIn => PT token,       tokenOut => check tokensOut
+    // withdraw: tokenIn => LP token,       tokenOut => check tokensOut
+
     if (
       (operationType == "buy" || operationType == "deposit") &&
       !pendleSupportedInTokens.has(data.tokenInData.address!.toLowerCase())
@@ -510,25 +449,22 @@ export const pendleParamsProvider: Provider = {
             wt.asset &&
             pendleSupportedInTokens.has(wt.asset.token.toLowerCase())
         )
-        .map((wt) => {
-          const symbol =
-            wt.token?.symbol ||
-            (wt.asset!.token === ETH_NULL_ADDR ? "ETH" : "Unknown");
-          return symbol;
-        });
-
-      data.walletSupportedPendleMarketTokenSymbols = tokens;
+        .map((wt) => wt.token.symbol);
 
       return {
         ...EMPTY_RESULT,
         data: { ...data, intentContext },
         values: {
-          strategy: `${unknownToken} is not supported by Pendle router. ${tokens.length > 0 ? `Please choose one of the supported tokens from your wallet: ${tokens.join(",")}` : "There is not supported token in your wallet. Please choose other Pendle market."}`,
+          strategy: `${unknownToken} is not supported by Pendle router. There is not supported token in your wallet. Please choose other Pendle market."}`,
         },
         text: `${unknownToken} is not supported by Pendle router. Select other token in.`,
       };
-    } else {
-      data.walletSupportedPendleMarketTokenSymbols = undefined;
+    } else if (
+      (operationType == "sell" || operationType == "withdraw") &&
+      !pendleSupportedOutTokens.has(data.tokenOutData?.address!.toLowerCase())
+    ) {
+      const unknownToken = data.tokenOutData?.symbol;
+      data.tokenOutData = undefined;
     }
 
     const balanceDataEntries = await levvaService.wallet.getBalances(

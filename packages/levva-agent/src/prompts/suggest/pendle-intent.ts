@@ -43,7 +43,6 @@ export interface PendleStrategyIntentSuggestionParams {
     balance: bigint;
   };
   providerData?: PendleParamsProviderData;
-  walletSupportedPendleMarketTokenSymbols?: string[];
   pendleFilteredMarkets: PendleMarket[];
   allPendleMarkets: PendleMarket[];
 }
@@ -59,77 +58,9 @@ export function generatePendleStrategyIntentSuggestionsPrompt(
     userAddress,
     chainId,
     providerData,
-    walletSupportedPendleMarketTokenSymbols,
   } = params;
 
   const { tokenClass, maturityDays } = returnData;
-
-  if (walletSupportedPendleMarketTokenSymbols) {
-    const intentContext = generateIntentContextSection({
-      intentType: `${INTENT_TYPE.SELECT_PENDLE_STRATEGY}`,
-      status:
-        walletSupportedPendleMarketTokenSymbols.length === 0
-          ? "Market selection needed"
-          : "Token in selection needed",
-      userAddress,
-      chainId,
-      parameters: {
-        TokenIn: providerData?.tokenInData?.symbol,
-        TokenOut: providerData?.tokenOutData?.symbol,
-        Amount: providerData?.amount,
-        TokenClass: tokenClass,
-        MaturityDays: maturityDays,
-        Type: providerData?.operationType,
-      },
-    });
-
-    const suggestions =
-      walletSupportedPendleMarketTokenSymbols.length === 0
-        ? {
-            labelDescription: "Use EXACT label format",
-            textDescription: "Use EXACT text format",
-            content: allPendleMarkets
-              .sort((a, b) => b.liquidity - a.liquidity)
-              .slice(0, 5)
-              .map((market) => ({
-                label: `PT-${market.underlyingAssetSymbol}-${market.maturityDate.split("T")[0]} (APY: ${formatDecimalToPercentage(market.impliedApy)})`,
-                text: `I want to select ${market.underlyingAssetSymbol}`,
-              })),
-          }
-        : {
-            labelDescription: "Use EXACT label format",
-            textDescription: "Use EXACT text format",
-            content: walletSupportedPendleMarketTokenSymbols
-              .slice(0, 5)
-              .map((token) => ({
-                label: `Use ${token}`,
-                text: `Use ${token} from my portfolio instead`,
-              })),
-          };
-
-    const instructions = generateCommonInstructions({
-      suggestionType: "next-step",
-      specificInstructions: `Generate natural, conversational suggestions for Pendle strategy selection.
-  
-  LABEL FORMAT (${suggestions!.labelDescription}):
-  ${suggestions!.content.map((s) => `- "${s.label}"`).join("\n")}
-  
-  TEXT FORMAT (${suggestions!.textDescription}):
-  ${suggestions!.content.map((s) => `- "${s.text}"`).join("\n")}
-  
-  Each suggestion MUST:
-  - Be natural and conversational
-  - Use EXACT labels and texts without modifications
-  - MUST use information only from LABEL FORMAT AND TEXT FORMAT
-  - Lead to amount selection and next steps
-  `,
-    });
-
-    return `<task>Generate selection suggestions for Pendle strategy</task>
-  ${intentContext}
-  ${instructions}
-  ${generateOutputFormat()}`;
-  }
 
   if (
     pendleFilteredMarkets.length === 1 &&

@@ -9,6 +9,59 @@ import { createClient } from "redis";
 
 type RedisClient = ReturnType<typeof createClient>;
 
+function jsonReplacer(_key: string, value: unknown): unknown {
+  if (typeof value === "bigint") {
+    return { __type: "bigint", value: value.toString() };
+  }
+  if (value === undefined) {
+    return { __type: "undefined" };
+  }
+  if (value instanceof Map) {
+    return { __type: "map", value: Array.from(value.entries()) };
+  }
+  if (value instanceof Set) {
+    return { __type: "set", value: Array.from(value) };
+  }
+  if (value instanceof Date) {
+    return { __type: "date", value: value.toISOString() };
+  }
+  return value;
+}
+
+/**
+ * Custom JSON reviver that restores serialized types
+ */
+function jsonReviver(key: string, value: unknown): unknown {
+  if (key === "expiresAt") {
+    return new Date(value as any);
+  }
+
+  if (value && typeof value === "object" && "__type" in value) {
+    const typed = value as { __type: string; value?: unknown };
+    switch (typed.__type) {
+      case "bigint":
+        return BigInt(typed.value as string);
+      case "undefined":
+        return undefined;
+      case "map":
+        return new Map(typed.value as [unknown, unknown][]);
+      case "set":
+        return new Set(typed.value as unknown[]);
+      case "date":
+        return new Date(typed.value as string);
+    }
+  }
+  return value;
+}
+
+function safeStringify(value: unknown): string {
+  return JSON.stringify(value, jsonReplacer);
+}
+
+function safeParse<T>(value: string): T {
+  return JSON.parse(value, jsonReviver) as T;
+}
+
 /*
 interface SessionMetrics {
   totalCreated: number;
@@ -26,18 +79,22 @@ class DefaultStore implements IKVStore<unknown> {
   ) {}
   async get(key: string): Promise<unknown | undefined> {
     const value = await this.client.get(`${this.prefix}:${key}`);
-    return value
-      ? JSON.parse(value, (k, v) => {
-          if (k === "expiresAt") {
-            return new Date(v);
-          }
-
-          return v;
-        })
-      : undefined;
+    return value ? safeParse(value) : undefined;
   }
-  async set(key: string, value: unknown): Promise<void> {
-    await this.client.set(`${this.prefix}:${key}`, JSON.stringify(value));
+
+  async set(key: string, value: unknown, ttlMs?: number): Promise<void> {
+    const serialized = safeStringify(value);
+
+    if (ttlMs) {
+      await this.client.set(`${this.prefix}:${key}`, serialized, {
+        expiration: {
+          type: "PX",
+          value: ttlMs,
+        },
+      });
+    } else {
+      await this.client.set(`${this.prefix}:${key}`, serialized);
+    }
   }
   async delete(key: string): Promise<boolean> {
     return (await this.client.del(`${this.prefix}:${key}`)) > 0;

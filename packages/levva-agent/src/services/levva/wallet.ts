@@ -1,88 +1,14 @@
-import { and, eq, gte, InferSelectModel, sql } from "drizzle-orm";
-import { getAddress, parseUnits, formatUnits } from "viem";
-import { type IAgentRuntime, ServiceType } from "@elizaos/core";
+import { parseUnits, formatUnits } from "viem";
+import { type IAgentRuntime, IKVStore, ServiceType } from "@elizaos/core";
 import type { LevvaService } from "./class";
 import { PROXIES } from "./constants";
 import { BrowserService } from "../browser";
 import { ETH_NULL_ADDR } from "../../constants/eth";
 import { USD_DECIMALS } from "../../constants/math";
-import { balancesTable } from "../../schema/balances";
 import type { CacheEntry } from "../../types/core";
-import { blockexplorers, getDb, TokenEntry, getBalanceOf } from "../../util";
+import { blockexplorers, TokenEntry, getBalanceOf } from "../../util";
 import { TokenResponse } from "../../api/levva/schema";
-
-export type BalanceEntry = InferSelectModel<typeof balancesTable>;
-
-interface GetBalanceParams {
-  chainId: number;
-  address: `0x${string}`;
-  ttl?: number;
-}
-
-export const getBalance = async (
-  runtime: IAgentRuntime,
-  params: GetBalanceParams
-) => {
-  const db = getDb(runtime);
-
-  return db
-    .select()
-    .from(balancesTable)
-    .where(
-      params.ttl
-        ? and(
-            gte(balancesTable.updatedAt, new Date(Date.now() - params.ttl)),
-            eq(balancesTable.address, getAddress(params.address)),
-            eq(balancesTable.chainId, params.chainId)
-          )
-        : and(
-            eq(balancesTable.address, getAddress(params.address)),
-            eq(balancesTable.chainId, params.chainId)
-          )
-    );
-};
-
-interface UpsertBalanceParams {
-  chainId: number;
-  address: `0x${string}`;
-  token: `0x${string}`;
-  amount: bigint;
-  value: bigint;
-}
-
-export const upsertBalances = async (
-  runtime: IAgentRuntime,
-  values: UpsertBalanceParams[]
-) => {
-  const db = getDb(runtime);
-  const now = new Date();
-  const valuesToInsert = values.map((v) => ({
-    address: getAddress(v.address),
-    chainId: v.chainId,
-    token: v.token ? getAddress(v.token) : ETH_NULL_ADDR,
-    amount: v.amount,
-    value: v.value,
-    type: v.token !== ETH_NULL_ADDR ? ("erc20" as const) : ("native" as const),
-    updatedAt: now,
-  }));
-
-  await db
-    .insert(balancesTable)
-    .values(valuesToInsert)
-    .onConflictDoUpdate({
-      target: [
-        balancesTable.chainId,
-        balancesTable.address,
-        balancesTable.token,
-      ],
-      set: {
-        amount: sql`excluded.amount`,
-        value: sql`excluded.value`,
-        type: sql`excluded.type`,
-        updatedAt: now,
-      },
-    });
-};
+import { RedisService } from "../redis";
 
 export interface AssetEntry {
   address?: `0x${string}`;
@@ -187,10 +113,15 @@ export interface BalanceData {
 }
 
 export class WalletServiceComponent {
+  private readonly cache: IKVStore<BalanceData[]>;
+
   constructor(
     private readonly runtime: IAgentRuntime,
-    private readonly service: LevvaService
-  ) {}
+    private readonly service: LevvaService,
+    private readonly cacheService: RedisService
+  ) {
+    this.cache = this.cacheService.getStore("levva-wallet-balances");
+  }
 
   // Balance fetching with queue system
   async getBalances(
@@ -255,11 +186,6 @@ export class WalletServiceComponent {
       };
     });
 
-    if (result.length > 0) {
-      await upsertBalances(this.runtime, result);
-      this.runtime.logger.debug(`Updated balance for ${account}`);
-    }
-
     return result;
   }
 
@@ -267,14 +193,13 @@ export class WalletServiceComponent {
     address: `0x${string}`;
     chainId: number;
   }): Promise<BalanceData[]> {
-    const ttl = 900000; // update balance if older than 15 minutes
+    const cacheKey = this.getUserBalanceCacheKey(
+      params.address,
+      params.chainId
+    );
 
-    const [balances, availableTokens] = await Promise.all([
-      getBalance(this.runtime, {
-        address: params.address,
-        chainId: params.chainId,
-        ttl,
-      }),
+    const [balances = [], availableTokens] = await Promise.all([
+      await this.cache.get(cacheKey),
       // Use TokenServiceComponent's method which includes native currency and populates tokenMap
       this.service.token.getAvailableTokens({ chainId: params.chainId }),
     ]);
@@ -311,8 +236,30 @@ export class WalletServiceComponent {
       ...missingBalanceData.filter((b): b is BalanceData => b !== undefined),
     ];
 
+    if (missingBalanceData.length > 0) {
+      await this.cache.set(cacheKey, allBalances, 900_000); // 15 minutes TTL
+    }
+
     // Filter out zero balances
     return allBalances.filter((b) => b.amount > 0n);
+  }
+
+  async invalidateUserBalanceCache(address: `0x${string}`, chainId: number) {
+    try {
+      const cacheKey = this.getUserBalanceCacheKey(address, chainId);
+      await this.cache.delete(cacheKey);
+
+      this.runtime.logger.info("Invalidated user balance cache", {
+        address,
+        chainId,
+      });
+    } catch (error) {
+      this.runtime.logger.error(
+        "Failed to invalidate user balance cache:",
+        error
+      );
+      throw error;
+    }
   }
 
   formatToken(token: Omit<TokenEntry, "id">): string {
@@ -347,5 +294,9 @@ export class WalletServiceComponent {
       .join("\n");
 
     return `Wallet Assets:\n${formatted}`;
+  }
+
+  private getUserBalanceCacheKey(address: `0x${string}`, chainId: number) {
+    return `chain:${chainId}_account:${address}`;
   }
 }

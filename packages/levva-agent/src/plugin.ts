@@ -131,11 +131,11 @@ const plugin: Plugin = {
     ],
   },
   services: [
+    RedisService,
     BrowserService,
     LevvaService,
     IntentManager,
     MessageRateLimiter,
-    RedisService,
   ],
   actions: modules.map((m) => m.action),
   providers: [

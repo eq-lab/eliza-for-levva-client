@@ -83,8 +83,6 @@ export async function generatePendleStrategySuggestions(params: {
     walletAsset,
     pendleFilteredMarkets: providerData?.pendleFilteredMarkets ?? [],
     allPendleMarkets,
-    walletSupportedPendleMarketTokenSymbols:
-      providerData?.walletSupportedPendleMarketTokenSymbols,
   });
 }
 
@@ -149,8 +147,7 @@ export const handlePendleStrategyIntent: IntentHandler = async (
       !params.operationType ||
       !params.tokenInData ||
       !params.tokenOutData ||
-      !params.amount ||
-      params.walletSupportedPendleMarketTokenSymbols
+      !params.amount
     ) {
       // Missing parameters - ask user for more information
       return await handleMissingPendleStrategyParameters(
@@ -618,7 +615,7 @@ export const onPendleStrategySuccess = async (
       const chainId = intentContext.metadata.chainId as number;
 
       try {
-        await service.invalidateUserBalanceCache(userAddress, chainId);
+        await service.wallet.invalidateUserBalanceCache(userAddress, chainId);
 
         runtime.logger.info("Invalidated user balances cache after swap", {
           intentId: intentContext.id,

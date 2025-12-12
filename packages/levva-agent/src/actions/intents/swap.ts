@@ -456,7 +456,7 @@ export const onSwapSuccess = async (
       const chainId = intentContext.metadata.chainId as number;
 
       try {
-        await service.invalidateUserBalanceCache(userAddress, chainId);
+        await service.wallet.invalidateUserBalanceCache(userAddress, chainId);
 
         runtime.logger.info("Invalidated user balances cache after swap", {
           intentId: intentContext.id,
