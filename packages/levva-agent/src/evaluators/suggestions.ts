@@ -105,7 +105,7 @@ export const suggestionsEvaluator: Evaluator = {
       // Set loading state
       loadingKey = `suggestions_loading:${user.address}:${chainId}:${channelId}`;
       // @ts-expect-error - stateCache exists on runtime but not in interface
-      await runtime.stateCache.set(loadingKey, true);
+      await runtime.stateCache.set(loadingKey, true, 60_000);
 
       const messages = await service.getMessages({
         where: eq(schema.messageTable.channelId, channelId),
