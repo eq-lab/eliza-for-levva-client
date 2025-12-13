@@ -36,19 +36,19 @@ import {
   multiStepDecisionTemplate,
   multiStepSummaryTemplate,
   type State,
-} from '@elizaos/core';
-import { v4 } from 'uuid';
+} from "@elizaos/core";
+import { v4 } from "uuid";
 
-import * as actions from './actions/index.ts';
-import * as evaluators from './evaluators/index.ts';
-import * as providers from './providers/index.ts';
+import * as actions from "./actions/index.ts";
+import * as evaluators from "./evaluators/index.ts";
+import * as providers from "./providers/index.ts";
 
-import { TaskService } from './services/task.ts';
-import { EmbeddingGenerationService } from './services/embedding.ts';
+import { TaskService } from "./services/task.ts";
+import { EmbeddingGenerationService } from "./services/embedding.ts";
 
-export * from './actions/index.ts';
-export * from './evaluators/index.ts';
-export * from './providers/index.ts';
+export * from "./actions/index.ts";
+export * from "./evaluators/index.ts";
+export * from "./providers/index.ts";
 
 /**
  * Represents media data containing a buffer of data and the media type.
@@ -139,7 +139,9 @@ function sanitizeJson(rawJson: string): string {
  * @param {Media[]} attachments - Array of Media objects to fetch data from.
  * @returns {Promise<MediaData[]>} - A Promise that resolves with an array of MediaData objects.
  */
-export async function fetchMediaData(attachments: Media[]): Promise<MediaData[]> {
+export async function fetchMediaData(
+  attachments: Media[]
+): Promise<MediaData[]> {
   return Promise.all(
     attachments.map(async (attachment: Media) => {
       if (/^(http|https):\/\//.test(attachment.url)) {
@@ -149,7 +151,7 @@ export async function fetchMediaData(attachments: Media[]): Promise<MediaData[]>
           throw new Error(`Failed to fetch file: ${attachment.url}`);
         }
         const mediaBuffer = Buffer.from(await response.arrayBuffer());
-        const mediaType = attachment.contentType || 'image/png';
+        const mediaType = attachment.contentType || "image/png";
         return { data: mediaBuffer, mediaType };
       }
       // if (fs.existsSync(attachment.url)) {
@@ -158,7 +160,9 @@ export async function fetchMediaData(attachments: Media[]): Promise<MediaData[]>
       //   const mediaType = attachment.contentType || 'image/png';
       //   return { data: mediaBuffer, mediaType };
       // }
-      throw new Error(`File not found: ${attachment.url}. Make sure the path is correct.`);
+      throw new Error(
+        `File not found: ${attachment.url}. Make sure the path is correct.`
+      );
     })
   );
 }
@@ -178,7 +182,9 @@ export async function processAttachments(
   if (!attachments || attachments.length === 0) {
     return [];
   }
-  runtime.logger.debug(`[Bootstrap] Processing ${attachments.length} attachment(s)`);
+  runtime.logger.debug(
+    `[Bootstrap] Processing ${attachments.length} attachment(s)`
+  );
 
   const processedAttachments: Media[] = [];
 
@@ -190,20 +196,27 @@ export async function processAttachments(
       const isRemote = /^(http|https):\/\//.test(attachment.url);
       const url = isRemote ? attachment.url : getLocalServerUrl(attachment.url);
       // Only process images that don't already have descriptions
-      if (attachment.contentType === ContentType.IMAGE && !attachment.description) {
-        runtime.logger.debug(`[Bootstrap] Generating description for image: ${attachment.url}`);
+      if (
+        attachment.contentType === ContentType.IMAGE &&
+        !attachment.description
+      ) {
+        runtime.logger.debug(
+          `[Bootstrap] Generating description for image: ${attachment.url}`
+        );
 
         let imageUrl = url;
 
         if (!isRemote) {
           // Only convert local/internal media to base64
           const res = await fetch(url);
-          if (!res.ok) throw new Error(`Failed to fetch image: ${res.statusText}`);
+          if (!res.ok)
+            throw new Error(`Failed to fetch image: ${res.statusText}`);
 
           const arrayBuffer = await res.arrayBuffer();
           const buffer = Buffer.from(arrayBuffer);
-          const contentType = res.headers.get('content-type') || 'application/octet-stream';
-          imageUrl = `data:${contentType};base64,${buffer.toString('base64')}`;
+          const contentType =
+            res.headers.get("content-type") || "application/octet-stream";
+          imageUrl = `data:${contentType};base64,${buffer.toString("base64")}`;
         }
 
         try {
@@ -212,14 +225,15 @@ export async function processAttachments(
             imageUrl,
           });
 
-          if (typeof response === 'string') {
+          if (typeof response === "string") {
             // Parse XML response
             const parsedXml = parseKeyValueXml(response);
 
             if (parsedXml && (parsedXml.description || parsedXml.text)) {
-              processedAttachment.description = parsedXml.description || '';
-              processedAttachment.title = parsedXml.title || 'Image';
-              processedAttachment.text = parsedXml.text || parsedXml.description || '';
+              processedAttachment.description = parsedXml.description || "";
+              processedAttachment.title = parsedXml.title || "Image";
+              processedAttachment.text =
+                parsedXml.text || parsedXml.description || "";
 
               runtime.logger.debug(
                 `[Bootstrap] Generated description: ${processedAttachment.description?.substring(0, 100)}...`
@@ -228,13 +242,16 @@ export async function processAttachments(
               // Fallback: Try simple regex parsing if parseKeyValueXml fails
               const responseStr = response as string;
               const titleMatch = responseStr.match(/<title>([^<]+)<\/title>/);
-              const descMatch = responseStr.match(/<description>([^<]+)<\/description>/);
+              const descMatch = responseStr.match(
+                /<description>([^<]+)<\/description>/
+              );
               const textMatch = responseStr.match(/<text>([^<]+)<\/text>/);
 
               if (titleMatch || descMatch || textMatch) {
-                processedAttachment.title = titleMatch?.[1] || 'Image';
-                processedAttachment.description = descMatch?.[1] || '';
-                processedAttachment.text = textMatch?.[1] || descMatch?.[1] || '';
+                processedAttachment.title = titleMatch?.[1] || "Image";
+                processedAttachment.description = descMatch?.[1] || "";
+                processedAttachment.text =
+                  textMatch?.[1] || descMatch?.[1] || "";
 
                 runtime.logger.debug(
                   `[Bootstrap] Used fallback XML parsing - description: ${processedAttachment.description?.substring(0, 100)}...`
@@ -245,41 +262,58 @@ export async function processAttachments(
                 );
               }
             }
-          } else if (response && typeof response === 'object' && 'description' in response) {
+          } else if (
+            response &&
+            typeof response === "object" &&
+            "description" in response
+          ) {
             // Handle object responses for backwards compatibility
             processedAttachment.description = response.description;
-            processedAttachment.title = response.title || 'Image';
+            processedAttachment.title = response.title || "Image";
             processedAttachment.text = response.description;
 
             runtime.logger.debug(
               `[Bootstrap] Generated description: ${processedAttachment.description?.substring(0, 100)}...`
             );
           } else {
-            runtime.logger.warn(`[Bootstrap] Unexpected response format for image description`);
+            runtime.logger.warn(
+              `[Bootstrap] Unexpected response format for image description`
+            );
           }
         } catch (error) {
-          runtime.logger.error({ error }, `[Bootstrap] Error generating image description:`);
+          runtime.logger.error(
+            { error },
+            `[Bootstrap] Error generating image description:`
+          );
           // Continue processing without description
         }
-      } else if (attachment.contentType === ContentType.DOCUMENT && !attachment.text) {
+      } else if (
+        attachment.contentType === ContentType.DOCUMENT &&
+        !attachment.text
+      ) {
         const res = await fetch(url);
-        if (!res.ok) throw new Error(`Failed to fetch document: ${res.statusText}`);
+        if (!res.ok)
+          throw new Error(`Failed to fetch document: ${res.statusText}`);
 
-        const contentType = res.headers.get('content-type') || '';
-        const isPlainText = contentType.startsWith('text/plain');
+        const contentType = res.headers.get("content-type") || "";
+        const isPlainText = contentType.startsWith("text/plain");
 
         if (isPlainText) {
-          runtime.logger.debug(`[Bootstrap] Processing plain text document: ${attachment.url}`);
+          runtime.logger.debug(
+            `[Bootstrap] Processing plain text document: ${attachment.url}`
+          );
 
           const textContent = await res.text();
           processedAttachment.text = textContent;
-          processedAttachment.title = processedAttachment.title || 'Text File';
+          processedAttachment.title = processedAttachment.title || "Text File";
 
           runtime.logger.debug(
             `[Bootstrap] Extracted text content (first 100 chars): ${processedAttachment.text?.substring(0, 100)}...`
           );
         } else {
-          runtime.logger.warn(`[Bootstrap] Skipping non-plain-text document: ${contentType}`);
+          runtime.logger.warn(
+            `[Bootstrap] Skipping non-plain-text document: ${contentType}`
+          );
         }
       }
 
@@ -309,11 +343,11 @@ export function shouldBypassShouldRespond(
   if (!room) return false;
 
   function normalizeEnvList(value: unknown): string[] {
-    if (!value || typeof value !== 'string') return [];
+    if (!value || typeof value !== "string") return [];
 
-    const cleaned = value.trim().replace(/^\[|\]$/g, '');
+    const cleaned = value.trim().replace(/^\[|\]$/g, "");
     return cleaned
-      .split(',')
+      .split(",")
       .map((v) => v.trim())
       .filter(Boolean);
   }
@@ -325,27 +359,32 @@ export function shouldBypassShouldRespond(
     ChannelType.API,
   ];
 
-  const defaultBypassSources = ['client_chat'];
+  const defaultBypassSources = ["client_chat"];
 
-  const bypassTypesSetting = normalizeEnvList(runtime.getSetting('SHOULD_RESPOND_BYPASS_TYPES'));
+  const bypassTypesSetting = normalizeEnvList(
+    runtime.getSetting("SHOULD_RESPOND_BYPASS_TYPES")
+  );
   const bypassSourcesSetting = normalizeEnvList(
-    runtime.getSetting('SHOULD_RESPOND_BYPASS_SOURCES')
+    runtime.getSetting("SHOULD_RESPOND_BYPASS_SOURCES")
   );
 
   const bypassTypes = new Set(
-    [...defaultBypassTypes.map((t) => t.toString()), ...bypassTypesSetting].map((s: string) =>
-      s.trim().toLowerCase()
+    [...defaultBypassTypes.map((t) => t.toString()), ...bypassTypesSetting].map(
+      (s: string) => s.trim().toLowerCase()
     )
   );
 
-  const bypassSources = [...defaultBypassSources, ...bypassSourcesSetting].map((s: string) =>
-    s.trim().toLowerCase()
+  const bypassSources = [...defaultBypassSources, ...bypassSourcesSetting].map(
+    (s: string) => s.trim().toLowerCase()
   );
 
   const roomType = room.type?.toString().toLowerCase();
-  const sourceStr = source?.toLowerCase() || '';
+  const sourceStr = source?.toLowerCase() || "";
 
-  return bypassTypes.has(roomType) || bypassSources.some((pattern) => sourceStr.includes(pattern));
+  return (
+    bypassTypes.has(roomType) ||
+    bypassSources.some((pattern) => sourceStr.includes(pattern))
+  );
 }
 
 export class CancelRunSignal {
@@ -394,7 +433,7 @@ const messageReceivedHandler = async ({
   onComplete,
 }: MessageReceivedHandlerParams): Promise<void> => {
   // Set up timeout monitoring
-  const useMultiStep = runtime.getSetting('USE_MULTI_STEP');
+  const useMultiStep = runtime.getSetting("USE_MULTI_STEP");
   const timeoutDuration = 60 * 60 * 1000; // 1 hour
   let timeoutId: NodeJS.Timeout | undefined = undefined;
 
@@ -410,7 +449,7 @@ const messageReceivedHandler = async ({
       latestResponseIds.set(runtime.agentId, new Map<string, string>());
     }
     const agentResponses = latestResponseIds.get(runtime.agentId);
-    if (!agentResponses) throw new Error('Agent responses map not found');
+    if (!agentResponses) throw new Error("Agent responses map not found");
 
     // Log when we're updating the response ID
     const previousResponseId = agentResponses.get(message.roomId);
@@ -435,8 +474,8 @@ const messageReceivedHandler = async ({
       roomId: message.roomId,
       entityId: message.entityId,
       startTime,
-      status: 'started',
-      source: 'messageHandler',
+      status: "started",
+      source: "messageHandler",
       // this shouldn't be a standard
       // but we need to expose content somewhere
       metadata: message.content,
@@ -464,8 +503,8 @@ const messageReceivedHandler = async ({
           createdAt: Date.now(),
         };
 
-        await runtime.createMemory(cancelMemory, 'messages');
-        runtime.logger.debug('[Bootstrap] Saved cancel response to memory', {
+        await runtime.createMemory(cancelMemory, "messages");
+        runtime.logger.debug("[Bootstrap] Saved cancel response to memory", {
           memoryId: cancelMemory.id,
         });
       }
@@ -477,10 +516,10 @@ const messageReceivedHandler = async ({
         roomId: message.roomId,
         entityId: message.entityId,
         startTime,
-        status: 'cancelled',
+        status: "cancelled",
         endTime: Date.now(),
         duration: Date.now() - startTime,
-        source: 'messageHandler',
+        source: "messageHandler",
       });
     })();
 
@@ -494,29 +533,33 @@ const messageReceivedHandler = async ({
           roomId: message.roomId,
           entityId: message.entityId,
           startTime,
-          status: 'timeout',
+          status: "timeout",
           endTime: Date.now(),
           duration: Date.now() - startTime,
-          error: 'Run exceeded 60 minute timeout',
-          source: 'messageHandler',
+          error: "Run exceeded 60 minute timeout",
+          source: "messageHandler",
         });
-        reject(new Error('Run exceeded 60 minute timeout'));
+        reject(new Error("Run exceeded 60 minute timeout"));
       }, timeoutDuration);
     });
 
     const processingPromise = (async () => {
       try {
         if (message.entityId === runtime.agentId) {
-          runtime.logger.debug(`[Bootstrap] Skipping message from self (${runtime.agentId})`);
-          throw new Error('Message is from the agent itself');
+          runtime.logger.debug(
+            `[Bootstrap] Skipping message from self (${runtime.agentId})`
+          );
+          throw new Error("Message is from the agent itself");
         }
 
         runtime.logger.debug(
-          `[Bootstrap] Processing message: ${truncateToCompleteSentence(message.content.text || '', 50)}...`
+          `[Bootstrap] Processing message: ${truncateToCompleteSentence(message.content.text || "", 50)}...`
         );
 
         // First, save the incoming message
-        runtime.logger.debug('[Bootstrap] Saving message to memory and queueing embeddings');
+        runtime.logger.debug(
+          "[Bootstrap] Saving message to memory and queueing embeddings"
+        );
 
         // Check if memory already exists (it might have been created by MessageBusService)
         let memoryToQueue: Memory;
@@ -524,24 +567,29 @@ const messageReceivedHandler = async ({
         if (message.id) {
           const existingMemory = await runtime.getMemoryById(message.id);
           if (existingMemory) {
-            runtime.logger.debug('[Bootstrap] Memory already exists, skipping creation');
+            runtime.logger.debug(
+              "[Bootstrap] Memory already exists, skipping creation"
+            );
             memoryToQueue = existingMemory;
           } else {
             // Create memory with the existing ID (preserving external IDs)
-            const createdMemoryId = await runtime.createMemory(message, 'messages');
+            const createdMemoryId = await runtime.createMemory(
+              message,
+              "messages"
+            );
             // Use the created memory with the actual ID returned by the database
             memoryToQueue = { ...message, id: createdMemoryId };
           }
           // Queue with high priority for messages with pre-existing IDs
-          await runtime.queueEmbeddingGeneration(memoryToQueue, 'high');
+          await runtime.queueEmbeddingGeneration(memoryToQueue, "high");
         } else {
           // No ID, create new memory and queue embedding
-          const memoryId = await runtime.createMemory(message, 'messages');
+          const memoryId = await runtime.createMemory(message, "messages");
           // Set the ID on the message for downstream processing
           message.id = memoryId;
           // Create a memory object with the new ID for queuing
           memoryToQueue = { ...message, id: memoryId };
-          await runtime.queueEmbeddingGeneration(memoryToQueue, 'normal');
+          await runtime.queueEmbeddingGeneration(memoryToQueue, "normal");
         }
 
         if (cancelSignal.isCancelled) {
@@ -554,9 +602,11 @@ const messageReceivedHandler = async ({
         );
 
         // default LLM to off
-        const defLllmOff = parseBooleanFromText(runtime.getSetting('BOOTSTRAP_DEFLLMOFF'));
+        const defLllmOff = parseBooleanFromText(
+          runtime.getSetting("BOOTSTRAP_DEFLLMOFF")
+        );
         if (defLllmOff && agentUserState === null) {
-          runtime.logger.debug('bootstrap - LLM is off by default');
+          runtime.logger.debug("bootstrap - LLM is off by default");
           // allow some other subsystem to handle this event
           // maybe emit an event
 
@@ -568,19 +618,23 @@ const messageReceivedHandler = async ({
             roomId: message.roomId,
             entityId: message.entityId,
             startTime,
-            status: 'off',
+            status: "off",
             endTime: Date.now(),
             duration: Date.now() - startTime,
-            source: 'messageHandler',
+            source: "messageHandler",
           });
           return;
         }
 
         if (
-          agentUserState === 'MUTED' &&
-          !message.content.text?.toLowerCase().includes(runtime.character.name.toLowerCase())
+          agentUserState === "MUTED" &&
+          !message.content.text
+            ?.toLowerCase()
+            .includes(runtime.character.name.toLowerCase())
         ) {
-          runtime.logger.debug(`[Bootstrap] Ignoring muted room ${message.roomId}`);
+          runtime.logger.debug(
+            `[Bootstrap] Ignoring muted room ${message.roomId}`
+          );
           // Emit run ended event on successful completion
           await runtime.emitEvent(EventType.RUN_ENDED, {
             runtime,
@@ -589,17 +643,24 @@ const messageReceivedHandler = async ({
             roomId: message.roomId,
             entityId: message.entityId,
             startTime,
-            status: 'muted',
+            status: "muted",
             endTime: Date.now(),
             duration: Date.now() - startTime,
-            source: 'messageHandler',
+            source: "messageHandler",
           });
           return;
         }
 
         let state = await runtime.composeState(
           message,
-          ['ANXIETY', 'SHOULD_RESPOND', 'ENTITIES', 'CHARACTER', 'RECENT_MESSAGES', 'ACTIONS'],
+          [
+            "ANXIETY",
+            "SHOULD_RESPOND",
+            "ENTITIES",
+            "CHARACTER",
+            "RECENT_MESSAGES",
+            "ACTIONS",
+          ],
           true
         );
 
@@ -611,13 +672,19 @@ const messageReceivedHandler = async ({
           message.content.source
         );
 
-        if (message.content.attachments && message.content.attachments.length > 0) {
+        if (
+          message.content.attachments &&
+          message.content.attachments.length > 0
+        ) {
           message.content.attachments = await processAttachments(
             message.content.attachments,
             runtime
           );
           if (message.id) {
-            await runtime.updateMemory({ id: message.id, content: message.content });
+            await runtime.updateMemory({
+              id: message.id,
+              content: message.content,
+            });
           }
         }
 
@@ -627,7 +694,9 @@ const messageReceivedHandler = async ({
         if (!shouldSkipShouldRespond) {
           const shouldRespondPrompt = composePromptFromState({
             state,
-            template: runtime.character.templates?.shouldRespondTemplate || shouldRespondTemplate,
+            template:
+              runtime.character.templates?.shouldRespondTemplate ||
+              shouldRespondTemplate,
           });
 
           runtime.logger.debug(
@@ -647,11 +716,14 @@ const messageReceivedHandler = async ({
           // let processedResponse = response.replace('```json', '').replaceAll('```', '').trim(); // No longer needed for XML
 
           const responseObject = parseKeyValueXml(response);
-          runtime.logger.debug({ responseObject }, '[Bootstrap] Parsed response:');
+          runtime.logger.debug(
+            { responseObject },
+            "[Bootstrap] Parsed response:"
+          );
 
           // If an action is provided, the agent intends to respond in some way
           // Only exclude explicit non-response actions
-          const nonResponseActions = ['IGNORE', 'NONE'];
+          const nonResponseActions = ["IGNORE", "NONE"];
           shouldRespond =
             responseObject?.action &&
             !nonResponseActions.includes(responseObject.action.toUpperCase());
@@ -691,30 +763,39 @@ const messageReceivedHandler = async ({
             responseContent.inReplyTo = createUniqueUuid(runtime, message.id);
           }
 
-          if (responseContent?.providers?.length && responseContent.providers.length > 0) {
-            state = await runtime.composeState(message, responseContent.providers || []);
+          if (
+            responseContent?.providers?.length &&
+            responseContent.providers.length > 0
+          ) {
+            state = await runtime.composeState(
+              message,
+              responseContent.providers || []
+            );
           }
 
           if (responseContent) {
-            const mode = result.mode ?? ('actions' as StrategyMode);
+            const mode = result.mode ?? ("actions" as StrategyMode);
 
-            if (mode === 'simple') {
+            if (mode === "simple") {
               // Log provider usage for simple responses
-              if (responseContent.providers && responseContent.providers.length > 0) {
+              if (
+                responseContent.providers &&
+                responseContent.providers.length > 0
+              ) {
                 runtime.logger.debug(
                   { providers: responseContent.providers },
-                  '[Bootstrap] Simple response used providers'
+                  "[Bootstrap] Simple response used providers"
                 );
               }
               // without actions there can't be more than one message
               await callback(responseContent);
-            } else if (mode === 'actions') {
+            } else if (mode === "actions") {
               await runtime.processActions(
                 message,
                 responseMessages,
                 state,
                 async (content, files) => {
-                  runtime.logger.debug({ content, files }, 'action callback');
+                  runtime.logger.debug({ content, files }, "action callback");
                   responseContent!.actionCallbacks = content;
                   return callback(content, files);
                 }
@@ -724,13 +805,15 @@ const messageReceivedHandler = async ({
         } else {
           // Handle the case where the agent decided not to respond
           runtime.logger.debug(
-            '[Bootstrap] Agent decided not to respond (shouldRespond is false).'
+            "[Bootstrap] Agent decided not to respond (shouldRespond is false)."
           );
 
           // Check if we still have the latest response ID
           const currentResponseId = agentResponses.get(message.roomId);
           // helpful for swarms
-          const keepResp = parseBooleanFromText(runtime.getSetting('BOOTSTRAP_KEEP_RESP'));
+          const keepResp = parseBooleanFromText(
+            runtime.getSetting("BOOTSTRAP_KEEP_RESP")
+          );
           if (currentResponseId !== responseId && !keepResp) {
             runtime.logger.info(
               `Ignore response discarded - newer message being processed for agent: ${runtime.agentId}, room: ${message.roomId}`
@@ -743,17 +826,17 @@ const messageReceivedHandler = async ({
               roomId: message.roomId,
               entityId: message.entityId,
               startTime,
-              status: 'replaced',
+              status: "replaced",
               endTime: Date.now(),
               duration: Date.now() - startTime,
-              source: 'messageHandler',
+              source: "messageHandler",
             });
             return; // Stop processing if a newer message took over
           }
 
           if (!message.id) {
             runtime.logger.error(
-              '[Bootstrap] Message ID is missing, cannot create ignore response.'
+              "[Bootstrap] Message ID is missing, cannot create ignore response."
             );
             // Emit run ended event on successful completion
             await runtime.emitEvent(EventType.RUN_ENDED, {
@@ -763,18 +846,18 @@ const messageReceivedHandler = async ({
               roomId: message.roomId,
               entityId: message.entityId,
               startTime,
-              status: 'noMessageId',
+              status: "noMessageId",
               endTime: Date.now(),
               duration: Date.now() - startTime,
-              source: 'messageHandler',
+              source: "messageHandler",
             });
             return;
           }
 
           // Construct a minimal content object indicating ignore, include a generic thought
           const ignoreContent: Content = {
-            thought: 'Agent decided not to respond to this message.',
-            actions: ['IGNORE'],
+            thought: "Agent decided not to respond to this message.",
+            actions: ["IGNORE"],
             simple: true, // Treat it as simple for callback purposes
             inReplyTo: createUniqueUuid(runtime, message.id), // Reference original message
           };
@@ -791,8 +874,8 @@ const messageReceivedHandler = async ({
             roomId: message.roomId,
             createdAt: Date.now(),
           };
-          await runtime.createMemory(ignoreMemory, 'messages');
-          runtime.logger.debug('[Bootstrap] Saved ignore response to memory', {
+          await runtime.createMemory(ignoreMemory, "messages");
+          runtime.logger.debug("[Bootstrap] Saved ignore response to memory", {
             memoryId: ignoreMemory.id,
           });
 
@@ -811,7 +894,7 @@ const messageReceivedHandler = async ({
           state,
           shouldRespond,
           async (content) => {
-            runtime.logger.debug({ content }, 'evaluate callback');
+            runtime.logger.debug({ content }, "evaluate callback");
             if (responseContent) {
               responseContent.evalCallbacks = content;
             }
@@ -821,12 +904,12 @@ const messageReceivedHandler = async ({
         );
 
         // ok who are they
-        let entityName = 'noname';
-        if (message.metadata && 'entityName' in message.metadata) {
+        let entityName = "noname";
+        if (message.metadata && "entityName" in message.metadata) {
           entityName = (message.metadata as any).entityName;
         }
 
-        const isDM = message.content?.channelType?.toUpperCase() === 'DM';
+        const isDM = message.content?.channelType?.toUpperCase() === "DM";
         let roomName = entityName;
         if (!isDM) {
           const roomDatas = await runtime.getRoomsByIds([message.roomId]);
@@ -840,7 +923,7 @@ const messageReceivedHandler = async ({
             if (roomData.worldId) {
               const worldData = await runtime.getWorld(roomData.worldId);
               if (worldData) {
-                roomName = worldData.name + '-' + roomName;
+                roomName = worldData.name + "-" + roomName;
               }
             }
           }
@@ -849,14 +932,15 @@ const messageReceivedHandler = async ({
         const date = new Date();
 
         // get available actions
-        const availableActions = state.data?.providers?.ACTIONS?.data?.actionsData?.map(
-          (a) => a.name
-        ) || [-1];
+        const availableActions =
+          state.data?.providers?.ACTIONS?.data?.actionsData?.map(
+            (a) => a.name
+          ) || [-1];
 
         // generate data of interest
         const logData = {
           at: date.toString(),
-          timestamp: parseInt('' + date.getTime() / 1000),
+          timestamp: parseInt("" + date.getTime() / 1000),
           messageId: message.id, // can extract roomId or whatever
           userEntityId: message.entityId,
           input: message.content.text,
@@ -882,16 +966,16 @@ const messageReceivedHandler = async ({
           roomId: message.roomId,
           entityId: message.entityId,
           startTime,
-          status: 'completed',
+          status: "completed",
           endTime: Date.now(),
           duration: Date.now() - startTime,
-          source: 'messageHandler',
+          source: "messageHandler",
           entityName,
           responseContent,
           metadata: logData,
         });
       } catch (error: any) {
-        console.error('error is', error);
+        console.error("error is", error);
         // Emit run ended event with error
         await runtime.emitEvent(EventType.RUN_ENDED, {
           runtime,
@@ -900,11 +984,11 @@ const messageReceivedHandler = async ({
           roomId: message.roomId,
           entityId: message.entityId,
           startTime,
-          status: 'error',
+          status: "error",
           endTime: Date.now(),
           duration: Date.now() - startTime,
           error: error.message,
-          source: 'messageHandler',
+          source: "messageHandler",
         });
       } finally {
         CancelRunSignal.clear(runId);
@@ -918,7 +1002,7 @@ const messageReceivedHandler = async ({
   }
 };
 
-type StrategyMode = 'simple' | 'actions' | 'none';
+type StrategyMode = "simple" | "actions" | "none";
 type StrategyResult = {
   responseContent: Content | null;
   responseMessages: Memory[];
@@ -926,16 +1010,24 @@ type StrategyResult = {
   mode: StrategyMode;
 };
 
-async function runSingleShotCore({ runtime, message, state }): Promise<StrategyResult> {
-  state = await runtime.composeState(message, ['ACTIONS']);
+async function runSingleShotCore({
+  runtime,
+  message,
+  state,
+}): Promise<StrategyResult> {
+  state = await runtime.composeState(message, ["ACTIONS"]);
 
   if (!state.values?.actionNames) {
-    runtime.logger.warn('actionNames data missing from state, even though it was requested');
+    runtime.logger.warn(
+      "actionNames data missing from state, even though it was requested"
+    );
   }
 
   const prompt = composePromptFromState({
     state,
-    template: runtime.character.templates?.messageHandlerTemplate || messageHandlerTemplate,
+    template:
+      runtime.character.templates?.messageHandlerTemplate ||
+      messageHandlerTemplate,
   });
 
   let responseContent: Content | null = null;
@@ -944,23 +1036,29 @@ async function runSingleShotCore({ runtime, message, state }): Promise<StrategyR
   let retries = 0;
   const maxRetries = 3;
 
-  while (retries < maxRetries && (!responseContent?.thought || !responseContent?.actions)) {
+  while (
+    retries < maxRetries &&
+    (!responseContent?.thought || !responseContent?.actions)
+  ) {
     const response = await runtime.useModel(ModelType.TEXT_LARGE, { prompt });
 
-    runtime.logger.debug({ response }, '[Bootstrap] *** Raw LLM Response ***');
+    runtime.logger.debug({ response }, "[Bootstrap] *** Raw LLM Response ***");
 
     // Attempt to parse the XML response
     const parsedXml = parseKeyValueXml(response);
-    runtime.logger.debug({ parsedXml }, '[Bootstrap] *** Parsed XML Content ***');
+    runtime.logger.debug(
+      { parsedXml },
+      "[Bootstrap] *** Parsed XML Content ***"
+    );
 
     // Map parsed XML to Content type, handling potential missing fields
     if (parsedXml) {
       responseContent = {
         ...parsedXml,
-        thought: parsedXml.thought || '',
-        actions: parsedXml.actions || ['IGNORE'],
+        thought: parsedXml.thought || "",
+        actions: parsedXml.actions || ["IGNORE"],
         providers: parsedXml.providers || [],
-        text: parsedXml.text || '',
+        text: parsedXml.text || "",
         simple: parsedXml.simple || false,
       };
     } else {
@@ -971,13 +1069,13 @@ async function runSingleShotCore({ runtime, message, state }): Promise<StrategyR
     if (!responseContent?.thought || !responseContent?.actions) {
       runtime.logger.warn(
         { response, parsedXml, responseContent },
-        '[Bootstrap] *** Missing required fields (thought or actions), retrying... ***'
+        "[Bootstrap] *** Missing required fields (thought or actions), retrying... ***"
       );
     }
   }
 
   if (!responseContent) {
-    return { responseContent: null, responseMessages: [], state, mode: 'none' };
+    return { responseContent: null, responseMessages: [], state, mode: "none" };
   }
 
   // --- LLM IGNORE/REPLY ambiguity handling ---
@@ -993,21 +1091,22 @@ async function runSingleShotCore({ runtime, message, state }): Promise<StrategyR
     //responseContent.actions = responseContent.actions.filter(a => a !== 'NONE')
 
     // Helper function to safely check if an action is IGNORE
-    const isIgnore = (a: unknown) => typeof a === 'string' && a.toUpperCase() === 'IGNORE';
+    const isIgnore = (a: unknown) =>
+      typeof a === "string" && a.toUpperCase() === "IGNORE";
 
     // Check if any action is IGNORE
     const hasIgnore = responseContent.actions.some(isIgnore);
 
     if (hasIgnore) {
-      if (!responseContent.text || responseContent.text.trim() === '') {
+      if (!responseContent.text || responseContent.text.trim() === "") {
         // No text, truly meant to IGNORE
-        responseContent.actions = ['IGNORE'];
+        responseContent.actions = ["IGNORE"];
       } else {
         // Text present, LLM intended to reply, remove IGNORE
         const filtered = responseContent.actions.filter((a) => !isIgnore(a));
         // Ensure we don't end up with an empty actions array when text is present
         // If all actions were IGNORE, default to REPLY
-        responseContent.actions = filtered.length ? filtered : ['REPLY'];
+        responseContent.actions = filtered.length ? filtered : ["REPLY"];
       }
     }
   }
@@ -1016,8 +1115,8 @@ async function runSingleShotCore({ runtime, message, state }): Promise<StrategyR
   // Simple = REPLY action with no providers used
   const isSimple =
     responseContent.actions?.length === 1 &&
-    typeof responseContent.actions[0] === 'string' &&
-    responseContent.actions[0].toUpperCase() === 'REPLY' &&
+    typeof responseContent.actions[0] === "string" &&
+    responseContent.actions[0].toUpperCase() === "REPLY" &&
     (!responseContent.providers || responseContent.providers.length === 0);
 
   responseContent.simple = isSimple;
@@ -1037,37 +1136,55 @@ async function runSingleShotCore({ runtime, message, state }): Promise<StrategyR
     responseContent,
     responseMessages,
     state,
-    mode: isSimple && responseContent.text ? 'simple' : 'actions',
+    mode: isSimple && responseContent.text ? "simple" : "actions",
   };
 }
 
-async function runMultiStepCore({ runtime, message, state, callback }): Promise<StrategyResult> {
+async function runMultiStepCore({
+  runtime,
+  message,
+  state,
+  callback,
+}): Promise<StrategyResult> {
   const traceActionResult: MultiStepActionResult[] = [];
   let accumulatedState: MultiStepState = state;
-  const maxIterations = parseInt(runtime.getSetting('MAX_MULTISTEP_ITERATIONS') || '6');
+  const maxIterations = parseInt(
+    runtime.getSetting("MAX_MULTISTEP_ITERATIONS") || "6"
+  );
   let iterationCount = 0;
 
   while (iterationCount < maxIterations) {
     iterationCount++;
-    runtime.logger.debug(`[MultiStep] Starting iteration ${iterationCount}/${maxIterations}`);
+    runtime.logger.debug(
+      `[MultiStep] Starting iteration ${iterationCount}/${maxIterations}`
+    );
 
-    accumulatedState = await runtime.composeState(message, ['RECENT_MESSAGES', 'ACTION_STATE']);
+    accumulatedState = await runtime.composeState(message, [
+      "RECENT_MESSAGES",
+      "ACTION_STATE",
+    ]);
     accumulatedState.data.actionResults = traceActionResult;
 
     const prompt = composePromptFromState({
       state: accumulatedState,
-      template: runtime.character.templates?.multiStepDecisionTemplate || multiStepDecisionTemplate,
+      template:
+        runtime.character.templates?.multiStepDecisionTemplate ||
+        multiStepDecisionTemplate,
     });
 
-    const stepResultRaw = await runtime.useModel(ModelType.TEXT_LARGE, { prompt });
+    const stepResultRaw = await runtime.useModel(ModelType.TEXT_LARGE, {
+      prompt,
+    });
     const parsedStep = parseKeyValueXml(stepResultRaw);
 
     if (!parsedStep) {
-      runtime.logger.warn(`[MultiStep] Failed to parse step result at iteration ${iterationCount}`);
+      runtime.logger.warn(
+        `[MultiStep] Failed to parse step result at iteration ${iterationCount}`
+      );
       traceActionResult.push({
-        data: { actionName: 'parse_error' },
+        data: { actionName: "parse_error" },
         success: false,
-        error: 'Failed to parse step result',
+        error: "Failed to parse step result",
       });
       break;
     }
@@ -1075,11 +1192,13 @@ async function runMultiStepCore({ runtime, message, state, callback }): Promise<
     const { thought, providers = [], action, isFinish } = parsedStep;
 
     // Check for completion condition
-    if (isFinish === 'true' || isFinish === true) {
-      runtime.logger.info(`[MultiStep] Task marked as complete at iteration ${iterationCount}`);
+    if (isFinish === "true" || isFinish === true) {
+      runtime.logger.info(
+        `[MultiStep] Task marked as complete at iteration ${iterationCount}`
+      );
       await callback({
-        text: '',
-        thought: thought ?? '',
+        text: "",
+        thought: thought ?? "",
       });
       break;
     }
@@ -1094,9 +1213,13 @@ async function runMultiStepCore({ runtime, message, state, callback }): Promise<
 
     try {
       for (const providerName of providers) {
-        const provider = runtime.providers.find((p: any) => p.name === providerName);
+        const provider = runtime.providers.find(
+          (p: any) => p.name === providerName
+        );
         if (!provider) {
-          runtime.logger.warn(`[MultiStep] Provider not found: ${providerName}`);
+          runtime.logger.warn(
+            `[MultiStep] Provider not found: ${providerName}`
+          );
           traceActionResult.push({
             data: { actionName: providerName },
             success: false,
@@ -1107,7 +1230,9 @@ async function runMultiStepCore({ runtime, message, state, callback }): Promise<
 
         const providerResult = await provider.get(runtime, message, state);
         if (!providerResult) {
-          runtime.logger.warn(`[MultiStep] Provider returned no result: ${providerName}`);
+          runtime.logger.warn(
+            `[MultiStep] Provider returned no result: ${providerName}`
+          );
           traceActionResult.push({
             data: { actionName: providerName },
             success: false,
@@ -1128,7 +1253,7 @@ async function runMultiStepCore({ runtime, message, state, callback }): Promise<
         await callback({
           text: `🔎 Provider executed: ${providerName}`,
           actions: [providerName],
-          thought: thought ?? '',
+          thought: thought ?? "",
         });
       }
 
@@ -1136,7 +1261,7 @@ async function runMultiStepCore({ runtime, message, state, callback }): Promise<
         const actionContent = {
           text: `🔎 Executing action: ${action}`,
           actions: [action],
-          thought: thought ?? '',
+          thought: thought ?? "",
         };
         await runtime.processActions(
           message,
@@ -1155,7 +1280,9 @@ async function runMultiStepCore({ runtime, message, state, callback }): Promise<
           }
         );
 
-        const cachedState = runtime.stateCache.get(`${message.id}_action_results`);
+        const cachedState = runtime.stateCache.get(
+          `${message.id}_action_results`
+        );
         const actionResults = cachedState?.values?.actionResults || [];
         const result = actionResults.length > 0 ? actionResults[0] : null;
         const success = result?.success ?? false;
@@ -1169,9 +1296,9 @@ async function runMultiStepCore({ runtime, message, state, callback }): Promise<
         });
       }
     } catch (err) {
-      runtime.logger.error({ err }, '[MultiStep] Error executing step');
+      runtime.logger.error({ err }, "[MultiStep] Error executing step");
       traceActionResult.push({
-        data: { actionName: action || 'unknown' },
+        data: { actionName: action || "unknown" },
         success: false,
         error: err instanceof Error ? err.message : String(err),
       });
@@ -1184,21 +1311,29 @@ async function runMultiStepCore({ runtime, message, state, callback }): Promise<
     );
   }
 
-  accumulatedState = await runtime.composeState(message, ['RECENT_MESSAGES', 'ACTION_STATE']);
+  accumulatedState = await runtime.composeState(message, [
+    "RECENT_MESSAGES",
+    "ACTION_STATE",
+  ]);
   const summaryPrompt = composePromptFromState({
     state: accumulatedState,
-    template: runtime.character.templates?.multiStepSummaryTemplate || multiStepSummaryTemplate,
+    template:
+      runtime.character.templates?.multiStepSummaryTemplate ||
+      multiStepSummaryTemplate,
   });
 
-  const finalOutput = await runtime.useModel(ModelType.TEXT_LARGE, { prompt: summaryPrompt });
+  const finalOutput = await runtime.useModel(ModelType.TEXT_LARGE, {
+    prompt: summaryPrompt,
+  });
   const summary = parseKeyValueXml(finalOutput);
 
   let responseContent: Content | null = null;
   if (summary?.text) {
     responseContent = {
-      actions: ['MULTI_STEP_SUMMARY'],
+      actions: ["MULTI_STEP_SUMMARY"],
       text: summary.text,
-      thought: summary.thought || 'Final user-facing message after task completion.',
+      thought:
+        summary.thought || "Final user-facing message after task completion.",
       simple: true,
     };
   }
@@ -1220,7 +1355,7 @@ async function runMultiStepCore({ runtime, message, state, callback }): Promise<
     responseContent,
     responseMessages,
     state: accumulatedState,
-    mode: responseContent ? 'simple' : 'none',
+    mode: responseContent ? "simple" : "none",
   };
 }
 
@@ -1240,13 +1375,13 @@ const reactionReceivedHandler = async ({
   message: Memory;
 }) => {
   try {
-    await runtime.createMemory(message, 'messages');
+    await runtime.createMemory(message, "messages");
   } catch (error: any) {
-    if (error.code === '23505') {
-      runtime.logger.warn('[Bootstrap] Duplicate reaction memory, skipping');
+    if (error.code === "23505") {
+      runtime.logger.warn("[Bootstrap] Duplicate reaction memory, skipping");
       return;
     }
-    runtime.logger.error({ error }, '[Bootstrap] Error in reaction handler:');
+    runtime.logger.error({ error }, "[Bootstrap] Error in reaction handler:");
   }
 };
 
@@ -1267,23 +1402,28 @@ const messageDeletedHandler = async ({
 }) => {
   try {
     if (!message.id) {
-      runtime.logger.error('[Bootstrap] Cannot delete memory: message ID is missing');
+      runtime.logger.error(
+        "[Bootstrap] Cannot delete memory: message ID is missing"
+      );
       return;
     }
 
     runtime.logger.info(
-      '[Bootstrap] Deleting memory for message',
+      "[Bootstrap] Deleting memory for message",
       message.id,
-      'from room',
+      "from room",
       message.roomId
     );
     await runtime.deleteMemory(message.id);
     runtime.logger.debug(
       { messageId: message.id },
-      '[Bootstrap] Successfully deleted memory for message'
+      "[Bootstrap] Successfully deleted memory for message"
     );
   } catch (error: unknown) {
-    runtime.logger.error({ error }, '[Bootstrap] Error in message deleted handler:');
+    runtime.logger.error(
+      { error },
+      "[Bootstrap] Error in message deleted handler:"
+    );
   }
 };
 
@@ -1315,7 +1455,7 @@ const channelClearedHandler = async ({
 
     // Get all message memories for this room
     const memories = await runtime.getMemoriesByRoomIds({
-      tableName: 'messages',
+      tableName: "messages",
       roomIds: [roomId],
     });
 
@@ -1339,7 +1479,10 @@ const channelClearedHandler = async ({
       `[Bootstrap] Successfully cleared ${deletedCount}/${memories.length} message memories from channel ${channelId}`
     );
   } catch (error: unknown) {
-    runtime.logger.error({ error }, '[Bootstrap] Error in channel cleared handler:');
+    runtime.logger.error(
+      { error },
+      "[Bootstrap] Error in channel cleared handler:"
+    );
   }
 };
 
@@ -1360,7 +1503,7 @@ const postGeneratedHandler = async ({
   roomId,
   source,
 }: InvokePayload) => {
-  runtime.logger.info('[Bootstrap] Generating new post...');
+  runtime.logger.info("[Bootstrap] Generating new post...");
   // Ensure world exists first
   await runtime.ensureWorldExists({
     id: worldId,
@@ -1388,7 +1531,7 @@ const postGeneratedHandler = async ({
     content: {},
     metadata: {
       entityName: runtime.character.name,
-      type: 'message',
+      type: "message",
     },
   };
 
@@ -1396,22 +1539,28 @@ const postGeneratedHandler = async ({
 
   // Compose state with relevant context for tweet generation
   let state = await runtime.composeState(message, [
-    'PROVIDERS',
-    'CHARACTER',
-    'RECENT_MESSAGES',
-    'ENTITIES',
+    "PROVIDERS",
+    "CHARACTER",
+    "RECENT_MESSAGES",
+    "ENTITIES",
   ]);
 
   // get twitterUserName
   const entity = await runtime.getEntityById(runtime.agentId);
-  if ((entity?.metadata?.twitter as any)?.userName || entity?.metadata?.userName) {
+  if (
+    (entity?.metadata?.twitter as any)?.userName ||
+    entity?.metadata?.userName
+  ) {
     state.values.twitterUserName =
-      (entity?.metadata?.twitter as any)?.userName || entity?.metadata?.userName;
+      (entity?.metadata?.twitter as any)?.userName ||
+      entity?.metadata?.userName;
   }
 
   const prompt = composePromptFromState({
     state,
-    template: runtime.character.templates?.messageHandlerTemplate || messageHandlerTemplate,
+    template:
+      runtime.character.templates?.messageHandlerTemplate ||
+      messageHandlerTemplate,
   });
 
   let responseContent: Content | null = null;
@@ -1419,7 +1568,10 @@ const postGeneratedHandler = async ({
   // Retry if missing required fields
   let retries = 0;
   const maxRetries = 3;
-  while (retries < maxRetries && (!responseContent?.thought || !responseContent?.actions)) {
+  while (
+    retries < maxRetries &&
+    (!responseContent?.thought || !responseContent?.actions)
+  ) {
     const response = await runtime.useModel(ModelType.TEXT_SMALL, {
       prompt,
     });
@@ -1428,10 +1580,10 @@ const postGeneratedHandler = async ({
     const parsedXml = parseKeyValueXml(response);
     if (parsedXml) {
       responseContent = {
-        thought: parsedXml.thought || '',
-        actions: parsedXml.actions || ['IGNORE'],
+        thought: parsedXml.thought || "",
+        actions: parsedXml.actions || ["IGNORE"],
         providers: parsedXml.providers || [],
-        text: parsedXml.text || '',
+        text: parsedXml.text || "",
         simple: parsedXml.simple || false,
       };
     } else {
@@ -1441,7 +1593,7 @@ const postGeneratedHandler = async ({
     retries++;
     if (!responseContent?.thought || !responseContent?.actions) {
       runtime.logger.warn(
-        '[Bootstrap] *** Missing required fields, retrying... ***\n',
+        "[Bootstrap] *** Missing required fields, retrying... ***\n",
         response,
         parsedXml,
         responseContent
@@ -1455,7 +1607,8 @@ const postGeneratedHandler = async ({
   // Generate prompt for tweet content
   const postPrompt = composePromptFromState({
     state,
-    template: runtime.character.templates?.postCreationTemplate || postCreationTemplate,
+    template:
+      runtime.character.templates?.postCreationTemplate || postCreationTemplate,
   });
 
   // Use TEXT_LARGE model as we expect structured XML text, not a JSON object
@@ -1468,7 +1621,7 @@ const postGeneratedHandler = async ({
 
   if (!parsedXmlResponse) {
     runtime.logger.error(
-      '[Bootstrap] Failed to parse XML response for post creation. Raw response:',
+      "[Bootstrap] Failed to parse XML response for post creation. Raw response:",
       xmlResponseText
     );
     // Handle the error appropriately, maybe retry or return an error state
@@ -1480,16 +1633,16 @@ const postGeneratedHandler = async ({
    */
   function cleanupPostText(text: string): string {
     // Remove quotes
-    let cleanedText = text.replace(/^['"](.*)['"]$/, '$1');
+    let cleanedText = text.replace(/^['"](.*)['"]$/, "$1");
     // Fix newlines
-    cleanedText = cleanedText.replaceAll(/\\n/g, '\n\n');
-    cleanedText = cleanedText.replace(/([^\n])\n([^\n])/g, '$1\n\n$2');
+    cleanedText = cleanedText.replaceAll(/\\n/g, "\n\n");
+    cleanedText = cleanedText.replace(/([^\n])\n([^\n])/g, "$1\n\n$2");
 
     return cleanedText;
   }
 
   // Cleanup the tweet text
-  const cleanedText = cleanupPostText(parsedXmlResponse.post || '');
+  const cleanedText = cleanupPostText(parsedXmlResponse.post || "");
 
   // Prepare media if included
   // const mediaData: MediaData[] = [];
@@ -1511,11 +1664,16 @@ const postGeneratedHandler = async ({
   // }
 
   // have we posted it before?
-  const RM = state.providerData?.find((pd) => pd.providerName === 'RECENT_MESSAGES');
+  const RM = state.providerData?.find(
+    (pd) => pd.providerName === "RECENT_MESSAGES"
+  );
   if (RM) {
     for (const m of RM.data.recentMessages) {
       if (cleanedText === m.content.text) {
-        runtime.logger.info({ cleanedText }, '[Bootstrap] Already recently posted that, retrying');
+        runtime.logger.info(
+          { cleanedText },
+          "[Bootstrap] Already recently posted that, retrying"
+        );
         postGeneratedHandler({
           runtime,
           callback,
@@ -1546,7 +1704,10 @@ const postGeneratedHandler = async ({
     googleRefusalRegex.test(cleanedText) ||
     generalRefusalRegex.test(cleanedText)
   ) {
-    runtime.logger.info({ cleanedText }, '[Bootstrap] Got prompt moderation refusal, retrying');
+    runtime.logger.info(
+      { cleanedText },
+      "[Bootstrap] Got prompt moderation refusal, retrying"
+    );
     postGeneratedHandler({
       runtime,
       callback,
@@ -1568,8 +1729,8 @@ const postGeneratedHandler = async ({
         text: cleanedText,
         source,
         channelType: ChannelType.FEED,
-        thought: parsedXmlResponse.thought || '',
-        type: 'post',
+        thought: parsedXmlResponse.thought || "",
+        type: "post",
       },
       roomId: message.roomId,
       createdAt: Date.now(),
@@ -1618,11 +1779,15 @@ const syncSingleUser = async (
 ) => {
   try {
     const entity = await runtime.getEntityById(entityId);
-    runtime.logger.info(`[Bootstrap] Syncing user: ${entity?.metadata?.username || entityId}`);
+    runtime.logger.info(
+      `[Bootstrap] Syncing user: ${entity?.metadata?.username || entityId}`
+    );
 
     // Ensure we're not using WORLD type and that we have a valid channelId
     if (!channelId) {
-      runtime.logger.warn(`[Bootstrap] Cannot sync user ${entity?.id} without a valid channelId`);
+      runtime.logger.warn(
+        `[Bootstrap] Cannot sync user ${entity?.id} without a valid channelId`
+      );
       return;
     }
 
@@ -1650,9 +1815,9 @@ const syncSingleUser = async (
     await runtime.ensureConnection({
       entityId,
       roomId,
-      name: (entity?.metadata?.name || entity?.metadata?.username || `User${entityId}`) as
-        | undefined
-        | string,
+      name: (entity?.metadata?.name ||
+        entity?.metadata?.username ||
+        `User${entityId}`) as undefined | string,
       source,
       channelId,
       serverId,
@@ -1668,10 +1833,14 @@ const syncSingleUser = async (
         `[Bootstrap] Created world check - ID: ${worldId}, metadata: ${JSON.stringify(createdWorld?.metadata)}`
       );
     } catch (error) {
-      runtime.logger.error(`[Bootstrap] Failed to verify created world: ${error}`);
+      runtime.logger.error(
+        `[Bootstrap] Failed to verify created world: ${error}`
+      );
     }
 
-    runtime.logger.success(`[Bootstrap] Successfully synced user: ${entity?.id}`);
+    runtime.logger.success(
+      `[Bootstrap] Successfully synced user: ${entity?.id}`
+    );
   } catch (error) {
     runtime.logger.error(
       `[Bootstrap] Error syncing user: ${error instanceof Error ? error.message : String(error)}`
@@ -1690,10 +1859,14 @@ const handleServerSync = async ({
   source,
   onComplete,
 }: WorldPayload) => {
-  runtime.logger.debug(`[Bootstrap] Handling server sync event for server: ${world.name}`);
+  runtime.logger.debug(
+    `[Bootstrap] Handling server sync event for server: ${world.name}`
+  );
   try {
     await runtime.ensureConnections(entities, rooms, source, world);
-    runtime.logger.debug(`Successfully synced standardized world structure for ${world.name}`);
+    runtime.logger.debug(
+      `Successfully synced standardized world structure for ${world.name}`
+    );
     onComplete?.();
   } catch (error) {
     runtime.logger.error(
@@ -1715,9 +1888,9 @@ const controlMessageHandler = async ({
 }: {
   runtime: IAgentRuntime;
   message: {
-    type: 'control';
+    type: "control";
     payload: {
-      action: 'enable_input' | 'disable_input';
+      action: "enable_input" | "disable_input";
       target?: string;
     };
     roomId: UUID;
@@ -1733,18 +1906,21 @@ const controlMessageHandler = async ({
     // This would typically be handled by a registered service with sendMessage capability
 
     // Get any registered WebSocket service
-    const serviceNames = Array.from(runtime.getAllServices().keys()) as string[];
+    const serviceNames = Array.from(
+      runtime.getAllServices().keys()
+    ) as string[];
     const websocketServiceName = serviceNames.find(
       (name: string) =>
-        name.toLowerCase().includes('websocket') || name.toLowerCase().includes('socket')
+        name.toLowerCase().includes("websocket") ||
+        name.toLowerCase().includes("socket")
     );
 
     if (websocketServiceName) {
       const websocketService = runtime.getService(websocketServiceName);
-      if (websocketService && 'sendMessage' in websocketService) {
+      if (websocketService && "sendMessage" in websocketService) {
         // Send the control message through the WebSocket service
         await (websocketService as any).sendMessage({
-          type: 'controlMessage',
+          type: "controlMessage",
           payload: {
             action: message.payload.action,
             target: message.payload.target,
@@ -1757,16 +1933,18 @@ const controlMessageHandler = async ({
         );
       } else {
         runtime.logger.error(
-          '[controlMessageHandler] WebSocket service does not have sendMessage method'
+          "[controlMessageHandler] WebSocket service does not have sendMessage method"
         );
       }
     } else {
       runtime.logger.error(
-        '[controlMessageHandler] No WebSocket service found to send control message'
+        "[controlMessageHandler] No WebSocket service found to send control message"
       );
     }
   } catch (error) {
-    runtime.logger.error(`[controlMessageHandler] Error processing control message: ${error}`);
+    runtime.logger.error(
+      `[controlMessageHandler] Error processing control message: ${error}`
+    );
   }
 };
 
@@ -1774,7 +1952,7 @@ const events = {
   [EventType.MESSAGE_RECEIVED]: [
     async (payload: MessagePayload) => {
       if (!payload.callback) {
-        payload.runtime.logger.error('No callback provided for message');
+        payload.runtime.logger.error("No callback provided for message");
         return;
       }
       await messageReceivedHandler({
@@ -1789,7 +1967,7 @@ const events = {
   [EventType.VOICE_MESSAGE_RECEIVED]: [
     async (payload: MessagePayload) => {
       if (!payload.callback) {
-        payload.runtime.logger.error('No callback provided for voice message');
+        payload.runtime.logger.error("No callback provided for voice message");
         return;
       }
       await messageReceivedHandler({
@@ -1818,7 +1996,9 @@ const events = {
 
   [EventType.MESSAGE_SENT]: [
     async (payload: MessagePayload) => {
-      payload.runtime.logger.debug(`[Bootstrap] Message sent: ${payload.message.content.text}`);
+      payload.runtime.logger.debug(
+        `[Bootstrap] Message sent: ${payload.message.content.text}`
+      );
     },
   ],
 
@@ -1832,7 +2012,13 @@ const events = {
   ],
 
   [EventType.CHANNEL_CLEARED]: [
-    async (payload: EventPayload & { roomId: UUID; channelId: string; memoryCount: number }) => {
+    async (
+      payload: EventPayload & {
+        roomId: UUID;
+        channelId: string;
+        memoryCount: number;
+      }
+    ) => {
       await channelClearedHandler({
         runtime: payload.runtime,
         roomId: payload.roomId,
@@ -1861,15 +2047,21 @@ const events = {
       );
 
       if (!payload.worldId) {
-        payload.runtime.logger.error('[Bootstrap] No worldId provided for entity joined');
+        payload.runtime.logger.error(
+          "[Bootstrap] No worldId provided for entity joined"
+        );
         return;
       }
       if (!payload.roomId) {
-        payload.runtime.logger.error('[Bootstrap] No roomId provided for entity joined');
+        payload.runtime.logger.error(
+          "[Bootstrap] No roomId provided for entity joined"
+        );
         return;
       }
       if (!payload.metadata?.type) {
-        payload.runtime.logger.error('[Bootstrap] No type provided for entity joined');
+        payload.runtime.logger.error(
+          "[Bootstrap] No type provided for entity joined"
+        );
         return;
       }
 
@@ -1892,7 +2084,7 @@ const events = {
         if (entity) {
           entity.metadata = {
             ...entity.metadata,
-            status: 'INACTIVE',
+            status: "INACTIVE",
             leftAt: Date.now(),
           };
           await payload.runtime.updateEntity(entity);
@@ -1902,7 +2094,7 @@ const events = {
         );
       } catch (error: any) {
         payload.runtime.logger.error(
-          '[Bootstrap] Error handling user left:',
+          "[Bootstrap] Error handling user left:",
           error instanceof Error ? error.message : String(error)
         );
       }
@@ -1910,30 +2102,31 @@ const events = {
   ],
 
   [EventType.ACTION_STARTED]: [
-    async (payload: ActionEventPayload) => {
-      try {
-        // Only notify for client_chat messages
-        if (payload.content?.source === 'client_chat') {
-          const messageBusService = payload.runtime.getService('message-bus-service') as any;
-          if (messageBusService) {
-            await messageBusService.notifyActionStart(
-              payload.roomId,
-              payload.world,
-              payload.content,
-              payload.messageId
-            );
-          }
-        }
-      } catch (error) {
-        logger.error(`[Bootstrap] Error sending refetch request: ${error}`);
-      }
+    async (_payload: ActionEventPayload) => {
+      // Artur: commented out because it was causing duplication of thoughts in the chat
+      // try {
+      //   // Only notify for client_chat messages
+      //   if (payload.content?.source === 'client_chat') {
+      //     const messageBusService = payload.runtime.getService('message-bus-service') as any;
+      //     if (messageBusService) {
+      //       await messageBusService.notifyActionStart(
+      //         payload.roomId,
+      //         payload.world,
+      //         payload.content,
+      //         payload.messageId
+      //       );
+      //     }
+      //   }
+      // } catch (error) {
+      //   logger.error(`[Bootstrap] Error sending refetch request: ${error}`);
+      // }
     },
     async (payload: ActionEventPayload) => {
       try {
         await payload.runtime.log({
           entityId: payload.runtime.agentId,
           roomId: payload.roomId,
-          type: 'action_event',
+          type: "action_event",
           body: {
             runId: payload.content?.runId,
             actionId: payload.content?.actionId,
@@ -1942,14 +2135,16 @@ const events = {
             messageId: payload.messageId,
             timestamp: Date.now(),
             planStep: payload.content?.planStep,
-            source: 'actionHandler',
+            source: "actionHandler",
           },
         });
         logger.debug(
           `[Bootstrap] Logged ACTION_STARTED event for action ${payload.content?.actions?.[0]}`
         );
       } catch (error) {
-        logger.error(`[Bootstrap] Failed to log ACTION_STARTED event: ${error}`);
+        logger.error(
+          `[Bootstrap] Failed to log ACTION_STARTED event: ${error}`
+        );
       }
     },
   ],
@@ -1958,8 +2153,10 @@ const events = {
     async (payload: ActionEventPayload) => {
       try {
         // Only notify for client_chat messages
-        if (payload.content?.source === 'client_chat') {
-          const messageBusService = payload.runtime.getService('message-bus-service') as any;
+        if (payload.content?.source === "client_chat") {
+          const messageBusService = payload.runtime.getService(
+            "message-bus-service"
+          ) as any;
           if (messageBusService) {
             await messageBusService.notifyActionUpdate(
               payload.roomId,
@@ -1985,7 +2182,9 @@ const events = {
 
   [EventType.EVALUATOR_COMPLETED]: [
     async (payload: EvaluatorEventPayload) => {
-      const status = payload.error ? `failed: ${payload.error.message}` : 'completed';
+      const status = payload.error
+        ? `failed: ${payload.error.message}`
+        : "completed";
       logger.debug(
         `[Bootstrap] Evaluator ${status}: ${payload.evaluatorName} (${payload.evaluatorId})`
       );
@@ -1998,7 +2197,7 @@ const events = {
         await payload.runtime.log({
           entityId: payload.entityId,
           roomId: payload.roomId,
-          type: 'run_event',
+          type: "run_event",
           body: {
             runId: payload.runId,
             status: payload.status,
@@ -2006,10 +2205,12 @@ const events = {
             roomId: payload.roomId,
             entityId: payload.entityId,
             startTime: payload.startTime,
-            source: payload.source || 'unknown',
+            source: payload.source || "unknown",
           },
         });
-        logger.debug(`[Bootstrap] Logged RUN_STARTED event for run ${payload.runId}`);
+        logger.debug(
+          `[Bootstrap] Logged RUN_STARTED event for run ${payload.runId}`
+        );
       } catch (error) {
         logger.error(`[Bootstrap] Failed to log RUN_STARTED event: ${error}`);
       }
@@ -2022,7 +2223,7 @@ const events = {
         await payload.runtime.log({
           entityId: payload.entityId,
           roomId: payload.roomId,
-          type: 'run_event',
+          type: "run_event",
           body: {
             runId: payload.runId,
             status: payload.status,
@@ -2033,7 +2234,7 @@ const events = {
             endTime: payload.endTime,
             duration: payload.duration,
             error: payload.error,
-            source: payload.source || 'unknown',
+            source: payload.source || "unknown",
           },
         });
         logger.debug(
@@ -2051,7 +2252,7 @@ const events = {
         await payload.runtime.log({
           entityId: payload.entityId,
           roomId: payload.roomId,
-          type: 'run_event',
+          type: "run_event",
           body: {
             runId: payload.runId,
             status: payload.status,
@@ -2062,10 +2263,12 @@ const events = {
             endTime: payload.endTime,
             duration: payload.duration,
             error: payload.error,
-            source: payload.source || 'unknown',
+            source: payload.source || "unknown",
           },
         });
-        logger.debug(`[Bootstrap] Logged RUN_TIMEOUT event for run ${payload.runId}`);
+        logger.debug(
+          `[Bootstrap] Logged RUN_TIMEOUT event for run ${payload.runId}`
+        );
       } catch (error) {
         logger.error(`[Bootstrap] Failed to log RUN_TIMEOUT event: ${error}`);
       }
@@ -2076,8 +2279,8 @@ const events = {
 };
 
 export const bootstrapPlugin: Plugin = {
-  name: 'bootstrap',
-  description: 'Agent bootstrap with basic actions and evaluators',
+  name: "bootstrap",
+  description: "Agent bootstrap with basic actions and evaluators",
   actions: [
     actions.replyAction,
     actions.followRoomAction,

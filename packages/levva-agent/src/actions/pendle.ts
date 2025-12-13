@@ -18,6 +18,7 @@ import {
 import { formatDecimalToPercentage } from "../util";
 import { formatCoin } from "../util/format-coin";
 import { PendleMarket } from "../api/levva/schema";
+import { toPendleSymbol } from "../services/levva/pendle";
 
 const description =
   "Handle Pendle explore, buy, sell, deposit, and withdraw requests using intent-based system with multi-step process support.";
@@ -102,8 +103,8 @@ export const action: Action = {
         composedState: State,
         prevActions: string
       ) => {
-        let thought: string;
-        let text: string;
+        let thought: string = "";
+        let text: string = "";
         let pendleMarkets: PendleMarket[] = [];
 
         if (
@@ -116,7 +117,6 @@ export const action: Action = {
 
           thought =
             "No Pendle markets found, searched for all markets. I should ask for clarification.";
-          text = `✨ Here are the Pendle markets:`;
         } else if (
           providerData.pendleFilteredMarkets &&
           providerData.pendleFilteredMarkets.length > 0
@@ -125,26 +125,45 @@ export const action: Action = {
 
           thought =
             "Searched for Pendle markets, found some. I should ask for clarification.";
-          text = `✨ Here are the filtered Pendle markets:`;
         } else {
           return { content: null, thought: null };
         }
 
-        const formattedPendleMarkets =
-          pendleMarkets
-            ?.sort((a, b) => b.impliedApy - a.impliedApy)
-            .map((market) => {
-              const maturityDate = new Date(market.maturityDate)
-                .toDateString()
-                .slice(4, 15);
-              const percentageApy = formatDecimalToPercentage(
-                market.impliedApy
-              );
-              const liquidityInUsd = formatCoin(+market.liquidity.toFixed(2));
+        let groupedMarkets: Record<
+          string,
+          {
+            symbol: string;
+            impliedApy: string;
+            liquidity: string;
+            apy: number;
+          }[]
+        > = pendleMarkets.reduce(
+          (result: any, currentValue: PendleMarket) => ({
+            ...result,
+            [currentValue.underlyingType]: [
+              ...(result[currentValue.underlyingType] || []),
+              {
+                symbol: toPendleSymbol(currentValue).symbol,
+                impliedApy: formatDecimalToPercentage(currentValue.impliedApy),
+                liquidity: formatCoin(+currentValue.liquidity.toFixed(2)),
+                apy: currentValue.impliedApy,
+              },
+            ],
+          }),
+          {}
+        );
 
-              return `\n- ${market.underlyingType} yield **${market.underlyingAssetSymbol} – matures on ${maturityDate}**, Implied APY: ${percentageApy}, PT Liquidity: ~$${liquidityInUsd}`;
+        let formattedPendleMarkets: string = "";
+
+        for (const group in groupedMarkets) {
+          formattedPendleMarkets += `\n\n📈 **${group} yield markets**:\n`;
+          formattedPendleMarkets += groupedMarkets[group]
+            .sort((a, b) => b.apy - a.apy)
+            .map((market) => {
+              return `- ${market.symbol} (${market.impliedApy} APY, ~$${market.liquidity} PT Liquidity)`;
             })
-            .join("\n") ?? [];
+            .join("\n");
+        }
 
         const responseContent = await rephrase({
           runtime,
