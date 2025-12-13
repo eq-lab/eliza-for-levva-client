@@ -131,7 +131,12 @@ export const action: Action = {
 
         let groupedMarkets: Record<
           string,
-          { symbol: string; impliedApy: string; liquidity: string }[]
+          {
+            symbol: string;
+            impliedApy: string;
+            liquidity: string;
+            apy: number;
+          }[]
         > = pendleMarkets.reduce(
           (result: any, currentValue: PendleMarket) => ({
             ...result,
@@ -141,6 +146,7 @@ export const action: Action = {
                 symbol: toPendleSymbol(currentValue).symbol,
                 impliedApy: formatDecimalToPercentage(currentValue.impliedApy),
                 liquidity: formatCoin(+currentValue.liquidity.toFixed(2)),
+                apy: currentValue.impliedApy,
               },
             ],
           }),
@@ -152,7 +158,7 @@ export const action: Action = {
         for (const group in groupedMarkets) {
           formattedPendleMarkets += `\n\n📈 **${group} yield markets**:\n`;
           formattedPendleMarkets += groupedMarkets[group]
-            .sort((a, b) => Number(b.impliedApy) - Number(a.impliedApy))
+            .sort((a, b) => b.apy - a.apy)
             .map((market) => {
               return `- ${market.symbol} (${market.impliedApy} APY, ~$${market.liquidity} PT Liquidity)`;
             })
