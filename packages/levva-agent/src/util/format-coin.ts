@@ -41,8 +41,10 @@ const getNumber = (numericValue: number) => {
 
 export const formatCoin = (
   value: number | string | undefined | null
-): React.ReactNode => {
-  if (!value || Number(value) === 0) return value;
+): string | undefined => {
+  if (!value || Number(value) === 0) {
+    return undefined;
+  }
 
   const numericValue = Number(value);
 

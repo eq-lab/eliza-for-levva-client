@@ -80,7 +80,7 @@ export const getPendleMarketPtTokens = async (
 
 export const toPendleSymbol = (
   market: PendleMarket
-): { lp: string; pt: string } => {
+): { lp: string; pt: string; symbol: string } => {
   const date = new Date(market.maturityDate);
 
   const day = date.getUTCDate();
@@ -106,5 +106,6 @@ export const toPendleSymbol = (
   return {
     lp: `LP-${market.underlyingAssetSymbol}-${day}${month}${year}`,
     pt: `PT-${market.underlyingAssetSymbol}-${day}${month}${year}`,
+    symbol: `${market.underlyingAssetSymbol}-${day}${month}${year}`,
   };
 };

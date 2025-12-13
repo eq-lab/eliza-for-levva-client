@@ -18,6 +18,7 @@ import {
 import { formatDecimalToPercentage } from "../util";
 import { formatCoin } from "../util/format-coin";
 import { PendleMarket } from "../api/levva/schema";
+import { toPendleSymbol } from "../services/levva/pendle";
 
 const description =
   "Handle Pendle explore, buy, sell, deposit, and withdraw requests using intent-based system with multi-step process support.";
@@ -130,21 +131,35 @@ export const action: Action = {
           return { content: null, thought: null };
         }
 
-        const formattedPendleMarkets =
-          pendleMarkets
-            ?.sort((a, b) => b.impliedApy - a.impliedApy)
-            .map((market) => {
-              const maturityDate = new Date(market.maturityDate)
-                .toDateString()
-                .slice(4, 15);
-              const percentageApy = formatDecimalToPercentage(
-                market.impliedApy
-              );
-              const liquidityInUsd = formatCoin(+market.liquidity.toFixed(2));
+        let groupedMarkets: Record<
+          string,
+          { symbol: string; impliedApy: string; liquidity: string }[]
+        > = pendleMarkets.reduce(
+          (result: any, currentValue: PendleMarket) => ({
+            ...result,
+            [currentValue.underlyingType]: [
+              ...(result[currentValue.underlyingType] || []),
+              {
+                symbol: toPendleSymbol(currentValue).symbol,
+                impliedApy: formatDecimalToPercentage(currentValue.impliedApy),
+                liquidity: formatCoin(+currentValue.liquidity.toFixed(2)),
+              },
+            ],
+          }),
+          {}
+        );
 
-              return `\n- ${market.underlyingType} yield **${market.underlyingAssetSymbol} – matures on ${maturityDate}**, Implied APY: ${percentageApy}, PT Liquidity: ~$${liquidityInUsd}`;
+        let formattedPendleMarkets: string = "";
+
+        for (const group in groupedMarkets) {
+          formattedPendleMarkets += `\n#### ${group} yield:`;
+          formattedPendleMarkets += groupedMarkets[group]
+            .sort((a, b) => Number(b.impliedApy) - Number(a.impliedApy))
+            .map((market) => {
+              return `\n- **${market.symbol}** (${market.impliedApy} APY, ~$${market.liquidity} PT Liquidity)`;
             })
-            .join("\n") ?? [];
+            .join("\n");
+        }
 
         const responseContent = await rephrase({
           runtime,
