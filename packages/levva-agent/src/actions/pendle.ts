@@ -103,8 +103,8 @@ export const action: Action = {
         composedState: State,
         prevActions: string
       ) => {
-        let thought: string;
-        let text: string;
+        let thought: string = "";
+        let text: string = "";
         let pendleMarkets: PendleMarket[] = [];
 
         if (
@@ -117,7 +117,6 @@ export const action: Action = {
 
           thought =
             "No Pendle markets found, searched for all markets. I should ask for clarification.";
-          text = `✨ Here are the Pendle markets:`;
         } else if (
           providerData.pendleFilteredMarkets &&
           providerData.pendleFilteredMarkets.length > 0
@@ -126,7 +125,6 @@ export const action: Action = {
 
           thought =
             "Searched for Pendle markets, found some. I should ask for clarification.";
-          text = `✨ Here are the filtered Pendle markets:`;
         } else {
           return { content: null, thought: null };
         }
@@ -152,11 +150,11 @@ export const action: Action = {
         let formattedPendleMarkets: string = "";
 
         for (const group in groupedMarkets) {
-          formattedPendleMarkets += `\n#### ${group} yield:`;
+          formattedPendleMarkets += `\n\n📈 **${group} yield markets**:\n`;
           formattedPendleMarkets += groupedMarkets[group]
             .sort((a, b) => Number(b.impliedApy) - Number(a.impliedApy))
             .map((market) => {
-              return `\n- **${market.symbol}** (${market.impliedApy} APY, ~$${market.liquidity} PT Liquidity)`;
+              return `- ${market.symbol} (${market.impliedApy} APY, ~$${market.liquidity} PT Liquidity)`;
             })
             .join("\n");
         }
