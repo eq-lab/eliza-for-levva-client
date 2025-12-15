@@ -282,7 +282,7 @@ export class LevvaService extends Service implements ILevvaService {
 
   async filterPendleMarkets(
     pendleMarkets: PendleMarket[],
-    tokenOut?: string,
+    token?: string,
     maturityDays?: string,
     tokenClass?: string
   ): Promise<PendleMarket[]> {
@@ -297,8 +297,8 @@ export class LevvaService extends Service implements ILevvaService {
         (maturityDate.getTime() - utcNowDateInMsec) / 86400000
       );
       return (
-        (!tokenOut ||
-          tokenOut.toLocaleLowerCase() ===
+        (!token ||
+          token.toLocaleLowerCase() ===
             market.underlyingAssetSymbol.toLocaleLowerCase()) &&
         (!maturityDays ||
           (maturityDays === "<=30" && daysUntilMaturity <= 30) ||
@@ -306,7 +306,7 @@ export class LevvaService extends Service implements ILevvaService {
             daysUntilMaturity > 30 &&
             daysUntilMaturity <= 90) ||
           (maturityDays === ">90" && daysUntilMaturity > 90)) &&
-        (!tokenClass || tokenClass === market.underlyingType)
+        (!tokenClass || token || tokenClass === market.underlyingType)
       );
     });
   }

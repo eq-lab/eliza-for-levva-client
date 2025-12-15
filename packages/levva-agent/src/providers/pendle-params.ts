@@ -25,6 +25,9 @@ export interface PendleParamsProviderData {
   slippage?: string;
   operationType?: "buy" | "sell" | "deposit" | "withdraw";
   pendleFilteredMarkets?: PendleMarket[];
+  thought?: string;
+  supportedTokensIn?: string[];
+  supportedTokensOut?: string[];
   intentContext?: IntentContext;
 }
 
@@ -181,16 +184,13 @@ export const pendleParamsProvider: Provider = {
       // Filter non-zero balances and format with token info
       const portfolioEntries = walletTokens
         .map(({ token, balance }) => {
-          return `('${token!.symbol}','${balance}')`;
+          return `${balance} ${token!.symbol}`;
         })
-        .join(",");
+        .join("\n");
 
       const pendleAssets = pendleMarkets
-        .map(
-          (market) =>
-            `('${market.underlyingAssetSymbol}','${market.underlyingType}')`
-        )
-        .join(",");
+        .map((market) => `${market.underlyingAssetSymbol}`)
+      .join("\n");
 
       if (portfolioEntries) {
         userPortfolio = portfolioEntries;
@@ -405,18 +405,6 @@ export const pendleParamsProvider: Provider = {
       };
     }
 
-    if (!data.tokenInData || !data.tokenOutData) {
-      return {
-        ...EMPTY_RESULT,
-        data: { ...data, intentContext },
-        values: {
-          strategy:
-            "Please provide the token you want to use for the transaction.",
-        },
-        text: "Failed to extract Pendle parameters: unknown token",
-      };
-    }
-
     const pendleSupportedTokens =
       await levvaService.getPendleMarketSupportedTokens(
         chainId,
@@ -436,14 +424,18 @@ export const pendleParamsProvider: Provider = {
     // sell:     tokenIn => PT token,       tokenOut => check tokensOut
     // withdraw: tokenIn => LP token,       tokenOut => check tokensOut
 
+    data.thought = undefined;
+    data.supportedTokensIn = undefined;
+    data.supportedTokensOut = undefined;
+
     if (
       (operationType == "buy" || operationType == "deposit") &&
+      data.tokenInData &&
       !pendleSupportedInTokens.has(data.tokenInData.address!.toLowerCase())
     ) {
       const unknownToken = data.tokenInData?.symbol;
-      data.tokenInData = undefined;
 
-      const tokens = walletTokens
+      const supportedTokensIn = walletTokens
         .filter(
           (wt) =>
             wt.asset &&
@@ -451,20 +443,83 @@ export const pendleParamsProvider: Provider = {
         )
         .map((wt) => wt.token.symbol);
 
+      if (supportedTokensIn.length === 0) {
+        data.thought = `${unknownToken} is not supported by Pendle router. Selecting first supported token in from Pendle router.`;
+        data.tokenInData = await levvaService.token.getTokenDataWithInfo({
+          chainId,
+          symbolOrAddress: pendleSupportedTokens.tokensIn[0],
+          skipUpsert: true,
+        });
+      } else {
+        data.supportedTokensIn = supportedTokensIn;
+
+        return {
+          ...EMPTY_RESULT,
+          data: { ...data, intentContext },
+          values: {
+            strategy: `${unknownToken} is not supported by Pendle router. Select other token in.`,
+          },
+          text: `${unknownToken} is not supported by Pendle router. Select other token in.`,
+        };
+      }
+    } else if (
+      (operationType == "sell" || operationType == "withdraw") &&
+      data.tokenOutData &&
+      !pendleSupportedOutTokens.has(data.tokenOutData.address!.toLowerCase())
+    ) {
+      const unknownToken = data.tokenOutData?.symbol;
+
+      const supportedTokensOut = walletTokens
+        .filter(
+          (wt) =>
+            wt.asset &&
+            pendleSupportedOutTokens.has(wt.asset.token.toLowerCase())
+        )
+        .map((wt) => wt.token.symbol);
+
+      if (supportedTokensOut.length === 0) {
+        data.thought = `${unknownToken} is not supported by Pendle router. Selecting first supported token out from Pendle router.`;
+        data.tokenOutData = await levvaService.token.getTokenDataWithInfo({
+          chainId,
+          symbolOrAddress: pendleSupportedTokens.tokensOut[0],
+          skipUpsert: true,
+        });
+      } else {
+        data.supportedTokensOut = supportedTokensOut;
+
+        return {
+          ...EMPTY_RESULT,
+          data: { ...data, intentContext },
+          values: {
+            strategy: `${unknownToken} is not supported by Pendle router. Select other token out.`,
+          },
+          text: `${unknownToken} is not supported by Pendle router. Select other token out.`,
+        };
+      }
+    }
+
+    if (!data.tokenInData) {
       return {
         ...EMPTY_RESULT,
         data: { ...data, intentContext },
         values: {
-          strategy: `${unknownToken} is not supported by Pendle router. There is not supported token in your wallet. Please choose other Pendle market."}`,
+          strategy:
+            "Please provide the token in you want to use for the transaction.",
         },
-        text: `${unknownToken} is not supported by Pendle router. Select other token in.`,
+        text: "Failed to extract Pendle parameters: unknown token in",
       };
-    } else if (
-      (operationType == "sell" || operationType == "withdraw") &&
-      !pendleSupportedOutTokens.has(data.tokenOutData?.address!.toLowerCase())
-    ) {
-      const unknownToken = data.tokenOutData?.symbol;
-      data.tokenOutData = undefined;
+    }
+
+    if (!data.tokenOutData) {
+      return {
+        ...EMPTY_RESULT,
+        data: { ...data, intentContext },
+        values: {
+          strategy:
+            "Please provide the token out you want to use for the transaction.",
+        },
+        text: "Failed to extract Pendle parameters: unknown token out",
+      };
     }
 
     const balanceDataEntries = await levvaService.wallet.getBalances(
