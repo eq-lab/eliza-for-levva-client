@@ -25,7 +25,6 @@ export const extractedPendleParamsSchema = z
       .describe(
         "Asset class category/strategy: 'Stable' (stablecoins), 'BTC' (Bitcoin-backed), or 'ETH' (Ethereum-backed). " +
           "ONLY extract if user explicitly mentions asset class. " +
-          "Can be inferred from tokenOut if tokenOut is explicitly specified. " +
           "Return null if not explicitly specified."
       ),
     tokenIn: z
@@ -114,13 +113,13 @@ Extract Pendle transaction parameters from <currentMessage>${ctx.intentContext ?
 </task>
 
 <pendleTokens>
-Format: comma separated list of Pendle PT tokens/markets ('ptToken','class')
+Format: list of Pendle PT tokens/markets
 
 ${ctx.pendleTokens}
 </pendleTokens>
 
 <userPortfolio>
-Format: comma separated list of ('token','balance')
+Format: list of token balances
 
 ${ctx.userPortfolio}
 </userPortfolio>
@@ -164,11 +163,11 @@ GENERAL INSTRUCTIONS:
   * Example: "yousd" is NOT "yusd" - they are different strings
   * Example: "yousd" matches "yoUSD" case-insensitively
   * Double-check the EXACT spelling in <currentMessage> before matching to <pendleTokens>
-- **CRITICAL DISTINCTION**: tokenClass and tokenOut are INDEPENDENT parameters
-  * tokenClass = asset category filter (Stable/BTC/ETH) - can be mentioned by user OR inferred
+- **CRITICAL DISTINCTION**: tokenClass, tokenOut, tokenIn are INDEPENDENT parameters
+  * tokenClass = asset category filter (Stable/BTC/ETH) - can be mentioned by user
   * tokenOut = specific token name or symbol - MUST be explicitly mentioned by user
   * **tokenClass alone is NOT sufficient**: Specifying only asset class without specific token name always results in tokenOut: null
-- NEVER infer or suggest tokenIn, tokenOut, amount, maturityDays if not explicitly specified
+- NEVER infer or suggest tokenIn, tokenOut, tokenClass, amount, maturityDays if not explicitly specified
 - If multiple Pendle requests exist, extract parameters for the MOST RECENT uncompleted one
 - **CRITICAL**: Extract parameters ONLY from USER messages, NOT from agent/Levvski responses
 ${ctx.intentContext ? '- Leverage intent context to resolve ambiguous references (e.g., "that token" referring to previously mentioned tokens)' : ""}
@@ -232,32 +231,33 @@ TOKEN CLASS SELECTION GUIDANCE:
 
 - **Extraction Rules**:
   * Extract tokenClass when user mentions asset type/category/strategy: "stable", "stablecoin", "BTC", "bitcoin", "ETH", "ethereum"
-  * Can be inferred from tokenOut when tokenOut is explicitly specified
-  * tokenClass is INDEPENDENT from tokenOut - they are separate parameters
   * **CRITICAL**: Asset class only (no specific token)
-  * "I want a stable PT" → tokenClass: "Stable", tokenOut: **null**
-  * "I want BTC yield" → tokenClass: "BTC", tokenOut: **null**
-  * "I want PT yoUSD" → tokenClass: "Stable" (inferred), tokenOut: "yoUSD"
-  * "I want to invest in BTC yield strategy" → tokenClass: "BTC", tokenOut: **null**
-  * "I want to invest in ETH yield strategy" → tokenClass: "ETH", tokenOut: **null**
-  * "I want to invest in stable yield strategy" → tokenClass: "Stable", tokenOut: **null**
+  * "I want a stable PT" → tokenClass: "Stable", tokenOut: **null**, tokenIn: **null**
+  * "I want BTC yield" → tokenClass: "BTC", tokenOut: **null**, tokenIn: **null**
+  * "I want PT yoUSD" → tokenClass: null, tokenOut: "yoUSD", tokenIn: **null**
+  * "I want to invest in BTC yield strategy" → tokenClass: "BTC", tokenOut: **null**, tokenIn: **null**
+  * "I want to invest in ETH yield strategy" → tokenClass: "ETH", tokenOut: **null**, tokenIn: **null**
+  * "I want to invest in stable yield strategy" → tokenClass: "Stable", tokenOut: **null**, tokenIn: **null**
 
 TOKEN SELECTION GUIDANCE:
 
 **tokenIn** (token user will SPEND):
 - **For "buy"/"deposit" operations**:
   * Non-PT, non-LP token from <userPortfolio> that user will spend
+  * Match case-insensitively after stripping keywords
   * **CRITICAL**: Return null if user does NOT explicitly mention a specific token.
   * Example: "buy PT with USDC" → tokenIn: "USDC"
 
 - **For "sell" operations**:
   * Must be PT-prefixed token from <userPortfolio> (e.g., "PT-USDe-11DEC2025")
   * User says "sell my PT-USDe" → tokenIn: "PT-USDe-11DEC2025" (match from portfolio)
+  * Match case-insensitively after stripping keywords
   * **CRITICAL**: Return null if user does NOT explicitly mention which PT token to sell.
 
 - **For "withdraw" operations**:
   * Must be LP-prefixed token from <userPortfolio> (e.g., "LP-yoUSD-26MAR2026")
   * User says "withdraw my LP yoUSD" → tokenIn: "LP-yoUSD-26MAR2026" (match from portfolio)
+  * Match case-insensitively after stripping keywords
   * **CRITICAL**: Return null if user does NOT explicitly mention which LP token to withdraw.
 
 **tokenOut** (token user will RECEIVE):
@@ -275,11 +275,13 @@ TOKEN SELECTION GUIDANCE:
   * **Strip descriptive keywords before matching**:
     - Remove "LP", "LP-" prefix: "LP yoUSD" → "yoUSD"
     - Remove "Pendle" keyword: "deposit into Pendle yoUSD" → "yoUSD"
+  * Match case-insensitively after stripping keywords
   * **CRITICAL**: Return null if no specific token mentioned
 
 - **For "sell"/"withdraw" operations**:
   * Non-PT, non-LP token user wants to RECEIVE (from <userPortfolio>)
   * Example: "sell PT-USDe for USDC" → tokenOut: "USDC"
+  * Match case-insensitively after stripping keywords
   * **CRITICAL**: Return null if user does NOT explicitly mention what token to receive
 
 **General Rules:**
@@ -290,9 +292,6 @@ TOKEN SELECTION GUIDANCE:
 - **CRITICAL**: Phrases like "you can consider PT yoUSD or PT USDX" are agent suggestions, NOT user selections - return null
 
 **Extraction Examples:**
-
-Given <userPortfolio>: [("USDC","3"), ("ETH","0.011"), ("PT-USDe-11DEC2025","0.316"), ("LP-yoUSD-26MAR2026","1.5")]
-Given <pendleTokens>: [("yoUSD","Stable"), ("USDX","Stable"), ("mRe7BTC","BTC"), ("USDe","Stable")]
 
 - **Informational queries (all null)**:
   * "I want a PT" → operationType: null, tokenIn: null, tokenOut: null, tokenClass: null, amount: null
@@ -306,21 +305,21 @@ Given <pendleTokens>: [("yoUSD","Stable"), ("USDX","Stable"), ("mRe7BTC","BTC"),
   * "buy stable yield" → operationType: "buy", tokenOut: null, tokenClass: "Stable", tokenIn: null, amount: null
 
 - **Buy operations** (tokenIn = spend, tokenOut = PT to receive):
-  * "buy PT yoUSD with 100 USDC" → operationType: "buy", tokenIn: "USDC", tokenOut: "yoUSD", tokenClass: "Stable", amount: "100"
-  * "buy PT yoUSD using ETH" → operationType: "buy", tokenIn: "ETH", tokenOut: "yoUSD", tokenClass: "Stable", amount: null
-  * "buy PT mRe7BTC" → operationType: "buy", tokenIn: null, tokenOut: "mRe7BTC", tokenClass: "BTC", amount: null
+  * "buy PT yoUSD with 100 USDC" → operationType: "buy", tokenIn: "USDC", tokenOut: "yoUSD", tokenClass: null, amount: "100"
+  * "buy PT yoUSD using ETH" → operationType: "buy", tokenIn: "ETH", tokenOut: "yoUSD", tokenClass: null, amount: null
+  * "buy PT mRe7BTC" → operationType: "buy", tokenIn: null, tokenOut: "mRe7BTC", tokenClass: null, amount: null
 
 - **Sell operations** (tokenIn = PT to sell, tokenOut = token to receive):
-  * "sell my PT-USDe" → operationType: "sell", tokenIn: "PT-USDe-11DEC2025", tokenOut: null, tokenClass: "Stable"
-  * "sell PT-USDe for USDC" → operationType: "sell", tokenIn: "PT-USDe-11DEC2025", tokenOut: "USDC", tokenClass: "Stable"
+  * "sell my PT-USDe" → operationType: "sell", tokenIn: "PT-USDe-11DEC2025", tokenOut: null, tokenClass: null
+  * "sell PT-USDe for USDC" → operationType: "sell", tokenIn: "PT-USDe-11DEC2025", tokenOut: "USDC", tokenClass: null
 
 - **Deposit operations** (tokenIn = spend, tokenOut = LP pool):
-  * "deposit 1 USDC into yoUSD pool" → operationType: "deposit", tokenIn: "USDC", tokenOut: "yoUSD", tokenClass: "Stable", amount: "1"
-  * "add liquidity to Pendle yoUSD" → operationType: "deposit", tokenIn: null, tokenOut: "yoUSD", tokenClass: "Stable", amount: null
+  * "deposit 1 USDC into yoUSD pool" → operationType: "deposit", tokenIn: "USDC", tokenOut: "yoUSD", tokenClass: null, amount: "1"
+  * "add liquidity to Pendle yoUSD" → operationType: "deposit", tokenIn: null, tokenOut: "yoUSD", tokenClass: null, amount: null
 
 - **Withdraw operations** (tokenIn = LP to withdraw, tokenOut = token to receive):
-  * "withdraw my LP yoUSD" → operationType: "withdraw", tokenIn: "LP-yoUSD-26MAR2026", tokenOut: null, tokenClass: "Stable"
-  * "withdraw LP yoUSD for USDC" → operationType: "withdraw", tokenIn: "LP-yoUSD-26MAR2026", tokenOut: "USDC", tokenClass: "Stable"
+  * "withdraw my LP yoUSD" → operationType: "withdraw", tokenIn: "LP-yoUSD-26MAR2026", tokenOut: null, tokenClass: null
+  * "withdraw LP yoUSD for USDC" → operationType: "withdraw", tokenIn: "LP-yoUSD-26MAR2026", tokenOut: "USDC", tokenClass: null
 
 MATURITY DAYS SELECTION GUIDANCE:
 Categories: "<=30" (short-term, 1-30d), "30-90" (medium-term, 31-90d), ">90" (long-term, 91+d)

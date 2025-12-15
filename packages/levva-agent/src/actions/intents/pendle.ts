@@ -147,7 +147,9 @@ export const handlePendleStrategyIntent: IntentHandler = async (
       !params.operationType ||
       !params.tokenInData ||
       !params.tokenOutData ||
-      !params.amount
+      !params.amount ||
+      (params.supportedTokensIn && params.supportedTokensIn.length > 0) ||
+      (params.supportedTokensOut && params.supportedTokensOut.length > 0)
     ) {
       // Missing parameters - ask user for more information
       return await handleMissingPendleStrategyParameters(
@@ -484,7 +486,7 @@ async function executePendleStrategyTransaction(
 
   const content: Content = {
     thought,
-    text,
+    text: params.thought ? `${text}\n\nNote: ${params.thought}` : text,
     actions: [`${LEVVA_ACTIONS.SELECT_PENDLE_STRATEGY}`],
     source: message.content.source,
     attachments: [json],

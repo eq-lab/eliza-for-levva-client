@@ -215,7 +215,9 @@ export const action: Action = {
         providerData.operationType &&
         providerData.tokenInData &&
         providerData.tokenOutData &&
-        providerData.amount
+        providerData.amount &&
+        !providerData.supportedTokensIn &&
+        !providerData.supportedTokensOut
       ) {
         runtime.logger.info(
           "Processing direct Pendle strategy request without intent context"
