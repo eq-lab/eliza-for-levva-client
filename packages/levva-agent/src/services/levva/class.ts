@@ -42,7 +42,10 @@ import { NewsServiceComponent } from "./news-component";
 import { createTimedCache, createPermanentCache } from "./cache-util";
 import { getPendleMarketPtTokens } from "./pendle";
 import { PendleMarket } from "../../api/levva/schema";
-import { getPendleMarketSupportedTokens } from "../../api/pendle";
+import {
+  getPendleMarketDetails,
+  getPendleMarketSupportedTokens,
+} from "../../api/pendle";
 import { TokenData } from "../../types/token";
 import { RedisService } from "../redis";
 
@@ -280,12 +283,12 @@ export class LevvaService extends Service implements ILevvaService {
     (chainId: number) => `pendle-markets:${chainId}`
   );
 
-  async filterPendleMarkets(
+  filterPendleMarkets(
     pendleMarkets: PendleMarket[],
     token?: string,
     maturityDays?: string,
     tokenClass?: string
-  ): Promise<PendleMarket[]> {
+  ): PendleMarket[] {
     const utcNowDate = Date.now();
     const utcNowDateInMsec = Math.floor(
       utcNowDate - Math.floor(utcNowDate % 86400000)
@@ -301,6 +304,7 @@ export class LevvaService extends Service implements ILevvaService {
           token.toLocaleLowerCase() ===
             market.underlyingAssetSymbol.toLocaleLowerCase()) &&
         (!maturityDays ||
+          token ||
           (maturityDays === "<=30" && daysUntilMaturity <= 30) ||
           (maturityDays === "30-90" &&
             daysUntilMaturity > 30 &&
@@ -321,6 +325,18 @@ export class LevvaService extends Service implements ILevvaService {
     86400000,
     getPendleMarketSupportedTokens,
     this.getPendleMarketSupportedTokensCacheKey
+  );
+
+  private getPendleMarketDetailsCacheKey = (
+    chainId: number,
+    marketAddress: `0x${string}`
+  ) => `pendle-market-details:${chainId}:${marketAddress}`;
+
+  getPendleMarketDetails = createTimedCache(
+    this,
+    86400000,
+    getPendleMarketDetails,
+    this.getPendleMarketDetailsCacheKey
   );
 
   collectPendleMarketPtAndLpTokens = async (

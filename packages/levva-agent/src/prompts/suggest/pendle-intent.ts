@@ -27,13 +27,13 @@ export interface PendleStrategyIntentSuggestionParams {
   userAddress: `0x${string}`;
   chainId: number;
   returnData: {
-    userToken?: string;
-    pendleToken?: string;
-    amount?: string;
-    maturity?: string;
     tokenClass?: string;
+    tokenIn?: string;
+    tokenOut?: string;
     maturityDays?: string;
     operationType?: string;
+    amount?: string;
+    slippage?: string;
     [key: string]: any;
   };
   walletAsset?: {
@@ -49,12 +49,11 @@ export interface PendleStrategyIntentSuggestionParams {
 
 export function generatePendleStrategyIntentSuggestionsPrompt(
   params: PendleStrategyIntentSuggestionParams
-): string {
+): string | undefined {
   const {
     returnData,
     walletAsset,
     pendleFilteredMarkets,
-    allPendleMarkets,
     userAddress,
     chainId,
     providerData,
@@ -94,8 +93,8 @@ export function generatePendleStrategyIntentSuggestionsPrompt(
           labelDescription: "Use EXACT label format",
           textDescription: "Use EXACT text format",
           content: providerData.supportedTokensIn!.slice(0, 5).map((token) => ({
-            label: `Use ${token}`,
-            text: `Use ${token} instead of ${providerData.tokenInData?.symbol} for token in`,
+            label: `Use ${token.token.symbol}`,
+            text: `Use ${token.token.symbol} for token in`,
           })),
         }
       : {
@@ -104,8 +103,8 @@ export function generatePendleStrategyIntentSuggestionsPrompt(
           content: providerData
             .supportedTokensOut!.slice(0, 5)
             .map((token) => ({
-              label: `Use ${token}`,
-              text: `Use ${token} instead of ${providerData.tokenOutData?.symbol} for token out`,
+              label: `Use ${token.token.symbol}`,
+              text: `Use ${token.token.symbol} for token out`,
             })),
         };
 
@@ -278,7 +277,11 @@ ${instructions}
 ${generateOutputFormat()}`;
   }
 
-  if (pendleFilteredMarkets.length > 1) {
+  if (
+    (providerData?.operationType === "buy" ||
+      providerData?.operationType === "deposit") &&
+    pendleFilteredMarkets.length > 1
+  ) {
     let suggestions:
       | {
           labelDescription: string;
@@ -422,7 +425,11 @@ ${instructions}
 ${generateOutputFormat()}`;
   }
 
-  if (!providerData?.amount) {
+  if (
+    !providerData?.amount &&
+    providerData?.tokenInData &&
+    providerData?.tokenOutData
+  ) {
     const intentContext = generateIntentContextSection({
       intentType: `${INTENT_TYPE.SELECT_PENDLE_STRATEGY}`,
       status: "Amount selection needed",
@@ -481,7 +488,6 @@ ${
 - "Use ${amount25} ${walletAsset?.symbol}" - 25% of balance`
     : `- You have no balance available`
 }
-- "What amount should I use?" - ask for guidance
 
 Each suggestion MUST:
 - Be natural and conversational
@@ -500,51 +506,4 @@ ${amountContext || "User has no supported tokens in wallet"}
 ${instructions}
 ${generateOutputFormat()}`;
   }
-
-  const intentContext = generateIntentContextSection({
-    intentType: `${INTENT_TYPE.SELECT_PENDLE_STRATEGY}`,
-    status: "Strategy selection needed",
-    userAddress,
-    chainId,
-    parameters: {},
-  });
-
-  const ptTokensList = allPendleMarkets
-    .map(
-      (m) =>
-        `- ${m.underlyingAssetSymbol} (maturity: ${m.maturityDate.split("T")[0]}, class: ${m.underlyingType}, APY: ${formatDecimalToPercentage(m.impliedApy)})`
-    )
-    .join("\n");
-
-  const instructions = generateCommonInstructions({
-    suggestionType: "next-step",
-    specificInstructions: `Generate 3-5 natural, conversational suggestions for Pendle strategy selection:
-
-CRITICAL: All suggestions MUST include the word "${providerData?.operationType}" to clearly indicate intent to ${providerData?.operationType} PT token.
-
-SUGGESTION PRIORITIES:
-1. Select by PT token (specific tokens)
-2. Ask about PT token recommendations
-3. Inquire about PT token types (Stable, ETH, BTC)
-
-SUGGESTION FORMATS (must include "${providerData?.operationType} PT"):
-- "${providerData?.operationType} PT [Token Name]" - by specific token
-- "What PT tokens do you recommend?" - ask for guidance
-- "Tell me about PT token options" - learn more
-
-Each suggestion should:
-- Be natural and conversational
-- **MUST include "${providerData?.operationType} PT" in the text**
-- Reference actual available PT tokens
-- Lead to PT token selection and next steps
-- Use EXACT labels and texts without modifications`,
-  });
-
-  return `<task>Generate PT token selection suggestions for Pendle strategy</task>
-${intentContext}
-<pendleTokens>
-${ptTokensList || "No PT tokens available"}
-</pendleTokens>
-${instructions}
-${generateOutputFormat()}`;
 }

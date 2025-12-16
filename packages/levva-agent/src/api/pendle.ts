@@ -19,6 +19,20 @@ const PendleConvertResponseSchema = z.object({
   ),
 });
 
+const PendleMarketResponseSchema = z.object({
+  markets: z.array(
+    z.object({
+      name: z.string(),
+      address: z.string(),
+      expiry: z.string(),
+      pt: z.string().transform((val) => val.split("-")[1]),
+      yt: z.string().transform((val) => val.split("-")[1]),
+      sy: z.string().transform((val) => val.split("-")[1]),
+      underlyingAsset: z.string().transform((val) => val.split("-")[1]),
+    })
+  ),
+});
+
 const PendleMarketSupportedTokensResponseSchema = z.object({
   tokensIn: z.array(z.string()),
   tokensOut: z.array(z.string()),
@@ -86,4 +100,28 @@ export async function getPendleMarketSupportedTokens(
   }
 
   return result.data;
+}
+
+export async function getPendleMarketDetails(
+  chainId: number,
+  market: `0x${string}`
+) {
+  const path = `/core/v1/markets/all?chainId=${chainId}&ids=${chainId}-${market}`;
+
+  const response = await fetch(`https://api-v2.pendle.finance${path}`, {
+    headers: {
+      Authorization: `Bearer ${process.env.PENDLE_API_KEY}`,
+    },
+  });
+
+  const data = await response.json();
+  const result = PendleMarketResponseSchema.safeParse(data);
+
+  if (!result.success || result.data.markets.length === 0) {
+    throw new Error(
+      `Failed to get Pendle token details. Error: ${data.message}}`
+    );
+  }
+
+  return result.data.markets[0];
 }

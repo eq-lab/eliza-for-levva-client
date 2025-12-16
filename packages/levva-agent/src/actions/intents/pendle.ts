@@ -31,7 +31,7 @@ export async function generatePendleStrategySuggestions(params: {
   userAddress: `0x${string}`;
   chainId: number;
   state?: State;
-}): Promise<string> {
+}): Promise<string | undefined> {
   const { runtime, intentContext, conversation, userAddress, chainId, state } =
     params;
   const levvaService = runtime.getService<LevvaService>(
