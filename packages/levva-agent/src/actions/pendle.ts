@@ -108,6 +108,51 @@ export const action: Action = {
         let pendleMarkets: PendleMarket[] = [];
 
         if (
+          providerData.operationType === "sell" &&
+          !providerData.tokenInData &&
+          providerData.supportedTokensIn &&
+          providerData.supportedTokensIn.length > 0
+        ) {
+          thought =
+            "User must provide the Pendle PT token to use for the transaction. I should ask for clarification.";
+          text =
+            "Please select one of the Pendle PT tokens from your wallet to sell.";
+          text += `\n\n${providerData.supportedTokensIn?.map((token) => `- ${token.balance} ${token.token.symbol}`).join("\n")}`;
+        } else if (
+          providerData.operationType === "withdraw" &&
+          !providerData.tokenInData &&
+          providerData.supportedTokensIn &&
+          providerData.supportedTokensIn.length > 0
+        ) {
+          thought =
+            "User must provide the Pendle LP token to use for the transaction. I should ask for clarification.";
+          text =
+            "Please select one of the Pendle LP tokens from your wallet for withdrawal.";
+          text += `\n\n${providerData.supportedTokensIn?.map((token) => `- ${token.balance} ${token.token.symbol}`).join("\n")}`;
+        } else if (
+          (providerData.operationType === "sell" &&
+            !providerData.tokenInData) ||
+          (providerData.operationType == "withdraw" &&
+            !providerData.tokenInData)
+        ) {
+          thought =
+            "User must provide the Pendle PT or LP token to use for the transaction. I should ask for clarification.";
+          text = "No Pendle PT or LP token found in your wallet.";
+        } else if (
+          (providerData.operationType === "sell" &&
+            providerData.pendleFilteredMarkets?.length === 0) ||
+          (providerData.operationType == "withdraw" &&
+            providerData.pendleFilteredMarkets?.length === 0)
+        ) {
+          thought =
+            "No Pendle markets found for the given parameters. I should ask for clarification.";
+          text = "No Pendle markets found to perform the given operation.";
+        } else if (
+          providerData.operationType === "sell" ||
+          providerData.operationType === "withdraw"
+        ) {
+          return { content: null, thought: null };
+        } else if (
           providerData.pendleFilteredMarkets &&
           providerData.pendleFilteredMarkets.length === 0
         ) {

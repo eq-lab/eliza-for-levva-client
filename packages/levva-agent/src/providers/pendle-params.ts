@@ -26,8 +26,8 @@ export interface PendleParamsProviderData {
   operationType?: "buy" | "sell" | "deposit" | "withdraw";
   pendleFilteredMarkets?: PendleMarket[];
   thought?: string;
-  supportedTokensIn?: string[];
-  supportedTokensOut?: string[];
+  supportedTokensIn?: { token: Token; balance: number }[];
+  supportedTokensOut?: { token: Token; balance: number }[];
   intentContext?: IntentContext;
 }
 
@@ -136,7 +136,7 @@ export const pendleParamsProvider: Provider = {
     let walletTokens: {
       asset: BalanceData | undefined;
       token: Token;
-      balance: string;
+      balance: number;
       balanceUsd: string | number;
     }[] = [];
 
@@ -170,7 +170,7 @@ export const pendleParamsProvider: Provider = {
             ? tokenPricesMap.get("weth")
             : tokenPricesMap.get(token.symbol?.toLowerCase() ?? "");
         const decimals = token.decimals ?? 18;
-        const balance = formatUnits(asset?.amount ?? 0n, decimals);
+        const balance = +formatUnits(asset?.amount ?? 0n, decimals);
         const balanceUsd = price ? (price * Number(balance)).toFixed(2) : 0;
 
         return {
@@ -190,7 +190,7 @@ export const pendleParamsProvider: Provider = {
 
       const pendleAssets = pendleMarkets
         .map((market) => `${market.underlyingAssetSymbol}`)
-      .join("\n");
+        .join("\n");
 
       if (portfolioEntries) {
         userPortfolio = portfolioEntries;
@@ -270,6 +270,10 @@ export const pendleParamsProvider: Provider = {
       slippage,
     } = params;
 
+    data.thought = undefined;
+    data.supportedTokensIn = undefined;
+    data.supportedTokensOut = undefined;
+
     if (amount) {
       data.amount = amount;
     }
@@ -280,14 +284,15 @@ export const pendleParamsProvider: Provider = {
 
     data.slippage = slippage ?? "0.005";
 
-    const pendleTokenSymbol =
-      operationType === "buy" || operationType === "deposit"
-        ? tokenOut
-        : tokenIn;
+    let pendleMarketSymbol: string | undefined;
 
-    const pendleMarketSymbol = pendleTokenSymbol
-      ?.replace(/^(LP-|PT-)/i, "")
-      .replace(/-\d{2}[A-Z]{3}\d{4}$/i, "");
+    if (operationType === "buy" || operationType === "deposit") {
+      pendleMarketSymbol = tokenOut ?? undefined;
+    } else if (operationType === "sell" || operationType === "withdraw") {
+      pendleMarketSymbol = tokenIn
+        ?.replace(/^(LP-|PT-)/i, "")
+        .replace(/-\d{2}[A-Z]{3}\d{4}$/i, "");
+    }
 
     const pendleFilteredMarkets = await levvaService.filterPendleMarkets(
       pendleMarkets,
@@ -314,13 +319,27 @@ export const pendleParamsProvider: Provider = {
       }
     }
 
-    if (tokenOut && tokenOut !== data.tokenOutData?.symbol) {
-      let tokenOutData: TokenDataWithInfo | undefined;
+    if (
+      (operationType === "sell" || operationType === "withdraw") &&
+      pendleFilteredMarkets.length === 1
+    ) {
+      const pendleMarketDetails = await levvaService.getPendleMarketDetails(
+        chainId,
+        pendleFilteredMarkets[0].pendleMarketAddress as `0x${string}`
+      );
 
+      data.tokenOutData = await levvaService.token.getTokenDataWithInfo({
+        chainId,
+        symbolOrAddress: pendleMarketDetails.underlyingAsset,
+        skipUpsert: true,
+      });
+    }
+
+    if (tokenOut && tokenOut !== data.tokenOutData?.symbol) {
       if (operationType === "buy" && pendleFilteredMarkets.length === 1) {
         const { pt } = toPendleSymbol(pendleFilteredMarkets[0]);
 
-        tokenOutData = await levvaService.token.getTokenDataWithInfo({
+        data.tokenOutData = await levvaService.token.getTokenDataWithInfo({
           chainId,
           symbolOrAddress: pt,
           skipUpsert: true,
@@ -331,21 +350,11 @@ export const pendleParamsProvider: Provider = {
       ) {
         const { lp } = toPendleSymbol(pendleFilteredMarkets[0]);
 
-        tokenOutData = await levvaService.token.getTokenDataWithInfo({
+        data.tokenOutData = await levvaService.token.getTokenDataWithInfo({
           chainId,
           symbolOrAddress: lp,
           skipUpsert: true,
         });
-      } else if (operationType === "sell" || operationType === "withdraw") {
-        tokenOutData = await levvaService.token.getTokenDataWithInfo({
-          chainId,
-          symbolOrAddress: tokenOut,
-          skipUpsert: true,
-        });
-      }
-
-      if (tokenOutData) {
-        data.tokenOutData = tokenOutData;
       }
     }
 
@@ -360,6 +369,54 @@ export const pendleParamsProvider: Provider = {
       };
     }
 
+    if (
+      operationType === "sell" &&
+      (!data.tokenInData || !data.tokenInData.symbol.startsWith("PT-"))
+    ) {
+      data.supportedTokensIn = walletTokens
+        .filter(
+          (wt) =>
+            wt.asset &&
+            wt.balance > 0 &&
+            wt.token.symbol.match(/^PT-.+\d{2}[A-Z]{3}\d{4}$/i)
+        )
+        .map((wt) => ({ token: wt.token, balance: wt.balance }));
+
+      return {
+        ...EMPTY_RESULT,
+        data: { ...data, intentContext },
+        values: {
+          strategy:
+            "Please provide the Pendle PT token from your portfolio that you want to sell.",
+        },
+        text: "Failed to extract Pendle parameters: no Pendle PT token found",
+      };
+    }
+
+    if (
+      operationType === "withdraw" &&
+      (!data.tokenInData || !data.tokenInData.symbol.startsWith("LP-"))
+    ) {
+      data.supportedTokensIn = walletTokens
+        .filter(
+          (wt) =>
+            wt.asset &&
+            wt.balance > 0 &&
+            wt.token.symbol.match(/^LP-.+\d{2}[A-Z]{3}\d{4}$/i)
+        )
+        .map((wt) => ({ token: wt.token, balance: wt.balance }));
+
+      return {
+        ...EMPTY_RESULT,
+        data: { ...data, intentContext },
+        values: {
+          strategy:
+            "Please provide the Pendle LP token from your portfolio that you want to use for the withdrawal.",
+        },
+        text: "Failed to extract Pendle parameters: no Pendle LP token found",
+      };
+    }
+
     if (pendleFilteredMarkets.length === 0) {
       return {
         ...EMPTY_RESULT,
@@ -368,40 +425,6 @@ export const pendleParamsProvider: Provider = {
           strategy: "No pendle markets found for the given parameters",
         },
         text: "Failed to extract Pendle parameters: no pendle markets found",
-      };
-    }
-
-    if (pendleFilteredMarkets.length > 1) {
-      if (!tokenClass) {
-        return {
-          ...EMPTY_RESULT,
-          data: { ...data, intentContext },
-          values: {
-            strategy: "Please provide the token class for the Pendle market.",
-          },
-          text: "Failed to extract Pendle parameters: unknown PT token class",
-        };
-      }
-
-      if (!maturityDays) {
-        return {
-          ...EMPTY_RESULT,
-          data: { ...data, intentContext },
-          values: {
-            strategy: "Please provide the maturity days for the Pendle market.",
-          },
-          text: "Failed to extract Pendle parameters: unknown PT token maturity days",
-        };
-      }
-
-      return {
-        ...EMPTY_RESULT,
-        data: { ...data, intentContext },
-        values: {
-          strategy:
-            "Select the Pendle market you want to use for the transaction.",
-        },
-        text: "Failed to extract Pendle parameters: unknown token out",
       };
     }
 
@@ -424,10 +447,6 @@ export const pendleParamsProvider: Provider = {
     // sell:     tokenIn => PT token,       tokenOut => check tokensOut
     // withdraw: tokenIn => LP token,       tokenOut => check tokensOut
 
-    data.thought = undefined;
-    data.supportedTokensIn = undefined;
-    data.supportedTokensOut = undefined;
-
     if (
       (operationType == "buy" || operationType == "deposit") &&
       data.tokenInData &&
@@ -441,7 +460,7 @@ export const pendleParamsProvider: Provider = {
             wt.asset &&
             pendleSupportedInTokens.has(wt.asset.token.toLowerCase())
         )
-        .map((wt) => wt.token.symbol);
+        .map((wt) => ({ token: wt.token, balance: wt.balance }));
 
       if (supportedTokensIn.length === 0) {
         data.thought = `${unknownToken} is not supported by Pendle router. Selecting first supported token in from Pendle router.`;
@@ -475,7 +494,7 @@ export const pendleParamsProvider: Provider = {
             wt.asset &&
             pendleSupportedOutTokens.has(wt.asset.token.toLowerCase())
         )
-        .map((wt) => wt.token.symbol);
+        .map((wt) => ({ token: wt.token, balance: wt.balance }));
 
       if (supportedTokensOut.length === 0) {
         data.thought = `${unknownToken} is not supported by Pendle router. Selecting first supported token out from Pendle router.`;

@@ -63,7 +63,7 @@ export interface IntentRegistration {
     userAddress: `0x${string}`;
     chainId: number;
     state?: State;
-  }) => Promise<string>;
+  }) => Promise<string | undefined>;
 }
 
 export interface IntentDetectionResult {

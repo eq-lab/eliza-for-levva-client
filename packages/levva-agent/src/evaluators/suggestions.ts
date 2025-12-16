@@ -304,14 +304,14 @@ export const suggestionsEvaluator: Evaluator = {
         );
       }
 
-      if (!result) {
-        logger.debug("Using default suggestions");
-        result = await runtime.useModel(ModelType.OBJECT_SMALL, {
-          prompt: defaultSuggestionPrompt({ conversation }),
-          schema: zodJsonSchema(defaultSuggestionSchema),
-          temperature: 0,
-        });
-      }
+      // if (!result) {
+      // logger.debug("Using default suggestions");
+      // result = await runtime.useModel(ModelType.OBJECT_SMALL, {
+      //   prompt: defaultSuggestionPrompt({ conversation }),
+      //   schema: zodJsonSchema(defaultSuggestionSchema),
+      //   temperature: 0,
+      // });
+      // }
 
       await runtime.setCache(
         `suggestions:${user.address}:${chainId}:${channelId}`,
