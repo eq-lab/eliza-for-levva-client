@@ -113,22 +113,18 @@ export const action: Action = {
           providerData.supportedTokensIn &&
           providerData.supportedTokensIn.length > 0
         ) {
-          thought =
-            "User must provide the Pendle PT token to use for the transaction. I should ask for clarification.";
-          text =
-            "Please select one of the Pendle PT tokens from your wallet to sell.";
-          text += `\n\n${providerData.supportedTokensIn?.map((token) => `- ${token.balance} ${token.token.symbol}`).join("\n")}`;
+          thought = "User must provide the Pendle PT token from the wallet.";
+          text = "🏦 PT tokens in your wallet:";
+          text += `\n${providerData.supportedTokensIn?.map((token) => `- ${token.balance} ${token.token.symbol}`).join("\n")}`;
         } else if (
           providerData.operationType === "withdraw" &&
           !providerData.tokenInData &&
           providerData.supportedTokensIn &&
           providerData.supportedTokensIn.length > 0
         ) {
-          thought =
-            "User must provide the Pendle LP token to use for the transaction. I should ask for clarification.";
-          text =
-            "Please select one of the Pendle LP tokens from your wallet for withdrawal.";
-          text += `\n\n${providerData.supportedTokensIn?.map((token) => `- ${token.balance} ${token.token.symbol}`).join("\n")}`;
+          thought = "User must provide the Pendle LP token from the wallet.";
+          text = "🏦 LP tokens in your wallet:";
+          text += `\n${providerData.supportedTokensIn?.map((token) => `- ${token.balance} ${token.token.symbol}`).join("\n")}`;
         } else if (
           (providerData.operationType === "sell" &&
             !providerData.tokenInData) ||
