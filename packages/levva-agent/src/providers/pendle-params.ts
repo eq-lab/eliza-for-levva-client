@@ -428,6 +428,43 @@ export const pendleParamsProvider: Provider = {
       };
     }
 
+    if (
+      (data.operationType === "buy" || data.operationType === "deposit") &&
+      pendleFilteredMarkets.length > 1
+    ) {
+      if (!tokenClass) {
+        return {
+          ...EMPTY_RESULT,
+          data: { ...data, intentContext },
+          values: {
+            strategy: "Please provide the token class for the Pendle market.",
+          },
+          text: "Failed to extract Pendle parameters: unknown PT token class",
+        };
+      }
+
+      if (!maturityDays) {
+        return {
+          ...EMPTY_RESULT,
+          data: { ...data, intentContext },
+          values: {
+            strategy: "Please provide the maturity days for the Pendle market.",
+          },
+          text: "Failed to extract Pendle parameters: unknown PT token maturity days",
+        };
+      }
+
+      return {
+        ...EMPTY_RESULT,
+        data: { ...data, intentContext },
+        values: {
+          strategy:
+            "Select the Pendle market you want to use for the transaction.",
+        },
+        text: "Failed to extract Pendle parameters: unknown token out",
+      };
+    }
+
     const pendleSupportedTokens =
       await levvaService.getPendleMarketSupportedTokens(
         chainId,
