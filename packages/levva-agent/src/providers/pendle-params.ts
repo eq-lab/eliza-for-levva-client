@@ -296,6 +296,8 @@ export const pendleParamsProvider: Provider = {
 
     const pendleFilteredMarkets = await levvaService.filterPendleMarkets(
       pendleMarkets,
+      // TODO: this one is not enough, we need to filter by tokenSymbol + maturity days
+      // e.g. user says "sell yoUSD" and we have 2 markets: LP-yoETH-25DEC2025 and LP-yoETH-26MAR2026
       pendleMarketSymbol ?? undefined,
       maturityDays ?? undefined,
       tokenClass ?? undefined
