@@ -64,6 +64,7 @@ export class LevvaService extends Service implements ILevvaService {
   public readonly token: TokenServiceComponent;
   public readonly wallet: WalletServiceComponent;
   public readonly news: NewsServiceComponent;
+  public readonly cache: RedisService;
 
   static serviceType = LEVVA_SERVICE.LEVVA_COMMON;
   capabilityDescription =
@@ -80,9 +81,10 @@ export class LevvaService extends Service implements ILevvaService {
     }
 
     // Initialize NEW service components - pass service instance to constructor
+    this.cache = redisService;
     this.strategy = new StrategyComponent(runtime, this);
     this.token = new TokenServiceComponent(runtime);
-    this.wallet = new WalletServiceComponent(runtime, this, redisService);
+    this.wallet = new WalletServiceComponent(runtime, this, this.cache);
     this.news = new NewsServiceComponent(runtime);
   }
 
@@ -510,7 +512,7 @@ export class LevvaService extends Service implements ILevvaService {
     // fixme access metadata's chainid
     const chains = [1, 8453, 42161];
     for (const chainId of chains) {
-      const balanceDataEntries = await this.wallet.getBalances(
+      const balanceDataEntries = await this.wallet.getBalancesWithPrices(
         address,
         chainId,
         [{ address: ETH_NULL_ADDR, decimals: 18 }]

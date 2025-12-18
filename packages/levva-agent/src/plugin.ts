@@ -24,6 +24,7 @@ import { MessageRateLimiter } from "./services/message-rate-limiter";
 import { LEVVA_SERVICE } from "./constants/enum";
 import { RedisService } from "./services/redis";
 import { pendleParamsProvider } from "./providers/pendle-params";
+import pendleBalancesRoute from "./routes/pendle-balances";
 
 /**
  * Define the configuration schema for the plugin with the following properties:
@@ -80,6 +81,7 @@ const plugin: Plugin = {
     levvaUserRoute,
     suggestRoute,
     statusRoute,
+    pendleBalancesRoute,
   ],
   events: {
     [EventType.RUN_STARTED]: [

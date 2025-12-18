@@ -124,7 +124,7 @@ export class WalletServiceComponent {
   }
 
   // Balance fetching with queue system
-  async getBalances(
+  async getBalancesWithPrices(
     account: `0x${string}`,
     chainId: number,
     tokens: { address: `0x${string}`; decimals: number }[]
@@ -189,6 +189,40 @@ export class WalletServiceComponent {
     return result;
   }
 
+  async getBalances(
+    account: `0x${string}`,
+    chainId: number,
+    tokens: { address: `0x${string}`; decimals: number }[]
+  ): Promise<BalanceData[]> {
+    if (tokens.length === 0) {
+      return [];
+    }
+
+    const balances = new Map<`0x${string}`, bigint>(
+      (
+        await getBalanceOf(
+          chainId,
+          account,
+          tokens.map((t) => t.address)
+        )
+      ).map((b) => [b.token, b.balance])
+    );
+
+    const result = tokens.map((token) => {
+      const balance = balances.get(token.address);
+
+      return {
+        amount: balance ?? BigInt(0),
+        address: account,
+        token: token.address,
+        chainId: chainId,
+        value: BigInt(0),
+      };
+    });
+
+    return result;
+  }
+
   async getWalletAssets(params: {
     address: `0x${string}`;
     chainId: number;
@@ -215,7 +249,7 @@ export class WalletServiceComponent {
 
     // Fetch missing token balances using queue system
     // Note: Background queue automatically saves via onBackgroundResolved
-    const missingBalanceData = await this.getBalances(
+    const missingBalanceData = await this.getBalancesWithPrices(
       params.address,
       params.chainId,
       missingTokens.map((token) => ({

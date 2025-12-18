@@ -369,7 +369,7 @@ export class StrategyComponent {
 
     let amountIn = parseUnits(amount, tokenIn.decimals);
 
-    const balanceDataEntries = await this.service.wallet.getBalances(
+    const balanceDataEntries = await this.service.wallet.getBalancesWithPrices(
       sender,
       chainId,
       [{ address: tokenIn.address, decimals: tokenIn.decimals }]
@@ -461,7 +461,7 @@ export class StrategyComponent {
 
     let amountIn = parseUnits(amount, tokenIn?.decimals ?? 18);
 
-    const balanceDataEntries = await this.service.wallet.getBalances(
+    const balanceDataEntries = await this.service.wallet.getBalancesWithPrices(
       receiver,
       chainId,
       [

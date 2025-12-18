@@ -304,7 +304,7 @@ Please provide a valid token symbol (like USDC, ETH, WETH) or token address (0x.
 
     data.tokenOut = tokenOut;
 
-    const balanceDataEntries = await service.wallet.getBalances(
+    const balanceDataEntries = await service.wallet.getBalancesWithPrices(
       user.address,
       chainId,
       [
