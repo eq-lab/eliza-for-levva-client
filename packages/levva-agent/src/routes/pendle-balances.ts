@@ -5,9 +5,9 @@ import { LEVVA_SERVICE } from "../constants/enum";
 import { LevvaService } from "../services/levva/class";
 
 async function handler(req: Request, res: Response, runtime: IAgentRuntime) {
-  const { account } = req.query;
+  const { account, chainId } = req.query;
 
-  const chainId = 8453;
+  const chainIdNumber = chainId ? Number(chainId) : 8453;
 
   try {
     const service = runtime.getService<LevvaService>(
@@ -22,16 +22,21 @@ async function handler(req: Request, res: Response, runtime: IAgentRuntime) {
       throw new Error("Invalid account");
     }
 
-    const pendleMarkets = (await service.getPendleMarkets(chainId)) ?? [];
-    await service.collectPendleMarketPtAndLpTokens(chainId, pendleMarkets);
+    const pendleMarkets = (await service.getPendleMarkets(chainIdNumber)) ?? [];
+    await service.collectPendleMarketPtAndLpTokens(
+      chainIdNumber,
+      pendleMarkets
+    );
 
-    const tokens = await service.token.getAvailableTokens({ chainId });
+    const tokens = await service.token.getAvailableTokens({
+      chainId: chainIdNumber,
+    });
     const pendleTokens = tokens.filter((token) =>
       token.symbol.match(/^(LP-|PT-).+\d{2}[A-Z]{3}\d{4}$/i)
     );
 
     const cacheStore = service.cache.getStore("routes");
-    const cacheKey = `pendle-balances:${account}:${chainId}`;
+    const cacheKey = `pendle-balances:${account}:${chainIdNumber}`;
 
     const cached = await cacheStore.get(cacheKey);
     if (cached) {
@@ -41,7 +46,7 @@ async function handler(req: Request, res: Response, runtime: IAgentRuntime) {
 
     const pendleBalances = await service.wallet.getBalances(
       account,
-      chainId,
+      chainIdNumber,
       pendleTokens.map((token) => ({
         address: token.address as `0x${string}`,
         decimals: token.decimals,
