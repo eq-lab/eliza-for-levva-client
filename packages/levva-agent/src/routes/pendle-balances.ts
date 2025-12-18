@@ -56,8 +56,12 @@ async function handler(req: Request, res: Response, runtime: IAgentRuntime) {
         );
 
         return {
-          token: token?.symbol,
-          balance: formatUnits(balance?.amount ?? 0n, token?.decimals ?? 18),
+          tokenSymbol: token?.symbol,
+          tokenAddress: token?.address,
+          userTokenBalance: formatUnits(
+            balance?.amount ?? 0n,
+            token?.decimals ?? 18
+          ),
         };
       });
 
