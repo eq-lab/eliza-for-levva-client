@@ -50,7 +50,7 @@ export async function generatePendleStrategySuggestions(params: {
   const tokenInData = providerData?.tokenInData;
 
   const balanceDataEntries = tokenInData
-    ? await levvaService.wallet.getBalances(userAddress, chainId, [
+    ? await levvaService.wallet.getBalancesWithPrices(userAddress, chainId, [
         {
           address: tokenInData.address!,
           decimals: tokenInData.decimals,

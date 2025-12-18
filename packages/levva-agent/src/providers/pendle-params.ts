@@ -578,7 +578,7 @@ export const pendleParamsProvider: Provider = {
       };
     }
 
-    const balanceDataEntries = await levvaService.wallet.getBalances(
+    const balanceDataEntries = await levvaService.wallet.getBalancesWithPrices(
       user.address,
       chainId,
       [
