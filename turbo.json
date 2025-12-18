@@ -45,7 +45,9 @@
         "OPENROUTER_API_KEY",
         "OPENAI_EMBEDDING_API_KEY",
         "REDIS_URL",
-        "PENDLE_API_KEY"
+        "PENDLE_API_KEY",
+        "BASE_BLOCKCHAIN_RPC_URL",
+        "ETHEREUM_BLOCKCHAIN_RPC_URL"
       ],
       "persistent": true
     },

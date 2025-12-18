@@ -20,15 +20,17 @@ export const blockexplorers = new Map<number, string>([
 const clients: Record<number, PublicClient<Transport, Chain, undefined>> = {};
 const endpoints: Record<number, string[] | undefined> = {
   1: [
+    "https://ethereum-rpc.publicnode.com",
     "https://eth.llamarpc.com",
     "https://0xrpc.io/eth",
     "https://rpc.mevblocker.io",
     "https://eth.drpc.org",
   ],
   8453: [
-    "https://base.llamarpc.com",
-    "https://base.meowrpc.com",
+    "https://base-rpc.publicnode.com",
     "https://base.drpc.org",
+    "https://base.meowrpc.com",
+    "https://base.llamarpc.com",
   ],
   42161: [
     "https://arbitrum-one-rpc.publicnode.com",
@@ -36,6 +38,11 @@ const endpoints: Record<number, string[] | undefined> = {
     "https://arbitrum.meowrpc.com",
     "https://arbitrum.drpc.org",
   ],
+};
+
+const defaultRpcUrls: Record<number, string | undefined> = {
+  1: process.env.ETHEREUM_BLOCKCHAIN_RPC_URL,
+  8453: process.env.BASE_BLOCKCHAIN_RPC_URL,
 };
 
 export const getChain = (chainId: number = 1) => {
