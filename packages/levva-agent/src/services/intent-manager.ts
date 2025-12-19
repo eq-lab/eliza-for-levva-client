@@ -17,6 +17,7 @@ import {
   intentAnalysisSchema,
 } from "../prompts/intent";
 import { zodJsonSchema } from "../prompts/util";
+import { Suggestion } from "../evaluators/suggestions";
 
 export interface IntentContext {
   id: string;
@@ -55,8 +56,7 @@ export interface IntentRegistration {
   keywords: string[];
   handler: IntentHandler;
   description?: string;
-  // NEW: Intent-aware suggestion generator
-  generateSuggestions?: (params: {
+  generateSuggestionsPrompt?: (params: {
     runtime: IAgentRuntime;
     intentContext: IntentContext;
     conversation: string;
@@ -64,6 +64,15 @@ export interface IntentRegistration {
     chainId: number;
     state?: State;
   }) => Promise<string | undefined>;
+
+  generateSuggestions?: (params: {
+    runtime: IAgentRuntime;
+    intentContext: IntentContext;
+    conversation: string;
+    userAddress: `0x${string}`;
+    chainId: number;
+    state?: State;
+  }) => Promise<Suggestion[]>;
 }
 
 export interface IntentDetectionResult {
@@ -120,32 +129,6 @@ export class IntentManager extends Service {
   ): IntentRegistration | undefined {
     const key = `${domain}:${type}`;
     return this.intentRegistry.get(key);
-  }
-
-  /**
-   * Generate intent-aware suggestions using the intent's own generator
-   */
-  async generateIntentSuggestions(params: {
-    intentContext: IntentContext;
-    conversation: string;
-    userAddress: `0x${string}`;
-    chainId: number;
-    state?: State;
-  }): Promise<string | undefined> {
-    const { intentContext } = params;
-    const registration = IntentManager.getRegisteredIntent(
-      intentContext.domain,
-      intentContext.type
-    );
-
-    if (!registration?.generateSuggestions) {
-      return undefined;
-    }
-
-    return registration.generateSuggestions({
-      runtime: this.runtime,
-      ...params,
-    });
   }
 
   /**

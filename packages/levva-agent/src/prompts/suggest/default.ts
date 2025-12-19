@@ -45,6 +45,7 @@ ${ctx.conversation}
 
 ## 📊 **Pendle Fixed-Yield Strategies**
 - Buy/sell Pendle PT (Principal Token) for fixed yields until maturity
+- Deposit/withdraw from Pendle pools
 - Multi-step operations with intelligent parameter extraction
 - Token class selection (Stable, BTC, ETH) with maturity preferences
 - Maturity timeframe filtering (short-term ≤30d, medium 30-90d, long-term >90d)

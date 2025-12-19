@@ -31,7 +31,7 @@ import vaultAbi from "./abi/vault.abi";
 import withdrawalNftAbi from "./abi/vault.withdrawal-nft.abi";
 import { getChannelByName, getMessages } from "./messages";
 import {
-  getActivePendleMarkets,
+  getPendleMarkets,
   getUserPositions,
   getWithdrawalRequests,
 } from "../../api/levva";
@@ -270,8 +270,8 @@ export class LevvaService extends Service implements ILevvaService {
   getPendleMarkets = createTimedCache(
     this,
     3600000, // 1 hour in milliseconds
-    async (chainId: number) => {
-      const result = await getActivePendleMarkets(chainId);
+    async (chainId: number, activeOnly: boolean) => {
+      const result = await getPendleMarkets(chainId, activeOnly);
       const supportedUnderlyingTypes = ["Stable", "ETH", "BTC"];
 
       if (!result.success) {
@@ -282,7 +282,8 @@ export class LevvaService extends Service implements ILevvaService {
         supportedUnderlyingTypes.includes(market.underlyingType)
       );
     },
-    (chainId: number) => `pendle-markets:${chainId}`
+    (chainId: number, activeOnly: boolean) =>
+      `pendle-markets:${chainId}:${activeOnly}`
   );
 
   filterPendleMarkets(
@@ -315,15 +316,6 @@ export class LevvaService extends Service implements ILevvaService {
         (!tokenClass || token || tokenClass === market.underlyingType)
       );
     });
-  }
-
-  getActivePendleMarkets(pendleMarkets: PendleMarket[]): PendleMarket[] {
-    const utcNowTimestamp = Date.now();
-    const utcNowDate = new Date(utcNowTimestamp);
-
-    return pendleMarkets.filter(
-      (market) => new Date(market.maturityDate) >= utcNowDate
-    );
   }
 
   private getPendleMarketSupportedTokensCacheKey = (

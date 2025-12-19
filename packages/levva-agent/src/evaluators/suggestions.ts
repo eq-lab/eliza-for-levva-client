@@ -11,7 +11,6 @@ import {
 import { plugin } from "@elizaos/plugin-sql";
 import { modules } from "../actions/modules";
 import { LEVVA_ACTIONS, LEVVA_SERVICE } from "../constants/enum";
-import { defaultSuggestionPrompt } from "../prompts/suggest/default";
 import {
   defaultSuggestionSchema,
   suggestionTypeSchema,
@@ -22,6 +21,7 @@ import { suggestTypeTemplate } from "../templates/generate";
 import { isHex } from "viem";
 import { hasRawMetadata } from "./utils";
 import { IntentManager } from "../services/intent-manager";
+import { defaultSuggestionPrompt } from "../prompts/default";
 
 const schema = plugin.schema;
 
@@ -36,7 +36,7 @@ interface MessageEntry {
   };
 }
 
-interface Suggestions {
+export interface Suggestion {
   label: string;
   text: string;
 }
@@ -225,7 +225,7 @@ export const suggestionsEvaluator: Evaluator = {
         logger.warn("[SUGGESTIONS] IntentManager not available");
       }
 
-      let result: { suggestions: Suggestions[] } | undefined;
+      let result: { suggestions: Suggestion[] } | undefined;
 
       // If there's an active intent, generate context-aware suggestions
       if (activeIntent) {
@@ -304,14 +304,15 @@ export const suggestionsEvaluator: Evaluator = {
         );
       }
 
-      // if (!result) {
-      // logger.debug("Using default suggestions");
-      // result = await runtime.useModel(ModelType.OBJECT_SMALL, {
-      //   prompt: defaultSuggestionPrompt({ conversation }),
-      //   schema: zodJsonSchema(defaultSuggestionSchema),
-      //   temperature: 0,
-      // });
-      // }
+      if (!result) {
+        // TODO: consider disabling this for some intents
+        logger.debug("Using default suggestions");
+        result = await runtime.useModel(ModelType.OBJECT_SMALL, {
+          prompt: defaultSuggestionPrompt({ conversation }),
+          schema: zodJsonSchema(defaultSuggestionSchema),
+          temperature: 0,
+        });
+      }
 
       await runtime.setCache(
         `suggestions:${user.address}:${chainId}:${channelId}`,
@@ -342,7 +343,7 @@ async function generateIntentAwareSuggestions(
   userAddress: `0x${string}`,
   chainId: number,
   state?: State
-): Promise<{ suggestions: Suggestions[] } | undefined> {
+): Promise<{ suggestions: Suggestion[] } | undefined> {
   try {
     // Get user data for portfolio-based suggestions
     const service = runtime.getService<LevvaService>(
@@ -365,31 +366,44 @@ async function generateIntentAwareSuggestions(
           `[SUGGESTIONS-GEN] Calling intentManager.generateIntentSuggestions`
         );
 
-        const prompt = await intentManager.generateIntentSuggestions({
+        const params = {
           intentContext: activeIntent,
+          runtime,
           conversation,
           userAddress,
           chainId,
           state,
-        });
+        };
 
-        if (prompt) {
-          logger.info(
-            `[SUGGESTIONS-GEN] Got prompt (length: ${prompt.length}), calling LLM`
-          );
-          const result = await runtime.useModel(ModelType.OBJECT_SMALL, {
-            prompt,
-            schema: zodJsonSchema(defaultSuggestionSchema),
-            temperature: 0,
-          });
-          logger.info(
-            `[SUGGESTIONS-GEN] LLM returned ${result?.suggestions?.length || 0} suggestions`
-          );
-          return result;
-        } else {
-          logger.warn(
-            `[SUGGESTIONS-GEN] No prompt returned from generateIntentSuggestions`
-          );
+        const intent = IntentManager.getRegisteredIntent(
+          params.intentContext.domain,
+          params.intentContext.type
+        );
+
+        if (intent?.generateSuggestionsPrompt) {
+          const prompt = await intent?.generateSuggestionsPrompt(params);
+
+          if (prompt) {
+            logger.info(
+              `[SUGGESTIONS-GEN] Got prompt (length: ${prompt.length}), calling LLM`
+            );
+            const result = await runtime.useModel(ModelType.OBJECT_SMALL, {
+              prompt,
+              schema: zodJsonSchema(defaultSuggestionSchema),
+              temperature: 0,
+            });
+            logger.info(
+              `[SUGGESTIONS-GEN] LLM returned ${result?.suggestions?.length || 0} suggestions`
+            );
+            return result;
+          } else {
+            logger.warn(
+              `[SUGGESTIONS-GEN] No prompt returned from generateIntentSuggestions`
+            );
+          }
+        } else if (intent?.generateSuggestions) {
+          const suggestions = await intent?.generateSuggestions(params);
+          return { suggestions };
         }
       } else {
         logger.warn(`[SUGGESTIONS-GEN] IntentManager not found`);

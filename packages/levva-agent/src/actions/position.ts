@@ -47,7 +47,7 @@ IntentManager.registerIntent({
     "pull out",
   ],
   handler: handleWithdrawIntent,
-  generateSuggestions: generateWithdrawSuggestions,
+  generateSuggestionsPrompt: generateWithdrawSuggestions,
   description:
     "Handle withdrawal requests from Levva positions with multi-step process support",
 });
@@ -71,7 +71,7 @@ IntentManager.registerIntent({
     // These can trigger on informational queries like "show me strategies"
   ],
   handler: handleDepositIntent,
-  generateSuggestions: generateDepositSuggestions,
+  generateSuggestionsPrompt: generateDepositSuggestions,
   description:
     "Handle deposit/investment requests for Levva strategies with transaction creation and multi-step process support",
 });

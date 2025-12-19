@@ -113,7 +113,7 @@ export const toPendleSymbol = (
 export const toPendleDetails = (
   ptOrLpSymbol: string
 ): { maturityDate: string; underlyingAssetSymbol: string } => {
-  const match = ptOrLpSymbol.match(/(\d{2})([A-Z]{3})(\d{4})$/i)!;
+  const match = ptOrLpSymbol.match(/(\d{1,2})([A-Z]{3})(\d{4})$/i)!;
 
   const day = match[1];
   const monthStr = match[2].toUpperCase();
@@ -138,10 +138,18 @@ export const toPendleDetails = (
 
   const underlyingAssetSymbol = ptOrLpSymbol
     .replace(/^(LP-|PT-)/i, "")
-    .replace(/-\d{2}[A-Z]{3}\d{4}$/i, "");
+    .replace(/-\d{1,2}[A-Z]{3}\d{4}$/i, "");
 
   return {
     maturityDate: `${year}-${month}-${day}T00:00:00Z`,
     underlyingAssetSymbol,
   };
+};
+
+export const isPendlePtToken = (token: string) => {
+  return token.match(/^PT-.+\d{1,2}[A-Z]{3}\d{4}$/i);
+};
+
+export const isPendleLpToken = (token: string) => {
+  return token.match(/^LP-.+\d{1,2}[A-Z]{3}\d{4}$/i);
 };

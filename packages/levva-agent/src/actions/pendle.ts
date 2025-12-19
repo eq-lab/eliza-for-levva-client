@@ -21,7 +21,8 @@ import { PendleMarket } from "../api/levva/schema";
 import { toPendleSymbol } from "../services/levva/pendle";
 
 const description =
-  "Handle Pendle explore, buy, sell, deposit, and withdraw requests using intent-based system with multi-step process support.";
+  "Handle Pendle explore, buy and sell PT tokens, deposit and withdraw liquidity in Pendle pools requests using intent-based system with multi-step process support. " +
+  "Anytime the user mentions Pendle, you should use this action.";
 
 export const action: Action = {
   name: LEVVA_ACTIONS.SELECT_PENDLE_STRATEGY,
@@ -153,10 +154,9 @@ export const action: Action = {
           providerData.pendleFilteredMarkets.length === 0
         ) {
           pendleMarkets = await levvaService.getPendleMarkets(
-            levvaProviderState.chainId
+            levvaProviderState.chainId,
+            true
           );
-
-          pendleMarkets = levvaService.getActivePendleMarkets(pendleMarkets);
 
           thought =
             "No Pendle markets found, searched for all markets. I should ask for clarification.";
@@ -164,9 +164,7 @@ export const action: Action = {
           providerData.pendleFilteredMarkets &&
           providerData.pendleFilteredMarkets.length > 0
         ) {
-          pendleMarkets = levvaService.getActivePendleMarkets(
-            providerData.pendleFilteredMarkets
-          );
+          pendleMarkets = providerData.pendleFilteredMarkets;
 
           thought =
             "Searched for Pendle markets, found some. I should ask for clarification.";
@@ -261,8 +259,7 @@ export const action: Action = {
         providerData.tokenInData &&
         providerData.tokenOutData &&
         providerData.amount &&
-        !providerData.supportedTokensIn &&
-        !providerData.supportedTokensOut
+        !providerData.supportedTokensIn
       ) {
         runtime.logger.info(
           "Processing direct Pendle strategy request without intent context"
@@ -417,7 +414,7 @@ export const action: Action = {
       {
         name: "{{name1}}",
         content: {
-          text: "Withdraw from Pendle",
+          text: "Withdraw liquidity from Pendle pool",
         },
       },
       {
@@ -483,13 +480,14 @@ IntentManager.registerIntent({
     "farm on Pendle",
 
     // Withdraw Liquidity
+    "withdraw LP tokens from Pendle pool",
     "withdraw from Pendle",
     "remove liquidity Pendle",
     "exit Pendle pool",
     "unstake Pendle",
   ],
   handler: handlePendleStrategyIntent,
-  generateSuggestions: generatePendleStrategySuggestions,
+  generateSuggestionsPrompt: generatePendleStrategySuggestions,
   description:
     "Handle Pendle buy, sell, deposit, and withdraw requests with multi-step process support",
 });

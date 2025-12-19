@@ -10,7 +10,7 @@ These are the available valid actions:
 </actionNames>
 
 Current Available Actions:
-- **SELECT_PENDLE_STRATEGY**: Select Pendle strategy for exploring/buying/selling/depositing/withdrawing Pendle strategies
+- **SELECT_PENDLE_STRATEGY**: Select Pendle strategy for exploring/buying/selling/depositing/withdrawing Pendle (PT tokens and LP pools)
 - **ANALYZE_WALLET**: Comprehensive wallet/portfolio analysis, asset breakdown, risk assessment, and token transfers
 - **SWAP_TOKENS**: Token swapping with intent-based multi-step flows via Kyber and Pendle
 - **SELECT_STRATEGY**: Investment strategy recommendations based on risk tolerance and portfolio analysis  
@@ -42,13 +42,13 @@ IMPORTANT PROVIDER SELECTION RULES:
 - **Core Provider**: "levva" is automatically included for all Levva-related operations (provides user info, chain data, tokens)
 - **News & Market Data**: If the message asks about crypto news, market updates, or DeFi trends, include "CRYPTO_NEWS" in your providers list
 - **Transaction Flows**:
-  - For PENDLE operations (Pendle PT token swap, deposit, and withdraw): include "PENDLE_PARAMS" (provides Pendle PT token swap, deposit, and withdraw parameters)
+  - For PENDLE operations (Pendle PT token buy and sell, deposit and withdraw liquidity in Pendle pools): include "PENDLE_PARAMS" (provides Pendle PT token buy and sell, deposit and withdraw liquidity in Pendle pools parameters)
   - For SWAP operations (token swapping): include "SWAP_PARAMS" (detects SWAP intents, extracts swap parameters)
   - For STRATEGY operations (investment recommendations): include "STRATEGY_PARAMS" (provides available strategies and portfolio data)
   - For POSITION_MANAGEMENT (deposits, withdrawals, portfolio): include "POSITION_PARAMS" (detects DEPOSIT/WITHDRAW intents, provides position data)
 - **Intent-Aware Providers**: Position and swap params providers automatically detect active intents and provide contextual data
 - **Provider Capabilities**:
-  - "PENDLE_PARAMS": Pendle PT token swap, deposit, and withdraw parameters
+  - "PENDLE_PARAMS": Pendle PT token buy and sell, deposit and withdraw liquidity in Pendle pools
   - "SWAP_PARAMS": Intent detection, token validation, swap parameter extraction
   - "STRATEGY_PARAMS": Strategy data, portfolio analysis, risk assessment
   - "POSITION_PARAMS": Position tracking, withdrawal status, deposit intent handling

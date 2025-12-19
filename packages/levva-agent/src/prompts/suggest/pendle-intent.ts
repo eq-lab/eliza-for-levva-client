@@ -62,20 +62,12 @@ export function generatePendleStrategyIntentSuggestionsPrompt(
   const { tokenClass, maturityDays } = returnData;
 
   if (
-    (providerData?.supportedTokensIn &&
-      providerData.supportedTokensIn.length > 0) ||
-    (providerData?.supportedTokensOut &&
-      providerData.supportedTokensOut.length > 0)
+    providerData?.supportedTokensIn &&
+    providerData.supportedTokensIn.length > 0
   ) {
-    const tokenInSelectionNeeded =
-      providerData?.supportedTokensIn &&
-      providerData.supportedTokensIn.length > 0;
-
     const intentContext = generateIntentContextSection({
       intentType: `${INTENT_TYPE.SELECT_PENDLE_STRATEGY}`,
-      status: tokenInSelectionNeeded
-        ? "Token in selection needed"
-        : "Token out selection needed",
+      status: "Token in selection needed",
       userAddress,
       chainId,
       parameters: {
@@ -88,25 +80,14 @@ export function generatePendleStrategyIntentSuggestionsPrompt(
       },
     });
 
-    const suggestions = tokenInSelectionNeeded
-      ? {
-          labelDescription: "Use EXACT label format",
-          textDescription: "Use EXACT text format",
-          content: providerData.supportedTokensIn!.slice(0, 5).map((token) => ({
-            label: `Use ${token.token.symbol}`,
-            text: `Use ${token.token.symbol} for token in`,
-          })),
-        }
-      : {
-          labelDescription: "Use EXACT label format",
-          textDescription: "Use EXACT text format",
-          content: providerData
-            .supportedTokensOut!.slice(0, 5)
-            .map((token) => ({
-              label: `Use ${token.token.symbol}`,
-              text: `Use ${token.token.symbol} for token out`,
-            })),
-        };
+    const suggestions = {
+      labelDescription: "Use EXACT label format",
+      textDescription: "Use EXACT text format",
+      content: providerData.supportedTokensIn!.slice(0, 5).map((token) => ({
+        label: `Use ${token.token.symbol}`,
+        text: `Use ${token.token.symbol} for token in`,
+      })),
+    };
 
     const instructions = generateCommonInstructions({
       suggestionType: "next-step",
@@ -370,10 +351,6 @@ ${generateOutputFormat()}`;
           return { label: ">90 days", text: "More than 90 days" };
         }),
       };
-
-      // text: "30 to 90 days",
-      // text: "Up to 30 days",
-      // text: "More than 90 days",
     } else {
       intentContext = generateIntentContextSection({
         intentType: `${INTENT_TYPE.SELECT_PENDLE_STRATEGY}`,
