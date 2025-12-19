@@ -112,7 +112,11 @@ export const toPendleSymbol = (
 
 export const toPendleDetails = (
   ptOrLpSymbol: string
-): { maturityDate: string; underlyingAssetSymbol: string } => {
+): { maturityDate: string; underlyingAssetSymbol: string } | undefined => {
+  if (!isPendlePtToken(ptOrLpSymbol) && !isPendleLpToken(ptOrLpSymbol)) {
+    return undefined;
+  }
+
   const match = ptOrLpSymbol.match(/(\d{1,2})([A-Z]{3})(\d{4})$/i)!;
 
   const day = match[1];
