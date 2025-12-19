@@ -53,8 +53,11 @@ export const getTokens = async (chainId: number) => {
   return tokensResponseSchema.safeParse(data);
 };
 
-export const getActivePendleMarkets = async (chainId: number) => {
-  const url = `${LEVVA_API_V2_BASEURL}/pools/markets?PublicChainId=${chainId}&ActiveOnly=false`;
+export const getPendleMarkets = async (
+  chainId: number,
+  activeOnly: boolean
+) => {
+  const url = `${LEVVA_API_V2_BASEURL}/pools/markets?PublicChainId=${chainId}&ActiveOnly=${activeOnly ? "true" : "false"}`;
   const response = await fetch(url);
   const data = await response.json();
   return pendleMarketResponseSchema.safeParse(data);

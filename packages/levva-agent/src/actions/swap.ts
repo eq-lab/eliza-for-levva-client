@@ -298,7 +298,7 @@ IntentManager.registerIntent({
     "bridge",
   ],
   handler: handleSwapIntent,
-  generateSuggestions: generateSwapSuggestions,
+  generateSuggestionsPrompt: generateSwapSuggestions,
   description:
     "Handle token swap requests with multi-step process support including Kyber swaps and ETH wrapping/unwrapping",
 });

@@ -22,7 +22,8 @@ async function handler(req: Request, res: Response, runtime: IAgentRuntime) {
       throw new Error("Invalid account");
     }
 
-    const pendleMarkets = (await service.getPendleMarkets(chainIdNumber)) ?? [];
+    const pendleMarkets =
+      (await service.getPendleMarkets(chainIdNumber, false)) ?? [];
     await service.collectPendleMarketPtAndLpTokens(
       chainIdNumber,
       pendleMarkets
@@ -32,7 +33,7 @@ async function handler(req: Request, res: Response, runtime: IAgentRuntime) {
       chainId: chainIdNumber,
     });
     const pendleTokens = tokens.filter((token) =>
-      token.symbol.match(/^(LP-|PT-).+\d{2}[A-Z]{3}\d{4}$/i)
+      token.symbol.match(/^(LP-|PT-).+\d{1,2}[A-Z]{3}\d{4}$/i)
     );
 
     const cacheStore = service.cache.getStore("routes");

@@ -41,7 +41,7 @@ export const extractedPendleParamsSchema = z
       .nullable()
       .describe(
         "For buy/deposit: token symbol from <pendleTokens> (e.g., 'yoUSD', 'mRe7BTC'). User can prefix with 'PT' or 'PT-' (e.g., 'PT yoUSD', 'PT-yoUSD'), which MUST be stripped. " +
-          "For sell/withdraw: Non-PT, non-LP token from <userPortfolio> that user will receive. " +
+          "For sell/withdraw: ALWAYS set to null (output token is determined automatically by the protocol). " +
           "CRITICAL: Asset class alone ('stable PT', 'BTC yield') is NOT sufficient. User MUST explicitly mention specific token symbol. Return null if no specific token mentioned."
       ),
     maturityDays: z
@@ -119,7 +119,7 @@ ${ctx.pendleTokens}
 </pendleTokens>
 
 <userPortfolio>
-Format: list of token balances
+Format: list of token balances in the format of "balance tokenSymbol"
 
 ${ctx.userPortfolio}
 </userPortfolio>
@@ -195,9 +195,9 @@ TOKEN FLOW BY OPERATION:
 **CRITICAL**: Understand tokenIn/tokenOut based on operation type:
 
 - **buy**: tokenIn = token user SPENDS (from userPortfolio), tokenOut = token user RECEIVES (from pendleTokens)
-- **sell**: tokenIn = PT token user SPENDS (PT-xxx from userPortfolio), tokenOut = token user RECEIVES (from userPortfolio)
+- **sell**: tokenIn = PT token user SPENDS (PT-xxx from userPortfolio), tokenOut = **ALWAYS null** (determined by protocol)
 - **deposit**: tokenIn = token user SPENDS (from userPortfolio), tokenOut = token user RECEIVES (from pendleTokens)
-- **withdraw**: tokenIn = LP token user SPENDS (LP-xxx from userPortfolio), tokenOut = token user RECEIVES (from userPortfolio)
+- **withdraw**: tokenIn = LP token user SPENDS (LP-xxx from userPortfolio), tokenOut = **ALWAYS null** (determined by protocol)
 
 AMOUNT PARSING RULES:
 - Extract only numeric values: "100", "0.5", "1000".
@@ -279,10 +279,7 @@ TOKEN SELECTION GUIDANCE:
   * **CRITICAL**: Return null if no specific token mentioned
 
 - **For "sell"/"withdraw" operations**:
-  * Non-PT, non-LP token user wants to RECEIVE (from <userPortfolio>)
-  * Example: "sell PT-USDe for USDC" → tokenOut: "USDC"
-  * Match case-insensitively after stripping keywords
-  * **CRITICAL**: Return null if user does NOT explicitly mention what token to receive
+  * **ALWAYS return null** - the output token is determined automatically by the protocol
 
 **General Rules:**
 - Extract tokens ONLY when user explicitly mentions specific token names or symbols
@@ -309,17 +306,17 @@ TOKEN SELECTION GUIDANCE:
   * "buy PT yoUSD using ETH" → operationType: "buy", tokenIn: "ETH", tokenOut: "yoUSD", tokenClass: null, amount: null
   * "buy PT mRe7BTC" → operationType: "buy", tokenIn: null, tokenOut: "mRe7BTC", tokenClass: null, amount: null
 
-- **Sell operations** (tokenIn = PT to sell, tokenOut = token to receive):
+- **Sell operations** (tokenIn = PT to sell, tokenOut = ALWAYS null):
   * "sell my PT-USDe" → operationType: "sell", tokenIn: "PT-USDe-11DEC2025", tokenOut: null, tokenClass: null
-  * "sell PT-USDe for USDC" → operationType: "sell", tokenIn: "PT-USDe-11DEC2025", tokenOut: "USDC", tokenClass: null
+  * "sell PT-USDe for USDC" → operationType: "sell", tokenIn: "PT-USDe-11DEC2025", tokenOut: null, tokenClass: null
 
 - **Deposit operations** (tokenIn = spend, tokenOut = LP pool):
   * "deposit 1 USDC into yoUSD pool" → operationType: "deposit", tokenIn: "USDC", tokenOut: "yoUSD", tokenClass: null, amount: "1"
   * "add liquidity to Pendle yoUSD" → operationType: "deposit", tokenIn: null, tokenOut: "yoUSD", tokenClass: null, amount: null
 
-- **Withdraw operations** (tokenIn = LP to withdraw, tokenOut = token to receive):
+- **Withdraw operations** (tokenIn = LP to withdraw, tokenOut = ALWAYS null):
   * "withdraw my LP yoUSD" → operationType: "withdraw", tokenIn: "LP-yoUSD-26MAR2026", tokenOut: null, tokenClass: null
-  * "withdraw LP yoUSD for USDC" → operationType: "withdraw", tokenIn: "LP-yoUSD-26MAR2026", tokenOut: "USDC", tokenClass: null
+  * "withdraw LP yoUSD for USDC" → operationType: "withdraw", tokenIn: "LP-yoUSD-26MAR2026", tokenOut: null, tokenClass: null
 
 MATURITY DAYS SELECTION GUIDANCE:
 Categories: "<=30" (short-term, 1-30d), "30-90" (medium-term, 31-90d), ">90" (long-term, 91+d)

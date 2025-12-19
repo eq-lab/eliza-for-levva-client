@@ -36,6 +36,7 @@ ${ctx.conversation}
 
 ## 📊 **Pendle Fixed-Yield Strategies**
 - Buy/sell Pendle PT (Principal Token) for fixed yields until maturity
+- Deposit/withdraw from Pendle pools
 - Multi-step operations with intelligent parameter extraction
 - Token class selection (Stable, BTC, ETH) with maturity preferences
 - Maturity timeframe filtering (short-term ≤30d, medium 30-90d, long-term >90d)
@@ -94,6 +95,8 @@ Generate natural, conversational messages that clearly express user intent:
 **Pendle Fixed-Yield Examples:**
 - "label": "Buy Stable PT" → "text": "I want to buy Pendle PT tokens for stable yields"
 - "label": "Deposit into Pendle pool" → "text": "I want to deposit into a Pendle pool"
+- "label": "Sell Pendle PT" → "text": "I want to sell Pendle PT tokens for a profit"
+- "label": "Withdraw from Pendle pool" → "text": "I want to withdraw from a Pendle pool"
 - "label": "Explore fixed term, fixed yield till maturity options" → "text": "I want to explore Pendle fixed term, fixed yield till maturity options"
 
 **Market & News Examples:**

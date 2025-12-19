@@ -70,7 +70,7 @@ export async function generatePendleStrategySuggestions(params: {
       }
     : undefined;
 
-  const allPendleMarkets = await levvaService.getPendleMarkets(chainId);
+  const allPendleMarkets = await levvaService.getPendleMarkets(chainId, true);
 
   // Generate prompt using consolidated prompt function
   return generatePendleStrategyIntentSuggestionsPrompt({
@@ -148,8 +148,7 @@ export const handlePendleStrategyIntent: IntentHandler = async (
       !params.tokenInData ||
       !params.tokenOutData ||
       !params.amount ||
-      (params.supportedTokensIn && params.supportedTokensIn.length > 0) ||
-      (params.supportedTokensOut && params.supportedTokensOut.length > 0)
+      (params.supportedTokensIn && params.supportedTokensIn.length > 0)
     ) {
       // Missing parameters - ask user for more information
       return await handleMissingPendleStrategyParameters(

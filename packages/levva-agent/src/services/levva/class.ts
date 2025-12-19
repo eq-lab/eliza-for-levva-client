@@ -31,7 +31,7 @@ import vaultAbi from "./abi/vault.abi";
 import withdrawalNftAbi from "./abi/vault.withdrawal-nft.abi";
 import { getChannelByName, getMessages } from "./messages";
 import {
-  getActivePendleMarkets,
+  getPendleMarkets,
   getUserPositions,
   getWithdrawalRequests,
 } from "../../api/levva";
@@ -270,8 +270,8 @@ export class LevvaService extends Service implements ILevvaService {
   getPendleMarkets = createTimedCache(
     this,
     3600000, // 1 hour in milliseconds
-    async (chainId: number) => {
-      const result = await getActivePendleMarkets(chainId);
+    async (chainId: number, activeOnly: boolean) => {
+      const result = await getPendleMarkets(chainId, activeOnly);
       const supportedUnderlyingTypes = ["Stable", "ETH", "BTC"];
 
       if (!result.success) {
@@ -282,7 +282,8 @@ export class LevvaService extends Service implements ILevvaService {
         supportedUnderlyingTypes.includes(market.underlyingType)
       );
     },
-    (chainId: number) => `pendle-markets:${chainId}`
+    (chainId: number, activeOnly: boolean) =>
+      `pendle-markets:${chainId}:${activeOnly}`
   );
 
   filterPendleMarkets(
@@ -291,9 +292,9 @@ export class LevvaService extends Service implements ILevvaService {
     maturityDays?: string,
     tokenClass?: string
   ): PendleMarket[] {
-    const utcNowDate = Date.now();
+    const utcNowTimestamp = Date.now();
     const utcNowDateInMsec = Math.floor(
-      utcNowDate - Math.floor(utcNowDate % 86400000)
+      utcNowTimestamp - Math.floor(utcNowTimestamp % 86400000)
     );
 
     return pendleMarkets.filter((market) => {

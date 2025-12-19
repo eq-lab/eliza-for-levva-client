@@ -34,7 +34,7 @@ IntentManager.registerIntent({
     // - "give" (conversational: "give me details")
   ],
   handler: handleSendIntent,
-  generateSuggestions: generateSendSuggestions,
+  generateSuggestionsPrompt: generateSendSuggestions,
   description: "Handle token transfer requests with multi-step process support",
 });
 
