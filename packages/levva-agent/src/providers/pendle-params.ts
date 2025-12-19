@@ -16,7 +16,7 @@ import { zodJsonSchema } from "../prompts/util";
 import { PendleMarket } from "../api/levva/schema";
 import { TokenDataWithInfo } from "../types/token";
 import { BalanceData } from "../services/levva/wallet";
-import { toPendleSymbol } from "../services/levva/pendle";
+import { toPendleDetails, toPendleSymbol } from "../services/levva/pendle";
 
 export interface PendleParamsProviderData {
   tokenInData?: TokenDataWithInfo;
@@ -285,21 +285,22 @@ export const pendleParamsProvider: Provider = {
     data.slippage = slippage ?? "0.005";
 
     let pendleMarketSymbol: string | undefined;
+    let pendleMarketDetails:
+      | { maturityDate: string; underlyingAssetSymbol: string }
+      | undefined;
 
     if (operationType === "buy" || operationType === "deposit") {
       pendleMarketSymbol = tokenOut ?? undefined;
     } else if (operationType === "sell" || operationType === "withdraw") {
-      pendleMarketSymbol = tokenIn
-        ?.replace(/^(LP-|PT-)/i, "")
-        .replace(/-\d{2}[A-Z]{3}\d{4}$/i, "");
+      pendleMarketDetails = tokenIn ? toPendleDetails(tokenIn) : undefined;
     }
 
     const pendleFilteredMarkets = await levvaService.filterPendleMarkets(
       pendleMarkets,
-      // TODO: this one is not enough, we need to filter by tokenSymbol + maturity days
-      // e.g. user says "sell yoUSD" and we have 2 markets: LP-yoETH-25DEC2025 and LP-yoETH-26MAR2026
-      pendleMarketSymbol ?? undefined,
-      maturityDays ?? undefined,
+      pendleMarketDetails?.underlyingAssetSymbol ??
+        pendleMarketSymbol ??
+        undefined,
+      pendleMarketDetails?.maturityDate ?? maturityDays ?? undefined,
       tokenClass ?? undefined
     );
 

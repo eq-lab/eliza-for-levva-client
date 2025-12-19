@@ -291,9 +291,9 @@ export class LevvaService extends Service implements ILevvaService {
     maturityDays?: string,
     tokenClass?: string
   ): PendleMarket[] {
-    const utcNowDate = Date.now();
+    const utcNowTimestamp = Date.now();
     const utcNowDateInMsec = Math.floor(
-      utcNowDate - Math.floor(utcNowDate % 86400000)
+      utcNowTimestamp - Math.floor(utcNowTimestamp % 86400000)
     );
 
     return pendleMarkets.filter((market) => {
@@ -315,6 +315,15 @@ export class LevvaService extends Service implements ILevvaService {
         (!tokenClass || token || tokenClass === market.underlyingType)
       );
     });
+  }
+
+  getActivePendleMarkets(pendleMarkets: PendleMarket[]): PendleMarket[] {
+    const utcNowTimestamp = Date.now();
+    const utcNowDate = new Date(utcNowTimestamp);
+
+    return pendleMarkets.filter(
+      (market) => new Date(market.maturityDate) >= utcNowDate
+    );
   }
 
   private getPendleMarketSupportedTokensCacheKey = (

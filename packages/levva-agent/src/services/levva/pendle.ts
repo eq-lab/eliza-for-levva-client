@@ -109,3 +109,39 @@ export const toPendleSymbol = (
     symbol: `${market.underlyingAssetSymbol}-${day}${month}${year}`,
   };
 };
+
+export const toPendleDetails = (
+  ptOrLpSymbol: string
+): { maturityDate: string; underlyingAssetSymbol: string } => {
+  const match = ptOrLpSymbol.match(/(\d{2})([A-Z]{3})(\d{4})$/i)!;
+
+  const day = match[1];
+  const monthStr = match[2].toUpperCase();
+  const year = match[3];
+
+  const months: Record<string, string> = {
+    JAN: "01",
+    FEB: "02",
+    MAR: "03",
+    APR: "04",
+    MAY: "05",
+    JUN: "06",
+    JUL: "07",
+    AUG: "08",
+    SEP: "09",
+    OCT: "10",
+    NOV: "11",
+    DEC: "12",
+  };
+
+  const month = months[monthStr];
+
+  const underlyingAssetSymbol = ptOrLpSymbol
+    .replace(/^(LP-|PT-)/i, "")
+    .replace(/-\d{2}[A-Z]{3}\d{4}$/i, "");
+
+  return {
+    maturityDate: `${year}-${month}-${day}T00:00:00Z`,
+    underlyingAssetSymbol,
+  };
+};

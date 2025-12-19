@@ -156,13 +156,17 @@ export const action: Action = {
             levvaProviderState.chainId
           );
 
+          pendleMarkets = levvaService.getActivePendleMarkets(pendleMarkets);
+
           thought =
             "No Pendle markets found, searched for all markets. I should ask for clarification.";
         } else if (
           providerData.pendleFilteredMarkets &&
           providerData.pendleFilteredMarkets.length > 0
         ) {
-          pendleMarkets = providerData.pendleFilteredMarkets;
+          pendleMarkets = levvaService.getActivePendleMarkets(
+            providerData.pendleFilteredMarkets
+          );
 
           thought =
             "Searched for Pendle markets, found some. I should ask for clarification.";
