@@ -18,8 +18,9 @@ import {
   PENDLE_PARAMS_PROVIDER_NAME,
   PendleParamsProviderData,
 } from "../../providers/pendle-params";
-import { generatePendleStrategyIntentSuggestionsPrompt } from "../../prompts/suggest/pendle-intent";
+import { generatePendleStrategyIntentSuggestions } from "../../prompts/suggest/pendle-intent";
 import { getPendleConvert } from "../../api/pendle";
+import { Suggestion } from "../../evaluators/suggestions";
 
 /**
  * Generate suggestions for Pendle strategy intent
@@ -31,7 +32,7 @@ export async function generatePendleStrategySuggestions(params: {
   userAddress: `0x${string}`;
   chainId: number;
   state?: State;
-}): Promise<string | undefined> {
+}): Promise<{ suggestions: Suggestion[] } | undefined> {
   const { runtime, intentContext, conversation, userAddress, chainId, state } =
     params;
   const levvaService = runtime.getService<LevvaService>(
@@ -73,7 +74,7 @@ export async function generatePendleStrategySuggestions(params: {
   const allPendleMarkets = await levvaService.getPendleMarkets(chainId, true);
 
   // Generate prompt using consolidated prompt function
-  return generatePendleStrategyIntentSuggestionsPrompt({
+  return generatePendleStrategyIntentSuggestions({
     intentContext,
     conversation,
     userAddress,

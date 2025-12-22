@@ -487,7 +487,7 @@ IntentManager.registerIntent({
     "unstake Pendle",
   ],
   handler: handlePendleStrategyIntent,
-  generateSuggestionsPrompt: generatePendleStrategySuggestions,
+  generateSuggestions: generatePendleStrategySuggestions,
   description:
     "Handle Pendle buy, sell, deposit, and withdraw requests with multi-step process support",
 });
