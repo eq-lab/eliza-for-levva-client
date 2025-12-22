@@ -270,9 +270,12 @@ export class LevvaService extends Service implements ILevvaService {
   getPendleMarkets = createTimedCache(
     this,
     3600000, // 1 hour in milliseconds
-    async (chainId: number, activeOnly: boolean) => {
+    async (
+      chainId: number,
+      activeOnly: boolean,
+      supportedUnderlyingTypes: string[] = ["Stable", "ETH", "BTC"]
+    ) => {
       const result = await getPendleMarkets(chainId, activeOnly);
-      const supportedUnderlyingTypes = ["Stable", "ETH", "BTC"];
 
       if (!result.success) {
         throw new Error("Failed to get Pendle markets");
@@ -282,8 +285,12 @@ export class LevvaService extends Service implements ILevvaService {
         supportedUnderlyingTypes.includes(market.underlyingType)
       );
     },
-    (chainId: number, activeOnly: boolean) =>
-      `pendle-markets:${chainId}:${activeOnly}`
+    (
+      chainId: number,
+      activeOnly: boolean,
+      supportedUnderlyingTypes: string[] = ["Stable", "ETH", "BTC"]
+    ) =>
+      `pendle-markets:${chainId}:${activeOnly}:${supportedUnderlyingTypes.sort().join(",")}`
   );
 
   filterPendleMarkets(
