@@ -23,7 +23,12 @@ async function handler(req: Request, res: Response, runtime: IAgentRuntime) {
     }
 
     const pendleMarkets =
-      (await service.getPendleMarkets(chainIdNumber, false)) ?? [];
+      (await service.getPendleMarkets(chainIdNumber, false, [
+        "Stable",
+        "ETH",
+        "BTC",
+        "Other",
+      ])) ?? [];
     await service.collectPendleMarketPtAndLpTokens(
       chainIdNumber,
       pendleMarkets
