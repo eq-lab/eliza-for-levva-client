@@ -20,7 +20,7 @@ import {
 } from "../../providers/pendle-params";
 import { generatePendleStrategyIntentSuggestions } from "../../prompts/suggest/pendle-intent";
 import { getPendleConvert } from "../../api/pendle";
-import { Suggestion } from "../../evaluators/suggestions";
+import { Suggestions } from "../../evaluators/suggestions";
 
 /**
  * Generate suggestions for Pendle strategy intent
@@ -32,7 +32,7 @@ export async function generatePendleStrategySuggestions(params: {
   userAddress: `0x${string}`;
   chainId: number;
   state?: State;
-}): Promise<{ suggestions: Suggestion[] } | undefined> {
+}): Promise<Suggestions | undefined> {
   const { runtime, intentContext, conversation, userAddress, chainId, state } =
     params;
   const levvaService = runtime.getService<LevvaService>(

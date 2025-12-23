@@ -36,6 +36,17 @@ interface MessageEntry {
   };
 }
 
+export type SuggestionType =
+  | "general"
+  | "pendle-markets"
+  | "pendle-maturities"
+  | "pendle-asset-classes";
+
+export interface Suggestions {
+  type: SuggestionType;
+  suggestions: Suggestion[];
+}
+
 export interface Suggestion {
   label: string;
   text: string;
@@ -225,7 +236,7 @@ export const suggestionsEvaluator: Evaluator = {
         logger.warn("[SUGGESTIONS] IntentManager not available");
       }
 
-      let result: { suggestions: Suggestion[] } | undefined;
+      let result: Suggestions | undefined;
 
       // If there's an active intent, generate context-aware suggestions
       if (activeIntent) {
@@ -317,7 +328,7 @@ export const suggestionsEvaluator: Evaluator = {
       await runtime.setCache(
         `suggestions:${user.address}:${chainId}:${channelId}`,
         {
-          value: result?.suggestions ?? [],
+          value: result ?? { type: "general", suggestions: [] },
         }
       );
 
@@ -343,7 +354,7 @@ async function generateIntentAwareSuggestions(
   userAddress: `0x${string}`,
   chainId: number,
   state?: State
-): Promise<{ suggestions: Suggestion[] } | undefined> {
+): Promise<Suggestions | undefined> {
   try {
     // Get user data for portfolio-based suggestions
     const service = runtime.getService<LevvaService>(
@@ -403,7 +414,7 @@ async function generateIntentAwareSuggestions(
           }
         } else if (intent?.generateSuggestions) {
           const suggestions = await intent?.generateSuggestions(params);
-          return { suggestions };
+          return suggestions;
         }
       } else {
         logger.warn(`[SUGGESTIONS-GEN] IntentManager not found`);

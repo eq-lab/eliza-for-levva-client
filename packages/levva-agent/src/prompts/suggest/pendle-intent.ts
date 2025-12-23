@@ -7,15 +7,10 @@
  */
 
 import { PendleMarket } from "../../api/levva/schema";
-import { Suggestion } from "../../evaluators/suggestions";
+import { Suggestions } from "../../evaluators/suggestions";
 import { PendleParamsProviderData } from "../../providers/pendle-params";
 import type { IntentContext } from "../../services/intent-manager";
 import { formatDecimalToPercentage } from "../../util";
-import { generateOutputFormat, generateCommonInstructions } from "../helpers";
-import {
-  calculateAmountsFromBalance,
-  generateAmountContext,
-} from "../helpers/amount-suggestions";
 
 export interface PendleStrategyIntentSuggestionParams {
   intentContext: IntentContext;
@@ -45,7 +40,7 @@ export interface PendleStrategyIntentSuggestionParams {
 
 export function generatePendleStrategyIntentSuggestions(
   params: PendleStrategyIntentSuggestionParams
-): { suggestions: Suggestion[] } | undefined {
+): Suggestions | undefined {
   const {
     returnData,
     walletAsset,
@@ -168,7 +163,8 @@ export function generatePendleStrategyIntentSuggestions(
 
   if (
     (providerData?.operationType === "buy" ||
-      providerData?.operationType === "deposit") &&
+      providerData?.operationType === "deposit" ||
+      !providerData?.operationType) &&
     pendleFilteredMarkets.length > 1
   ) {
     if (!tokenClass) {
@@ -177,8 +173,8 @@ export function generatePendleStrategyIntentSuggestions(
       ];
 
       return {
+        type: "pendle-asset-classes",
         suggestions: tokenClassOptions.map((type) => ({
-          type: "pendle-asset-class",
           label: `${type} yield`,
           text: `${type} token class`,
         })),
@@ -206,6 +202,7 @@ export function generatePendleStrategyIntentSuggestions(
       ];
 
       return {
+        type: "pendle-maturities",
         suggestions: maturityDaysOptions.map((m) => {
           if (m === "<=30 days")
             return {
@@ -228,6 +225,7 @@ export function generatePendleStrategyIntentSuggestions(
       };
     } else {
       return {
+        type: "pendle-markets",
         suggestions: pendleFilteredMarkets.slice(0, 5).map((market) => ({
           type: "pendle-market",
           label: `PT-${market.underlyingAssetSymbol}-${market.maturityDate.split("T")[0]} (APY: ${formatDecimalToPercentage(market.impliedApy)})`,

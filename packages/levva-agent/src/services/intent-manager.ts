@@ -17,7 +17,7 @@ import {
   intentAnalysisSchema,
 } from "../prompts/intent";
 import { zodJsonSchema } from "../prompts/util";
-import { Suggestion } from "../evaluators/suggestions";
+import { Suggestion, Suggestions } from "../evaluators/suggestions";
 
 export interface IntentContext {
   id: string;
@@ -72,7 +72,7 @@ export interface IntentRegistration {
     userAddress: `0x${string}`;
     chainId: number;
     state?: State;
-  }) => Promise<Suggestion[]>;
+  }) => Promise<Suggestions | undefined>;
 }
 
 export interface IntentDetectionResult {
